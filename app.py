@@ -921,7 +921,7 @@ def submit_form(form_id):
         'id': str(uuid.uuid4()),
         'form_id': form_id,
         'patient_id': patient_id,
-        'submitted_by': current_user.id,
+        'submitted_by': current_user.username,
         'data': form_data
     }
     
