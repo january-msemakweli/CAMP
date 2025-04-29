@@ -14,3 +14,4 @@ xlsxwriter
 hypothesis
 hypothesis-jsonschema
 httpx 
+scipy
