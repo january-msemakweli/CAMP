@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}MoAfyaCamps{% endblock %}</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Choices.js CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
+    <!-- Custom CSS -->
+    <style>
+        :root {
+            --primary-color: #1a1a2e;
+            --secondary-color: #16213e;
+            --accent-color: #0f3460;
+            --gold-color: #e6b800;
+            --light-color: #f8f9fa;
+            --dark-color: #0a0a0a;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: var(--light-color);
+            color: var(--dark-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+        }
+
+        .navbar {
+            background: var(--primary-color);
+            padding: 1rem 0;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            border-bottom: 1px solid rgba(230, 184, 0, 0.1);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1030;
+        }
+
+        .navbar-brand {
+            font-family: 'Playfair Display', serif;
+            font-weight: 700;
+            font-size: 1.8rem;
+            color: var(--gold-color) !important;
+            letter-spacing: 1px;
+        }
+
+        .nav-link {
+            color: rgba(255,255,255,0.8) !important;
+            font-weight: 500;
+            padding: 0.7rem 1.2rem !important;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            position: relative;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+        }
+
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            width: 0;
+            height: 2px;
+            background: var(--gold-color);
+            transition: all 0.3s ease;
+            transform: translateX(-50%);
+        }
+
+        .nav-link:hover {
+            color: var(--gold-color) !important;
+        }
+
+        .nav-link:hover::after {
+            width: 100%;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 3rem 0;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            margin-top: 80px; /* Add margin to account for fixed navbar */
+        }
+
+        .card {
+            background: white;
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+            overflow: hidden;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        }
+
+        .btn {
+            font-weight: 600;
+            padding: 0.8rem 1.5rem;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.85rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            border: none;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary-color);
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            border: none;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .table {
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .table thead th {
+            background: var(--primary-color);
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            border: none;
+            padding: 1.2rem;
+        }
+
+        .table tbody td {
+            padding: 1.2rem;
+            vertical-align: middle;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            font-size: 0.9rem;
+        }
+
+        .table tbody tr:hover {
+            background: rgba(26, 26, 46, 0.02);
+        }
+
+        .modal-content {
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+
+        .modal-header {
+            background: var(--primary-color);
+            color: white;
+            border-radius: 8px 8px 0 0;
+            padding: 1.5rem;
+            border-bottom: 1px solid rgba(230, 184, 0, 0.1);
+        }
+
+        .modal-title {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+        }
+
+        .form-control {
+            border-radius: 4px;
+            border: 1px solid rgba(0,0,0,0.1);
+            padding: 0.8rem 1rem;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 0.2rem rgba(26, 26, 46, 0.1);
+        }
+
+        .alert {
+            border-radius: 4px;
+            border: none;
+            padding: 1rem 1.5rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+        }
+
+        .footer {
+            background: var(--primary-color);
+            color: white;
+            padding: 2rem 0;
+            margin-top: auto;
+            border-top: 1px solid rgba(230, 184, 0, 0.1);
+        }
+
+        .footer h5 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--gold-color);
+        }
+
+        .footer p {
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+
+        .footer-logo {
+            max-height: 80px;
+            width: auto;
+            filter: brightness(0) invert(1);
+        }
+
+        .page-header {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 8px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+            margin-bottom: 2.5rem;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .page-header h2 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+            font-size: 2.2rem;
+        }
+
+        .page-header p {
+            color: #666;
+            margin-bottom: 0;
+            font-size: 1.1rem;
+        }
+
+        .stat-card {
+            background: var(--primary-color);
+            color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(230, 184, 0, 0.1);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: rgba(230, 184, 0, 0.1);
+            border-radius: 50%;
+        }
+
+        .stat-card i {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            position: relative;
+            color: var(--gold-color);
+        }
+
+        .stat-card h3 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card p {
+            margin-bottom: 0;
+            opacity: 0.9;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .action-buttons .btn {
+            margin-right: 0.8rem;
+        }
+
+        .action-buttons .btn:last-child {
+            margin-right: 0;
+        }
+
+        @media (max-width: 768px) {
+            .navbar-brand {
+                font-size: 1.4rem;
+            }
+            
+            .nav-link {
+                padding: 0.7rem !important;
+            }
+            
+            .page-header {
+                padding: 1.5rem;
+            }
+            
+            .stat-card {
+                padding: 1.5rem;
+            }
+        }
+
+        /* Landing Page Styles */
+        .landing-section {
+            padding-top: 60px;
+            padding-bottom: 60px;
+        }
+
+        .hero-section {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+            padding: 70px 0 90px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            border-radius: 50%;
+            background: rgba(230, 184, 0, 0.05);
+            top: -250px;
+            right: -100px;
+            z-index: 0;
+        }
+
+        .hero-section::after {
+            content: '';
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            background: rgba(230, 184, 0, 0.08);
+            bottom: -150px;
+            left: -50px;
+            z-index: 0;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .hero-title {
+            font-size: 4rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 0.5rem;
+            color: white;
+        }
+
+        .hero-tagline {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--gold-color);
+            margin-bottom: 1.5rem;
+        }
+
+        .hero-subtitle {
+            font-size: 1.3rem;
+            margin-bottom: 2.5rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .hero-buttons {
+            margin-bottom: 3rem;
+        }
+
+        .hero-stats {
+            display: flex;
+            gap: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .hero-stat {
+            text-align: center;
+        }
+
+        .hero-stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--gold-color);
+            line-height: 1;
+            margin-bottom: 0.5rem;
+        }
+
+        .hero-stat-label {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .foundation-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            padding: 25px;
+            text-align: center;
+            position: relative;
+        }
+
+        .foundation-logo {
+            width: 100%;
+            max-width: 280px;
+            margin: 0 auto;
+        }
+
+        .foundation-title {
+            font-size: 1.8rem;
+            color: var(--primary-color);
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .foundation-subtitle {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #777;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .section-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            color: var(--primary-color);
+        }
+
+        .section-subtitle {
+            font-size: 1.1rem;
+            color: #666;
+            margin-bottom: 3rem;
+            text-align: center;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .role-card {
+            border-radius: 12px;
+            overflow: hidden;
+            border: none;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.08);
+            transition: all 0.3s ease;
+            height: 100%;
+        }
+
+        .role-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+        }
+
+        .role-card-header {
+            padding: 30px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .staff-card .role-card-header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+        }
+
+        .admin-card .role-card-header {
+            background: linear-gradient(135deg, var(--gold-color) 0%, #d4aa00 100%);
+        }
+
+        .role-icon {
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+        }
+
+        .staff-card .role-icon i {
+            color: white;
+            font-size: 2.5rem;
+        }
+
+        .admin-card .role-icon i {
+            color: var(--primary-color);
+            font-size: 2.5rem;
+        }
+
+        .role-card-title {
+            color: white;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .role-card-subtitle {
+            color: rgba(255, 255, 255, 0.8);
+            text-align: center;
+            font-size: 1rem;
+            margin-bottom: 0;
+        }
+
+        .role-card-body {
+            padding: 30px;
+        }
+
+        .feature-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 30px;
+        }
+
+        .feature-list li {
+            padding: 10px 0;
+            display: flex;
+            align-items: center;
+            color: #555;
+        }
+
+        .staff-card .feature-list li i {
+            color: var(--primary-color);
+            margin-right: 10px;
+        }
+
+        .admin-card .feature-list li i {
+            color: var(--gold-color);
+            margin-right: 10px;
+        }
+
+        .btn-staff {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 50px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn-staff:hover {
+            background: var(--accent-color);
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(15, 52, 96, 0.15);
+            color: white;
+        }
+
+        .btn-admin {
+            background: var(--gold-color);
+            color: var(--primary-color);
+            border: none;
+            padding: 12px 25px;
+            border-radius: 50px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn-admin:hover {
+            background: #d4aa00;
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(212, 170, 0, 0.15);
+            color: var(--primary-color);
+        }
+
+        .features-section {
+            background: #f8f9fa;
+            padding: 80px 0;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+        }
+
+        .feature-item {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .feature-item:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .feature-icon {
+            width: 70px;
+            height: 70px;
+            background: rgba(15, 52, 96, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+        }
+
+        .feature-icon i {
+            color: var(--primary-color);
+            font-size: 1.8rem;
+        }
+
+        .feature-title {
+            color: var(--primary-color);
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+
+        .cta-section {
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--accent-color) 100%);
+            padding: 80px 0;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            background: rgba(230, 184, 0, 0.1);
+            top: -150px;
+            right: -50px;
+        }
+
+        .cta-section::after {
+            content: '';
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: rgba(230, 184, 0, 0.05);
+            bottom: -100px;
+            left: -50px;
+        }
+
+        .cta-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .cta-title {
+            color: white;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .cta-subtitle {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.2rem;
+            margin-bottom: 40px;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .btn-light {
+            background: white;
+            color: var(--primary-color);
+            font-weight: 600;
+            padding: 15px 30px;
+            border-radius: 50px;
+            transition: all 0.3s ease;
+            border: none;
+        }
+
+        .btn-light:hover {
+            background: #f8f9fa;
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-outline-light {
+            background: transparent;
+            color: white;
+            font-weight: 600;
+            padding: 15px 30px;
+            border-radius: 50px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .btn-outline-light:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: white;
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+            color: white;
+        }
+
+        @media (max-width: 991px) {
+            .hero-title {
+                font-size: 3rem;
+            }
+            
+            .hero-tagline {
+                font-size: 1.8rem;
+            }
+
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 767px) {
+            .hero-section {
+                padding: 60px 0 40px;
+            }
+            
+            .hero-title {
+                font-size: 2.5rem;
+            }
+            
+            .hero-tagline {
+                font-size: 1.5rem;
+            }
+
+            .hero-stats {
+                flex-direction: column;
+                gap: 1.5rem;
+            }
+
+            .foundation-card {
+                margin: 40px auto;
+                max-width: 320px;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-hospital-alt me-2"></i>MoAfyaCamps
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    {% if current_user.is_authenticated %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('user_dashboard') if not current_user.is_admin else url_for('admin_dashboard') }}">
+                            <i class="fas fa-chart-line me-2"></i>Dashboard
+                        </a>
+                    </li>
+                    {% if current_user.is_admin %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('activity_logs') }}">
+                            <i class="fas fa-history me-2"></i>Activity Logs
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('analytics') }}">
+                            <i class="fas fa-chart-bar me-2"></i>Analytics
+                        </a>
+                    </li>
+                    {% endif %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('projects', dataset_view='true') }}"><i class="fas fa-database me-1"></i>Dataset</a>
+                    </li>
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav">
+                    {% if current_user.is_authenticated %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-user-circle me-2"></i>{{ current_user.username }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                                <i class="fas fa-sign-out-alt me-2"></i>Logout
+                            </a></li>
+                        </ul>
+                    </li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('login') }}">
+                            <i class="fas fa-sign-in-alt me-2"></i>Login
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('register') }}">
+                            <i class="fas fa-user-plus me-2"></i>Register
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% if not current_user.is_authenticated and request.endpoint == 'index' %}
+            <!-- Hero Section -->
+            <section class="hero-section">
+                <div class="container">
+                    <div class="row align-items-center">
+                        <div class="col-lg-1"></div>
+                        <div class="col-lg-6 mb-5 mb-lg-0">
+                            <div class="hero-content ps-lg-5">
+                                <h1 class="hero-title">MoAfyaCamps</h1>
+                                <h2 class="hero-tagline mb-3">Efficient Health Camp Management</h2>
+                                <p class="hero-subtitle">A centralized platform for healthcare data collection and management in field settings.</p>
+                                
+                                <div class="hero-buttons">
+                                    <a href="{{ url_for('register') }}" class="btn btn-light btn-lg me-3">
+                                        <i class="fas fa-user-plus me-2"></i>Get Started
+                                    </a>
+                                    <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">
+                                        <i class="fas fa-sign-in-alt me-2"></i>Sign In
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-5 d-flex align-items-center justify-content-center">
+                            <div class="foundation-card">
+                                <p class="foundation-subtitle">Powered by</p>
+                                <img src="{{ url_for('static', filename='MDF.png') }}" alt="Mo Dewji Foundation" class="foundation-logo">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Roles Section -->
+            <section class="landing-section">
+                <div class="container">
+                    <div class="row">
+                        <div class="col-lg-6 mb-4">
+                            <div class="role-card staff-card">
+                                <div class="role-card-header">
+                                    <div class="role-icon">
+                                        <i class="fas fa-user-md"></i>
+                                    </div>
+                                    <h3 class="role-card-title">Health Camp Staff</h3>
+                                    <p class="role-card-subtitle">For healthcare workers in the field</p>
+                                </div>
+                                <div class="role-card-body">
+                                    <ul class="feature-list">
+                                        <li><i class="fas fa-check-circle"></i> Collect patient data efficiently</li>
+                                        <li><i class="fas fa-check-circle"></i> Access and fill digital forms</li>
+                                        <li><i class="fas fa-check-circle"></i> Track patient visits and follow-ups</li>
+                                        <li><i class="fas fa-check-circle"></i> Generate reports and summaries</li>
+                                    </ul>
+                                    <a href="{{ url_for('register') }}" class="btn btn-staff">
+                                        <i class="fas fa-clipboard-check me-2"></i>Join as Staff
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-6 mb-4">
+                            <div class="role-card admin-card">
+                                <div class="role-card-header">
+                                    <div class="role-icon">
+                                        <i class="fas fa-user-shield"></i>
+                                    </div>
+                                    <h3 class="role-card-title">Administrators</h3>
+                                    <p class="role-card-subtitle">For health camp managers and coordinators</p>
+                                </div>
+                                <div class="role-card-body">
+                                    <ul class="feature-list">
+                                        <li><i class="fas fa-check-circle"></i> Manage programmes and health camps</li>
+                                        <li><i class="fas fa-check-circle"></i> Design and customize forms</li>
+                                        <li><i class="fas fa-check-circle"></i> Approve staff accounts and access</li>
+                                        <li><i class="fas fa-check-circle"></i> Analyze comprehensive data reports</li>
+                                    </ul>
+                                    <a href="{{ url_for('login') }}" class="btn btn-admin">
+                                        <i class="fas fa-cog me-2"></i>Admin Login
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Features Section -->
+            <section class="features-section">
+                <div class="container">
+                    <h2 class="section-title">Key Features</h2>
+                    <p class="section-subtitle">MoAfyaCamps offers comprehensive solutions for health camp management</p>
+                    
+                    <div class="features-grid">
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <i class="fas fa-mobile-alt"></i>
+                            </div>
+                            <h4 class="feature-title">Easy to Use</h4>
+                            <p>Intuitive interface designed for quick data collection in the field, even with minimal training.</p>
+                        </div>
+                        
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <i class="fas fa-shield-alt"></i>
+                            </div>
+                            <h4 class="feature-title">Secure Data</h4>
+                            <p>Advanced security measures to protect sensitive patient information with encryption.</p>
+                        </div>
+                        
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+                            <h4 class="feature-title">Powerful Analytics</h4>
+                            <p>Comprehensive reports and insights from collected health data for better decision making.</p>
+                        </div>
+                        
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <i class="fas fa-sync-alt"></i>
+                            </div>
+                            <h4 class="feature-title">Real-time Updates</h4>
+                            <p>Instant access to the latest information and form submissions from anywhere.</p>
+                        </div>
+                        
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <i class="fas fa-file-alt"></i>
+                            </div>
+                            <h4 class="feature-title">Custom Forms</h4>
+                            <p>Create tailored forms to meet specific health camp requirements and patient needs.</p>
+                        </div>
+                        
+                        <div class="feature-item">
+                            <div class="feature-icon">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <h4 class="feature-title">Team Collaboration</h4>
+                            <p>Seamless coordination between staff members during health camps for better outcomes.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- CTA Section -->
+            <section class="cta-section">
+                <div class="container">
+                    <div class="cta-content">
+                        <h2 class="cta-title">Ready to Get Started?</h2>
+                        <p class="cta-subtitle">Join MoAfyaCamps today and transform how you manage health camps</p>
+                        <div class="cta-buttons">
+                            <a href="{{ url_for('register') }}" class="btn btn-light btn-lg me-3">
+                                <i class="fas fa-user-plus me-2"></i>Register Now
+                            </a>
+                            <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">
+                                <i class="fas fa-sign-in-alt me-2"></i>Login
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            {% else %}
+                {% block content %}{% endblock %}
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <h5><i class="fas fa-hospital-alt me-2"></i>MoAfyaCamps</h5>
+                    <p>Excellence in Healthcare Management</p>
+                </div>
+                <div class="col-md-4 text-center">
+                    <p>&copy; 2025 MoAfyaCamps. All rights reserved.</p>
+                </div>
+                <div class="col-md-4 text-md-end">
+                    <a href="https://www.modewjifoundation.org" target="_blank" rel="noopener noreferrer">
+                        <img src="{{ url_for('static', filename='MDF.png') }}" alt="Mo Dewji Foundation" class="footer-logo">
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Choices.js JS -->
+    <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html> 

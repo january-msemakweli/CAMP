@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2>{{ form.title }}</h2>
+        <p class="text-muted">Programme: {{ project.name }}</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Submit Form</h5>
+            </div>
+            <div class="card-body">
+                <form id="dataEntryForm" method="POST" action="{{ url_for('submit_form', form_id=form.id) }}">
+                    <div class="mb-3">
+                        <label for="patientNumber" class="form-label">Patient Number</label>
+                        <input type="number" class="form-control" id="patientNumber" name="patient_number" required>
+                        <div class="form-text d-none">Patient ID will be generated as: {{ project.camp_date }}-[number]</div>
+                    </div>
+                    
+                    {% for field in form.fields %}
+                    <div class="mb-3">
+                        <label class="form-label" for="field-{{ loop.index }}">{{ field.label }}</label>
+                        {% if field.location_type %}
+                            {# Handle location dropdowns #}
+                            <select class="form-select location-dropdown choices-select" 
+                                    id="field-{{ loop.index }}" 
+                                    name="{{ field.label.lower().replace(' ', '_') }}" 
+                                    data-location-type="{{ field.location_type }}" 
+                                    required 
+                                    {% if field.location_type != 'region' %}disabled{% endif %}>
+                                {# Options will be populated by JS #}
+                            </select>
+                        {% elif field.type == 'text' %}
+                            <input type="text" class="form-control" id="field-{{ loop.index }}" name="{{ field.label.lower().replace(' ', '_') }}" required>
+                        {% elif field.type == 'number' %}
+                            <input type="number" class="form-control" id="field-{{ loop.index }}" name="{{ field.label.lower().replace(' ', '_') }}" required>
+                        {% elif field.type == 'dropdown' %}
+                            <select class="form-select choices-select" id="field-{{ loop.index }}" name="{{ field.label.lower().replace(' ', '_') }}" required>
+                                <option value="">Select an option</option>
+                                {% for option in field.options %}
+                                <option value="{{ option }}">{{ option }}</option>
+                                {% endfor %}
+                            </select>
+                        {% elif field.type == 'radio' %}
+                            {% for option in field.options %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="{{ field.label.lower().replace(' ', '_') }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}" required>
+                                <label class="form-check-label" for="field-{{ loop.index }}-{{ loop.index0 }}">{{ option }}</label>
+                            </div>
+                            {% endfor %}
+                        {% elif field.type == 'checkbox' %}
+                            {% for option in field.options %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="{{ field.label.lower().replace(' ', '_') }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}">
+                                <label class="form-check-label" for="field-{{ loop.index }}-{{ loop.index0 }}">{{ option }}</label>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    
+                    <button type="submit" class="btn btn-primary">Submit Form</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Recent Submissions</h5>
+            </div>
+            <div class="card-body">
+                {% if submissions %}
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Patient ID</th>
+                                    <th>Submitted By</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for submission in submissions %}
+                                <tr>
+                                    <td>{{ submission.patient_id }}</td>
+                                    <td>{{ submission.submitted_by }}</td>
+                                    <td>{{ submission.created_at }}</td>
+                                    <td>
+                                        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#viewSubmissionModal{{ submission.id }}">
+                                            View
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-center">No submissions yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if current_user.is_admin %}
+<!-- User Access Control Section -->
+<div class="row">
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-user-lock me-2"></i>User Access Control
+                    </h5>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <!-- Grant Access Form -->
+                        <h6 class="mb-3">Grant Access</h6>
+                        <form method="POST" action="{{ url_for('grant_form_access', form_id=form.id) }}" class="mb-4">
+                            <div class="input-group">
+                                <select class="form-select" name="user_id" required>
+                                    <option value="">Select User</option>
+                                    {% for user in users %}
+                                        {% if not user.is_admin %}
+                                            <option value="{{ user.id }}">{{ user.username }}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-plus me-1"></i>Grant Access
+                                </button>
+                            </div>
+                            <small class="form-text text-muted">Select a user to grant access to this form.</small>
+                        </form>
+                    </div>
+                    <div class="col-md-6">
+                        <!-- Users With Access -->
+                        <h6 class="mb-3">Users With Access</h6>
+                        {% if user_permissions %}
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Username</th>
+                                            <th>Granted On</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for permission in user_permissions %}
+                                        <tr>
+                                            <td>{{ permission.users.username }}</td>
+                                            <td>{{ permission.created_at }}</td>
+                                            <td>
+                                                <form method="POST" action="{{ url_for('revoke_form_access', form_id=form.id, permission_id=permission.id) }}">
+                                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to revoke access for this user?')">
+                                                        <i class="fas fa-times me-1"></i>Revoke
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle me-2"></i>No users have been granted access to this form yet.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle me-2"></i>Admin users automatically have access to all forms. Regular users need explicit access to view and submit forms.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Submission View Modals -->
+{% for submission in submissions %}
+<div class="modal fade" id="viewSubmissionModal{{ submission.id }}" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Submission Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <strong>Patient ID:</strong> {{ submission.patient_id }}<br>
+                    <strong>Submitted By:</strong> {{ submission.submitted_by }}<br>
+                    <strong>Date:</strong> {{ submission.created_at }}
+                </div>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for field, value in submission.data.items() %}
+                            <tr>
+                                <td>{{ field.replace('_', ' ').title() }}</td>
+                                <td>
+                                    {% if value is iterable and value is not string %}
+                                        {{ value|join(', ') }}
+                                    {% else %}
+                                        {{ value }}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/locations.js') }}"></script> 
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM Loaded. Initializing form script with Choices.js...");
+    const form = document.getElementById('dataEntryForm');
+    
+    // --- Initialize Choices.js instances --- 
+    let regionChoices = null;
+    let districtChoices = null;
+    let wardChoices = null;
+    const standardChoicesInstances = {}; // Store standard dropdown instances
+
+    const choicesConfig = {
+        searchEnabled: true,
+        itemSelectText: 'Select',
+        shouldSort: true, // Sorts options alphabetically in the dropdown
+        removeItemButton: false, 
+        // No placeholder options needed here, they are in the HTML for standard dropdowns
+    };
+
+    const locationChoicesConfig = {
+        ...choicesConfig, // Inherit base config
+        placeholder: true, // Use placeholder for location fields
+    };
+
+    // Function to create Choices.js options array (for dynamic population)
+    function createChoicesOptions(optionsArray) {
+        return optionsArray.map(option => ({
+            value: option,
+            label: option,
+            selected: false,
+            disabled: false,
+        }));
+    }
+
+    // Initialize Location Dropdowns
+    const regionSelectElement = form.querySelector('select[data-location-type=\"region\"]');
+    const districtSelectElement = form.querySelector('select[data-location-type=\"district\"]');
+    const wardSelectElement = form.querySelector('select[data-location-type=\"ward\"]');
+
+    if (regionSelectElement) {
+        regionChoices = new Choices(regionSelectElement, {
+            ...locationChoicesConfig,
+            placeholderValue: '-- Select Region --',
+        });
+        console.log("Region Choices initialized:", regionChoices);
+    }
+    if (districtSelectElement) {
+        districtChoices = new Choices(districtSelectElement, {
+            ...locationChoicesConfig,
+            placeholderValue: '-- Select Region First --',
+        });
+        districtChoices.disable();
+        console.log("District Choices initialized (disabled):", districtChoices);
+    }
+    if (wardSelectElement) {
+        wardChoices = new Choices(wardSelectElement, {
+            ...locationChoicesConfig,
+            placeholderValue: '-- Select District First --',
+        });
+        wardChoices.disable();
+        console.log("Ward Choices initialized (disabled):", wardChoices);
+    }
+
+    // Initialize Standard Dropdowns (that are not location dropdowns)
+    const standardSelects = form.querySelectorAll('select.choices-select:not([data-location-type])');
+    standardSelects.forEach(selectElement => {
+        try {
+            const instance = new Choices(selectElement, choicesConfig);
+            standardChoicesInstances[selectElement.id || selectElement.name] = instance;
+            console.log(`Standard Choices initialized for: ${selectElement.id || selectElement.name}`, instance);
+        } catch (error) {
+            console.error(`Failed to initialize Choices.js for element:`, selectElement, error);
+        }
+    });
+    
+    // Function to set choices for a Location Choices.js instance
+    function updateLocationChoices(choicesInstance, optionsArray, placeholder) {
+        if (!choicesInstance) return;
+        console.log(`Updating Location Choices for: ${placeholder}`, choicesInstance, optionsArray);
+        
+        const choicesOptions = createChoicesOptions(optionsArray);
+        choicesInstance.setChoices(
+            [
+                { value: '', label: placeholder, selected: true, disabled: true },
+                ...choicesOptions
+            ],
+            'value', 'label', true
+        );
+        choicesInstance.enable();
+        choicesInstance.setChoiceByValue(''); // Ensure placeholder is selected
+    }
+
+    // Function to reset and disable a Location Choices.js instance
+    function resetLocationChoices(choicesInstance, placeholder) {
+        if (!choicesInstance) return;
+        console.log(`Resetting Location Choices: ${placeholder}`, choicesInstance);
+        choicesInstance.setChoices(
+            [{ value: '', label: placeholder, selected: true, disabled: true }],
+            'value', 'label', true
+        );
+        choicesInstance.disable();
+        choicesInstance.setChoiceByValue('');
+    }
+
+    // --- Initial Population (Only for Region) ---
+    if (regionChoices && typeof LOCATION_DATA !== 'undefined') {
+        console.log("Attempting to populate Region dropdown using Choices.js.");
+        const regions = Object.keys(LOCATION_DATA);
+        console.log("Regions found:", regions);
+        updateLocationChoices(regionChoices, regions, '-- Select Region --');
+    } else if (regionSelectElement) { // Log error only if element exists but data/Choices failed
+        console.error("Failed to populate Region dropdown. Check LOCATION_DATA.", typeof LOCATION_DATA);
+    }
+
+    // --- Event Listeners for Location Fields ---
+    if (regionSelectElement && districtChoices) {
+        regionSelectElement.addEventListener('change', function(event) {
+            const selectedRegion = event.detail.value;
+            console.log("Region changed (Choices.js):", selectedRegion);
+            
+            if (selectedRegion && LOCATION_DATA[selectedRegion]) {
+                const districts = Object.keys(LOCATION_DATA[selectedRegion]);
+                console.log("Districts found:", districts);
+                updateLocationChoices(districtChoices, districts, '-- Select District --');
+            } else {
+                console.log("Resetting District dropdown (Choices.js).");
+                resetLocationChoices(districtChoices, '-- Select Region First --');
+            }
+            if (wardChoices) {
+                console.log("Resetting Ward dropdown due to Region change (Choices.js).");
+                resetLocationChoices(wardChoices, '-- Select District First --');
+            }
+        });
+    }
+
+    if (districtSelectElement && wardChoices) {
+        districtSelectElement.addEventListener('change', function(event) {
+            const selectedDistrict = event.detail.value;
+            const selectedRegion = regionChoices ? regionChoices.getValue(true) : null; 
+            console.log("District changed (Choices.js):", selectedDistrict, "(Region:", selectedRegion, ")");
+            
+            if (selectedRegion && selectedDistrict && LOCATION_DATA[selectedRegion] && LOCATION_DATA[selectedRegion][selectedDistrict]) {
+                const wards = LOCATION_DATA[selectedRegion][selectedDistrict];
+                console.log("Wards found:", wards);
+                updateLocationChoices(wardChoices, wards, '-- Select Ward --');
+            } else {
+                console.log("Resetting Ward dropdown (Choices.js).");
+                resetLocationChoices(wardChoices, '-- Select District First --');
+            }
+        });
+    }
+
+    console.log("Form script initialization with Choices.js complete for all dropdowns.");
+});
+</script>
+{% endblock %} 

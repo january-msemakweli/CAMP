@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome to MoAfyaCamps{% endblock %}
+
+{% block content %}
+<div class="hero-section text-center py-5">
+    <div class="container">
+        <h1 class="display-4 mb-4">Welcome to MoAfyaCamps</h1>
+        <p class="lead mb-5">Your comprehensive healthcare management solution</p>
+        
+        {% if not current_user.is_authenticated %}
+        <div class="d-flex justify-content-center gap-3">
+            <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-sign-in-alt me-2"></i>Login
+            </a>
+            <a href="{{ url_for('register') }}" class="btn btn-outline-primary btn-lg">
+                <i class="fas fa-user-plus me-2"></i>Register
+            </a>
+        </div>
+        {% else %}
+        <div class="d-flex justify-content-center gap-3">
+            <a href="{{ url_for('user_dashboard') if not current_user.is_admin else url_for('admin_dashboard') }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-chart-line me-2"></i>Go to Dashboard
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="features-section py-5">
+    <div class="container">
+        <h2 class="text-center mb-5">Key Features</h2>
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-clipboard-list fa-3x mb-3"></i>
+                        <h3 class="card-title">Form Management</h3>
+                        <p class="card-text">Create and manage custom healthcare forms for your medical camps.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-database fa-3x mb-3"></i>
+                        <h3 class="card-title">Data Collection</h3>
+                        <p class="card-text">Efficiently collect and store patient data during medical camps.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-chart-bar fa-3x mb-3"></i>
+                        <h3 class="card-title">Analytics</h3>
+                        <p class="card-text">Generate insights and reports from your collected data.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

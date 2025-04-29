@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h1 class="display-6 fw-bold mb-1" style="color: var(--primary-color);">
+                                <i class="fas fa-history me-2" style="color: var(--gold-color);"></i>Activity Logs
+                            </h1>
+                            <p class="text-muted mb-0">A record of all system activities performed by users</p>
+                        </div>
+                        <div class="d-none d-md-block">
+                            <div class="bg-light rounded-circle p-3" style="width: 70px; height: 70px; display: flex; align-items: center; justify-content: center;">
+                                <i class="fas fa-clipboard-list fa-2x" style="color: var(--primary-color);"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity Logs Section -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header" style="background-color: var(--primary-color); color: white;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-list-alt me-2" style="color: var(--gold-color);"></i>Recent Activities
+                        </h5>
+                        <div>
+                            <form id="clearLogsForm" action="{{ url_for('clear_activity_logs') }}" method="post" style="display: inline;">
+                                <button type="button" class="btn btn-danger btn-sm" onclick="confirmClearLogs()">
+                                    <i class="fas fa-trash-alt me-1"></i> Clear Logs
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if logs %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>User</th>
+                                        <th>Action</th>
+                                        <th>Entity Type</th>
+                                        <th>Details</th>
+                                        <th>IP Address</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for log in logs %}
+                                    <tr>
+                                        <td>{{ log.created_at }}</td>
+                                        <td>{{ log.username }}</td>
+                                        <td>
+                                            {% if log.action == 'create' %}
+                                                <span class="badge bg-success">Created</span>
+                                            {% elif log.action == 'update' %}
+                                                <span class="badge bg-primary">Updated</span>
+                                            {% elif log.action == 'delete' %}
+                                                <span class="badge bg-danger">Deleted</span>
+                                            {% elif log.action == 'view' %}
+                                                <span class="badge bg-secondary">Viewed</span>
+                                            {% elif log.action == 'login' %}
+                                                <span class="badge bg-info">Login</span>
+                                            {% elif log.action == 'logout' %}
+                                                <span class="badge bg-warning text-dark">Logout</span>
+                                            {% else %}
+                                                <span class="badge bg-dark">{{ log.action }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ log.entity_type | title }}</td>
+                                        <td>{{ log.details if log.details else '-' }}</td>
+                                        <td>{{ log.ip_address }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Pagination -->
+                        {% if total_pages > 1 %}
+                        <nav aria-label="Activity logs pagination">
+                            <ul class="pagination justify-content-center">
+                                {% if current_page > 1 %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('activity_logs', page=current_page-1) }}" aria-label="Previous">
+                                        <span aria-hidden="true">&laquo;</span>
+                                    </a>
+                                </li>
+                                {% endif %}
+                                
+                                {% for page_num in range(1, total_pages + 1) %}
+                                    {% if page_num == current_page %}
+                                    <li class="page-item active">
+                                        <span class="page-link">{{ page_num }}</span>
+                                    </li>
+                                    {% elif page_num == 1 or page_num == total_pages or 
+                                            (page_num >= current_page - 2 and page_num <= current_page + 2) %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('activity_logs', page=page_num) }}">{{ page_num }}</a>
+                                    </li>
+                                    {% elif page_num == 2 or page_num == total_pages - 1 %}
+                                    <li class="page-item disabled">
+                                        <span class="page-link">...</span>
+                                    </li>
+                                    {% endif %}
+                                {% endfor %}
+                                
+                                {% if current_page < total_pages %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('activity_logs', page=current_page+1) }}" aria-label="Next">
+                                        <span aria-hidden="true">&raquo;</span>
+                                    </a>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </nav>
+                        {% endif %}
+                    {% else %}
+                        <div class="text-center py-5">
+                            <div class="mb-3">
+                                <i class="fas fa-clipboard fa-4x text-muted"></i>
+                            </div>
+                            <h4 class="text-muted">No activity logs found</h4>
+                            <p class="text-muted">Activity logs will appear here once users start interacting with the system</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function confirmClearLogs() {
+        if (confirm("WARNING: Are you sure you want to clear all activity logs?\n\nThis action cannot be undone. All activity history will be permanently deleted.")) {
+            const form = document.getElementById('clearLogsForm');
+            if (form) {
+                const button = form.querySelector('button');
+                if (button) {
+                    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+                    button.disabled = true;
+                }
+                form.submit();
+            }
+        }
+    }
+</script>
+{% endblock %} 

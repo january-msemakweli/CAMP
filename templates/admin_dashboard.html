@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Dashboard Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="display-5 fw-bold mb-3" style="color: var(--primary-color);">
+                <i class="fas fa-tools me-2" style="color: var(--gold-color);"></i>Admin Control Panel
+            </h1>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="row">
+        <!-- Projects Section -->
+        <div class="col-lg-8 mb-4 order-2 order-lg-1">
+            <div class="card border-0 shadow mb-4">
+                <div class="card-header py-3" style="background-color: var(--primary-color); color: white;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-project-diagram me-2" style="color: var(--gold-color);"></i>Programmes
+                        </h5>
+                        <button type="button" class="btn btn-sm rounded-pill" style="background-color: var(--gold-color); color: var(--primary-color);" data-bs-toggle="modal" data-bs-target="#newProjectModal">
+                            <i class="fas fa-plus me-1"></i>Add New
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    {% if projects %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead style="background-color: rgba(0,0,0,0.02);">
+                                    <tr>
+                                        <th class="px-4">Programme Name</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for project in projects %}
+                                    <tr>
+                                        <td class="px-4">
+                                            <div class="d-flex align-items-center">
+                                                <div class="icon-circle me-3" style="background-color: rgba(15, 52, 96, 0.1); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                                    <i class="fas fa-folder" style="color: var(--accent-color);"></i>
+                                                </div>
+                                                <div>
+                                                    <h6 class="mb-0">{{ project.name }}</h6>
+                                                    <small class="text-muted">Created: {{ project.created_at|default('N/A', true) }}</small>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group">
+                                                <a href="{{ url_for('project_detail', project_id=project.id) }}" class="btn btn-sm" style="background-color: var(--primary-color); color: white;">
+                                                    <i class="fas fa-eye me-1"></i>View
+                                                </a>
+                                                <a href="{{ url_for('dataset_view', project_id=project.id) }}" class="btn btn-sm btn-outline-primary">
+                                                    <i class="fas fa-table me-1"></i>Data
+                                                </a>
+                                                <form method="POST" action="{{ url_for('delete_project', project_id=project.id) }}" class="d-inline">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to delete this programme?');">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="p-5 text-center empty-state">
+                            <div class="empty-state-icon mb-4">
+                                <div class="icon-circle mx-auto" style="width: 80px; height: 80px; background-color: rgba(15, 52, 96, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-folder-open" style="font-size: 2.5rem; color: var(--accent-color);"></i>
+                                </div>
+                            </div>
+                            <h4 style="color: var(--primary-color);">No Projects Found</h4>
+                            <p class="text-muted mb-4">Get started by creating your first programme</p>
+                            <button type="button" class="btn btn-lg px-4 py-2" style="background-color: var(--primary-color); color: white;" data-bs-toggle="modal" data-bs-target="#newProjectModal">
+                                <i class="fas fa-plus-circle me-2"></i>Create First Programme
+                            </button>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Users Management Section -->
+            <div class="card border-0 shadow">
+                <div class="card-header py-3" style="background-color: var(--primary-color); color: white;">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-users me-2" style="color: var(--gold-color);"></i>Users
+                        </h5>
+                        <button type="button" class="btn btn-sm rounded-pill" style="background-color: var(--gold-color); color: var(--primary-color);" data-bs-toggle="modal" data-bs-target="#newUserModal">
+                            <i class="fas fa-user-plus me-1"></i>Add User
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    {% if all_users %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead style="background-color: rgba(0,0,0,0.02);">
+                                    <tr>
+                                        <th class="px-4">Username</th>
+                                        <th>Role</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for user in all_users %}
+                                    <tr>
+                                        <td class="px-4">
+                                            <div class="d-flex align-items-center">
+                                                <div class="icon-circle me-3" style="background-color: rgba(15, 52, 96, 0.1); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                                    <i class="fas fa-user" style="color: var(--accent-color);"></i>
+                                                </div>
+                                                <div>
+                                                    <h6 class="mb-0">{{ user.username }}</h6>
+                                                    <small class="text-muted">Created: {{ user.created_at|default('N/A', true) }}</small>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            {% if user.is_admin %}
+                                            <span class="badge bg-primary">Admin</span>
+                                            {% else %}
+                                            <span class="badge bg-secondary">User</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if user.is_approved %}
+                                            <span class="badge bg-success">Approved</span>
+                                            {% else %}
+                                            <span class="badge bg-warning text-dark">Pending</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group">
+                                                {% if not user.is_approved %}
+                                                <form method="POST" action="{{ url_for('approve_user', user_id=user.id) }}">
+                                                    <button type="submit" class="btn btn-sm btn-success">
+                                                        <i class="fas fa-check me-1"></i>Approve
+                                                    </button>
+                                                </form>
+                                                {% endif %}
+                                                {% if user.id != current_user.id %}
+                                                <form method="POST" action="{{ url_for('delete_user', user_id=user.id) }}" class="d-inline">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to delete this user?');">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </form>
+                                                {% else %}
+                                                <button type="button" class="btn btn-sm btn-outline-danger" disabled title="Cannot delete your own account">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="p-4 text-center empty-state">
+                            <h5 style="color: var(--primary-color);">No Users Found</h5>
+                            <p class="text-muted mb-0">Create your first user by clicking "Add User"</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pending Users Section -->
+        <div class="col-lg-4 mb-4 order-1 order-lg-2" id="pending-users">
+            <div class="card border-0 shadow">
+                <div class="card-header py-3" style="background-color: var(--primary-color); color: white;">
+                    <h5 class="mb-0">
+                        <i class="fas fa-user-shield me-2" style="color: var(--gold-color);"></i>Pending Approvals
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if pending_users %}
+                        <div class="list-group list-group-flush">
+                            {% for user in pending_users %}
+                            <div class="list-group-item px-0 py-3 border-0 border-bottom">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center">
+                                        <div class="icon-circle me-3" style="background-color: rgba(15, 52, 96, 0.1); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                            <i class="fas fa-user" style="color: var(--accent-color);"></i>
+                                        </div>
+                                        <div>
+                                            <h6 class="mb-0">{{ user.username }}</h6>
+                                            <small class="text-muted">Registered: {{ user.created_at|default('N/A', true) }}</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mt-2 pt-2 border-top d-flex gap-2">
+                                    <form method="POST" action="{{ url_for('approve_user', user_id=user.id) }}">
+                                        <button type="submit" class="btn btn-sm btn-success">
+                                            <i class="fas fa-check me-1"></i>Approve
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="{{ url_for('delete_user', user_id=user.id) }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Are you sure you want to delete this user?');">
+                                            <i class="fas fa-times me-1"></i>Reject
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="py-4 text-center empty-state">
+                            <div class="empty-state-icon mb-3">
+                                <div class="icon-circle mx-auto" style="width: 70px; height: 70px; background-color: rgba(15, 52, 96, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-user-check" style="font-size: 2rem; color: var(--accent-color);"></i>
+                                </div>
+                            </div>
+                            <h5 style="color: var(--primary-color);">All Clear!</h5>
+                            <p class="text-muted mb-0">No pending user approvals at this time</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Project Modal -->
+<div class="modal fade" id="newProjectModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0" style="background-color: var(--primary-color); color: white;">
+                <h5 class="modal-title">
+                    <i class="fas fa-folder-plus me-2" style="color: var(--gold-color);"></i>Create New Programme
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('create_project') }}">
+                <div class="modal-body p-4">
+                    <div class="mb-4">
+                        <label for="projectName" class="form-label fw-bold">Programme Name</label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text bg-light border-end-0">
+                                <i class="fas fa-file-signature text-muted"></i>
+                            </span>
+                            <input type="text" class="form-control border-start-0 ps-0" id="projectName" name="name" placeholder="Enter programme name" required>
+                        </div>
+                        <div class="form-text">Choose a descriptive name for your health camp programme</div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 px-4 pb-4">
+                    <button type="button" class="btn btn-lg btn-outline-secondary" data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-lg px-4" style="background-color: var(--primary-color); color: white;">
+                        <i class="fas fa-save me-2"></i>Create Programme
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- New User Modal -->
+<div class="modal fade" id="newUserModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0" style="background-color: var(--primary-color); color: white;">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-plus me-2" style="color: var(--gold-color);"></i>Create New User
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('create_user') }}">
+                <div class="modal-body p-4">
+                    <div class="mb-4">
+                        <label for="username" class="form-label fw-bold">Username</label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text bg-light border-end-0">
+                                <i class="fas fa-user text-muted"></i>
+                            </span>
+                            <input type="text" class="form-control border-start-0 ps-0" id="username" name="username" placeholder="Enter username" required>
+                        </div>
+                        <div class="form-text">Username must be unique</div>
+                    </div>
+                    <div class="mb-4">
+                        <label for="password" class="form-label fw-bold">Password</label>
+                        <div class="input-group input-group-lg">
+                            <span class="input-group-text bg-light border-end-0">
+                                <i class="fas fa-lock text-muted"></i>
+                            </span>
+                            <input type="password" class="form-control border-start-0 ps-0" id="password" name="password" placeholder="Enter password" required>
+                        </div>
+                        <div class="form-text">Choose a strong password</div>
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="isAdmin" name="is_admin">
+                        <label class="form-check-label" for="isAdmin">Grant admin privileges</label>
+                        <div class="form-text">Admins have full control over the system</div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 px-4 pb-4">
+                    <button type="button" class="btn btn-lg btn-outline-secondary" data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn btn-lg px-4" style="background-color: var(--primary-color); color: white;">
+                        <i class="fas fa-save me-2"></i>Create User
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %} 

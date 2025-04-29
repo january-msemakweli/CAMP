@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <!-- Header -->
+    <div class="page-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h2>{{ project.name }}</h2>
+                <!-- Removed Camp Date -->
+                <!-- <p class="text-muted">Camp Date: {{ project.camp_date }}</p> -->
+            </div>
+            <div>
+                <a href="{{ url_for('dataset_view', project_id=project.id) }}" class="btn btn-primary">
+                    <i class="fas fa-database me-2"></i>VIEW DATASET
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Forms</h5>
+                {% if current_user.is_admin %}
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newFormModal">
+                    New Form
+                </button>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if forms %}
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Form Title</th>
+                                    <th>Fields</th>
+                                    {% if current_user.is_admin %}
+                                    <th>User Access</th>
+                                    {% endif %}
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for form in forms %}
+                                <tr>
+                                    <td>{{ form.title }}</td>
+                                    <td>{{ form.fields|length }} fields</td>
+                                    {% if current_user.is_admin %}
+                                    <td>
+                                        {% if form.user_permissions %}
+                                            <div class="d-flex flex-wrap gap-1">
+                                                {% for permission in form.user_permissions %}
+                                                    <span class="badge bg-info text-dark">
+                                                        {{ permission.users.username }}
+                                                    </span>
+                                                {% endfor %}
+                                            </div>
+                                        {% else %}
+                                            <span class="badge bg-warning text-dark">No users assigned</span>
+                                        {% endif %}
+                                    </td>
+                                    {% endif %}
+                                    <td>
+                                        <a href="{{ url_for('view_form', form_id=form.id) }}" class="btn btn-sm btn-primary">View</a>
+                                        {% if current_user.is_admin %}
+                                        <button type="button" class="btn btn-sm btn-warning edit-form-btn" 
+                                                data-bs-toggle="modal" 
+                                                data-bs-target="#newFormModal" 
+                                                data-form-id="{{ form.id }}">
+                                            Edit
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#deleteFormModal{{ form.id }}">
+                                            Delete
+                                        </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-center">No forms created yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if current_user.is_admin %}
+<!-- New Form Modal -->
+<div class="modal fade" id="newFormModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New Form</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('create_form', project_id=project.id) }}" id="formModalForm">
+                <div class="modal-body">
+                    <input type="hidden" name="form_id" id="formIdInput" value=""> 
+                    <div class="mb-3">
+                        <label for="formTitle" class="form-label">Form Title</label>
+                        <input type="text" class="form-control" id="formTitle" name="title" required>
+                    </div>
+                    <div id="formFields">
+                        <h6>Form Fields</h6>
+                        <div class="field-group mb-3">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <input type="text" class="form-control" name="field_labels[]" placeholder="Field Label" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <select class="form-select" name="field_types[]" required>
+                                        <option value="text">Text</option>
+                                        <option value="number">Number</option>
+                                        <option value="dropdown">Dropdown</option>
+                                        <option value="radio">Radio Buttons</option>
+                                        <option value="checkbox">Checkboxes</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="text" class="form-control" name="field_options[]" placeholder="Options (comma-separated)">
+                                </div>
+                                <div class="col-md-1">
+                                    <button type="button" class="btn btn-danger btn-sm remove-field" disabled>
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-end mb-3">
+                            <button type="button" class="btn btn-secondary" id="addFieldBtn">
+                                <i class="fas fa-plus me-2"></i>Add Field
+                            </button>
+                            <button type="button" class="btn btn-info" id="addLocationBtn">
+                                <i class="fas fa-map-marker-alt me-2"></i>Add Location Fields
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="formModalSubmitBtn">Create Form</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Form Modals -->
+{% for form in forms %}
+<div class="modal fade" id="deleteFormModal{{ form.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Delete Form</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                {% if form.submissions_count > 0 %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Cannot delete form. This form has {{ form.submissions_count }} submission(s).
+                    </div>
+                    <p>To delete this form, you must first delete all its submissions from the database.</p>
+                {% else %}
+                    <p>Are you sure you want to delete the form "{{ form.title }}"?</p>
+                {% endif %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                {% if form.submissions_count == 0 %}
+                    <form method="POST" action="{{ url_for('delete_form', form_id=form.id) }}" class="d-inline">
+                        <button type="submit" class="btn btn-danger">Delete</button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/locations.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const newFormModalElement = document.getElementById('newFormModal');
+    const newFormModal = new bootstrap.Modal(newFormModalElement);
+    const formModalForm = document.getElementById('formModalForm');
+    const formTitleInput = document.getElementById('formTitle');
+    const formIdInput = document.getElementById('formIdInput');
+    const formModalSubmitBtn = document.getElementById('formModalSubmitBtn');
+    const formFieldsContainer = document.getElementById('formFields');
+    const fieldsWrapper = formFieldsContainer.querySelector('.field-group').parentNode; // Container for field rows
+    const modalTitleElement = newFormModalElement.querySelector('.modal-title');
+
+    const addFieldBtn = document.getElementById('addFieldBtn');
+    const addLocationBtn = document.getElementById('addLocationBtn');
+    let fieldCounter = 1;
+
+    function createStandardFieldRow(label = '', type = 'text', options = '') {
+        fieldCounter++;
+        const fieldGroup = document.createElement('div');
+        fieldGroup.className = 'field-group mb-3';
+        fieldGroup.innerHTML = `
+            <div class="row">
+                <div class="col-md-4">
+                    <label for="field_label_${fieldCounter}" class="form-label visually-hidden">Field Label</label>
+                    <input type="text" class="form-control" id="field_label_${fieldCounter}" name="field_labels[]" placeholder="Field Label" value="${label}" required>
+                </div>
+                <div class="col-md-4">
+                    <label for="field_type_${fieldCounter}" class="form-label visually-hidden">Field Type</label>
+                    <select class="form-select" id="field_type_${fieldCounter}" name="field_types[]" required>
+                        <option value="text" ${type === 'text' ? 'selected' : ''}>Text</option>
+                        <option value="number" ${type === 'number' ? 'selected' : ''}>Number</option>
+                        <option value="dropdown" ${type === 'dropdown' ? 'selected' : ''}>Dropdown</option>
+                        <option value="radio" ${type === 'radio' ? 'selected' : ''}>Radio Buttons</option>
+                        <option value="checkbox" ${type === 'checkbox' ? 'selected' : ''}>Checkboxes</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="field_options_${fieldCounter}" class="form-label visually-hidden">Field Options</label>
+                    <input type="text" class="form-control" id="field_options_${fieldCounter}" name="field_options[]" placeholder="Options (comma-separated)" value="${options}">
+                </div>
+                <div class="col-md-1">
+                    <button type="button" class="btn btn-danger btn-sm remove-field">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        return fieldGroup;
+    }
+
+    function createLocationFieldRow(labelText, identifier) {
+        fieldCounter++;
+        const fieldGroup = document.createElement('div');
+        fieldGroup.className = 'field-group mb-3 location-field-group';
+        fieldGroup.innerHTML = `
+            <div class="row align-items-center">
+                <div class="col-md-4">
+                    <label class="form-control-plaintext">${labelText}</label>
+                    <input type="hidden" name="field_labels[]" value="${labelText}">
+                    <input type="hidden" name="field_types[]" value="dropdown">
+                    <input type="hidden" name="field_options[]" value=""> 
+                    <input type="hidden" name="location_field_identifier[]" value="${identifier}">
+                </div>
+                <div class="col-md-4">
+                    <span class="badge bg-secondary">Location Field</span>
+                </div>
+                <div class="col-md-3">
+                    <em class="text-muted">Options populated dynamically</em>
+                </div>
+                <div class="col-md-1">
+                    <button type="button" class="btn btn-danger btn-sm remove-field">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>`;
+        return fieldGroup;
+    }
+
+    function updateRemoveButtons() {
+        const fieldGroups = fieldsWrapper.querySelectorAll('.field-group');
+        fieldGroups.forEach((group, index) => {
+            const removeBtn = group.querySelector('.remove-field');
+            if (removeBtn) {
+                const isLocationGroup = group.classList.contains('location-field-group');
+                const standardFields = fieldsWrapper.querySelectorAll('.field-group:not(.location-field-group)');
+                removeBtn.disabled = (!isLocationGroup && standardFields.length <= 1) || (isLocationGroup && standardFields.length === 0 && fieldGroups.length <= 3);
+            }
+        });
+        
+        const locationFieldExists = fieldsWrapper.querySelector('input[name="location_field_identifier[]"]');
+        if (addLocationBtn) {
+            addLocationBtn.disabled = !!locationFieldExists;
+        }
+    }
+
+    function removeField(event) {
+        if (event.target.closest('.remove-field')) {
+            const fieldGroup = event.target.closest('.field-group');
+            if (fieldGroup.classList.contains('location-field-group')) {
+                fieldsWrapper.querySelectorAll('.location-field-group').forEach(lg => lg.remove());
+                if (addLocationBtn) addLocationBtn.disabled = false;
+            } else {
+                fieldGroup.remove();
+            }
+            updateRemoveButtons();
+        }
+    }
+
+    fieldsWrapper.addEventListener('click', removeField);
+
+    function setupModalForCreate() {
+        modalTitleElement.textContent = 'Create New Form';
+        formModalForm.action = `{{ url_for('create_form', project_id=project.id) }}`;
+        formModalSubmitBtn.textContent = 'Create Form';
+        formIdInput.value = ''; 
+        formTitleInput.value = '';
+        
+        const fieldGroups = fieldsWrapper.querySelectorAll('.field-group');
+        fieldGroups.forEach((group, index) => {
+            if (index > 0) {
+                group.remove();
+            }
+        });
+        
+        const firstGroup = fieldsWrapper.querySelector('.field-group');
+        if (firstGroup) {
+            firstGroup.querySelector('input[name="field_labels[]"]').value = '';
+            firstGroup.querySelector('select[name="field_types[]"]').value = 'text';
+            firstGroup.querySelector('input[name="field_options[]"]').value = '';
+        }
+        
+        if (addLocationBtn) addLocationBtn.disabled = false;
+        updateRemoveButtons(); 
+    }
+
+    async function setupModalForEdit(formId) {
+        modalTitleElement.textContent = 'Edit Form';
+        formModalForm.action = `/form/${formId}/edit`;
+        formModalSubmitBtn.textContent = 'Save Changes';
+        formIdInput.value = formId;
+
+        console.log(`Fetching details for form ID: ${formId}`);
+        try {
+            const response = await fetch(`/api/form/${formId}/details`); 
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+            }
+            const formData = await response.json(); 
+            console.log("Received form data:", formData);
+
+            formTitleInput.value = formData.title;
+
+            fieldsWrapper.innerHTML = '';
+            
+            let hasLocationFields = false;
+            if (formData.fields && formData.fields.length > 0) {
+                formData.fields.forEach(field => {
+                    if (field.location_field_identifier) {
+                        const locationRow = createLocationFieldRow(field.label, field.location_field_identifier);
+                        fieldsWrapper.appendChild(locationRow);
+                        hasLocationFields = true;
+                    } else {
+                        const optionsString = Array.isArray(field.options) ? field.options.join(', ') : '';
+                        const standardRow = createStandardFieldRow(field.label, field.type, optionsString);
+                        fieldsWrapper.appendChild(standardRow);
+                    }
+                });
+            } else {
+                fieldsWrapper.appendChild(createStandardFieldRow());
+            }
+            
+            if (addLocationBtn) addLocationBtn.disabled = hasLocationFields;
+            updateRemoveButtons();
+
+        } catch (error) {
+            console.error("Error fetching/populating form for edit:", error);
+            alert("Could not load form details for editing: " + error.message);
+            newFormModal.hide();
+        }
+    }
+
+    if (addFieldBtn) {
+        addFieldBtn.addEventListener('click', function() {
+            fieldsWrapper.appendChild(createStandardFieldRow());
+            updateRemoveButtons();
+        });
+    }
+
+    if (addLocationBtn && typeof LOCATION_DATA !== 'undefined') {
+        addLocationBtn.addEventListener('click', function() {
+            fieldsWrapper.appendChild(createLocationFieldRow('Region', 'region'));
+            fieldsWrapper.appendChild(createLocationFieldRow('District', 'district'));
+            fieldsWrapper.appendChild(createLocationFieldRow('Ward', 'ward'));
+            updateRemoveButtons();
+        });
+    } else if (addLocationBtn) {
+        addLocationBtn.disabled = true;
+        addLocationBtn.title = "Location data failed to load";
+    }
+    
+    document.querySelector('.table tbody').addEventListener('click', function(event) {
+        const editButton = event.target.closest('.edit-form-btn');
+        if (editButton) {
+            const formId = editButton.dataset.formId;
+            if (formId) {
+                setupModalForEdit(formId);
+            }
+        }
+    });
+    
+    document.querySelectorAll('[data-bs-target="#newFormModal"]').forEach(button => {
+        if (!button.classList.contains('edit-form-btn')) {
+            button.addEventListener('click', setupModalForCreate);
+        }
+    });
+
+    newFormModalElement.addEventListener('hidden.bs.modal', function (event) {
+        console.log('Modal hidden');
+    });
+
+    updateRemoveButtons();
+});
+</script>
+{% endblock %} 

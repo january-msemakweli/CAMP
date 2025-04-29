@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="row align-items-center">
+            <div class="col">
+                <h2><i class="fas fa-database me-2"></i>Dataset View</h2>
+                {% if selected_project %}
+                    {% for project in projects %}
+                        {% if project.id == selected_project %}
+                            <div class="alert alert-info mt-2">
+                                <i class="fas fa-folder-open me-2"></i>Currently viewing data for programme: <strong>{{ project.name }}</strong>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </div>
+            <div class="col-auto">
+                <div class="action-buttons">
+                    <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#filterModal">
+                        <i class="fas fa-filter me-2"></i>Filter Data
+                    </button>
+                    {% if current_user.is_admin %}
+                    <a href="{{ url_for('export_dataset', project_id=selected_project, form_id=selected_form, start_date=start_date, end_date=end_date) }}" class="btn btn-success">
+                        <i class="fas fa-file-excel me-2"></i>Export Dataset
+                    </a>
+                    {% else %}
+                    <button type="button" class="btn btn-secondary" disabled title="Admin privileges required">
+                        <i class="fas fa-lock me-2"></i>Cant Download, without admin privilleges
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Overview -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-users"></i>
+                <h3>{{ patient_data|length }}</h3>
+                <p>Total Patients</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-file-medical"></i>
+                <h3>{{ ordered_fields|length }}</h3>
+                <p>Data Fields</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-calendar-alt"></i>
+                <h3>{{ start_date if start_date else 'All' }}</h3>
+                <p>Start Date</p>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <i class="fas fa-calendar-check"></i>
+                <h3>{{ end_date if end_date else 'All' }}</h3>
+                <p>End Date</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Form Moved Here -->
+    <div class="mb-4">
+        <form method="GET" action="{{ url_for('dataset_view') }}" id="searchForm">
+            <!-- Hidden fields to preserve existing filters -->
+            <input type="hidden" name="project_id" value="{{ selected_project or '' }}">
+            <input type="hidden" name="form_id" value="{{ selected_form or '' }}">
+            <input type="hidden" name="field_name" value="{{ selected_field or '' }}">
+            <input type="hidden" name="field_value" value="{{ selected_value or '' }}">
+            <input type="hidden" name="start_date" value="{{ start_date or '' }}">
+            <input type="hidden" name="end_date" value="{{ end_date or '' }}">
+
+            <div class="input-group">
+                <input type="search" class="form-control" placeholder="Search patient data..."
+                       name="search" value="{{ search_term or '' }}" aria-label="Search dataset">
+                <button class="btn btn-outline-secondary" type="submit">
+                    <i class="fas fa-search"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Filter Modal -->
+    <div class="modal fade" id="filterModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-filter me-2"></i>Filter Dataset</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="GET" action="{{ url_for('dataset_view') }}" id="filterForm">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="projectFilter" class="form-label">Programme</label>
+                            <select class="form-select" id="projectFilter" name="project_id">
+                                <option value="">All Programmes</option>
+                                {% for project in projects %}
+                                <option value="{{ project.id }}" {% if selected_project == project.id %}selected{% endif %}>
+                                    {{ project.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="formFilter" class="form-label">Form</label>
+                            <select class="form-select" id="formFilter" name="form_id">
+                                <option value="">All Forms</option>
+                                {% for form in forms %}
+                                <option value="{{ form.id }}" {% if selected_form == form.id %}selected{% endif %}
+                                        data-project="{{ form.project_id }}">
+                                    {{ form.title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="fieldFilter" class="form-label">Form Field</label>
+                            <select class="form-select" id="fieldFilter" name="field_name">
+                                <option value="">All Fields</option>
+                                {% for field in all_fields %}
+                                <option value="{{ field }}" {% if selected_field == field %}selected{% endif %}>
+                                    {{ field }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="valueFilter" class="form-label">Field Value</label>
+                            <input type="text" class="form-control" list="fieldValuesList" id="valueFilter" name="field_value" placeholder="Enter value to filter" value="{{ selected_value }}">
+                            <datalist id="fieldValuesList">
+                                {% for value in field_values %}
+                                <option value="{{ value }}">
+                                {% endfor %}
+                            </datalist>
+                        </div>
+                        <div class="mb-3">
+                            <label for="dateRange" class="form-label">Date Range</label>
+                            <div class="input-group">
+                                <input type="date" class="form-control" name="start_date" value="{{ start_date }}">
+                                <span class="input-group-text">to</span>
+                                <input type="date" class="form-control" name="end_date" value="{{ end_date }}">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Apply Filters</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dataset Table -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="datasetTable">
+                    <thead>
+                        <tr>
+                            <th>Patient ID</th>
+                            {% for field in ordered_fields %}
+                            <th>{{ field }}</th>
+                            {% endfor %}
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for patient_id, data in patient_data.items() %}
+                        <tr>
+                            <td>{{ patient_id }}</td>
+                            {% for field in ordered_fields %}
+                            <td>
+                                {% set normalized_field = field.lower().strip().replace(' ', '_') %}
+                                {{ data.merged_data.get(normalized_field, '') }}
+                            </td>
+                            {% endfor %}
+                            <td>
+                                <button type="button" class="btn btn-sm btn-info" onclick="viewPatientData('{{ patient_id }}')">
+                                    <i class="fas fa-eye me-1"></i>View Details
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Patient Data Modal -->
+<div class="modal fade" id="viewPatientModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-user me-2"></i>Patient Data Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="patientDetails">
+                <!-- Patient details will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function viewPatientData(patientId) {
+    const modalBody = document.getElementById('patientDetails');
+    modalBody.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>';
+    
+    fetch(`/api/patient/${patientId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            let html = '<div class="table-responsive"><table class="table">';
+            
+            for (const [key, value] of Object.entries(data)) {
+                html += `<tr><th>${key}</th><td>${value}</td></tr>`;
+            }
+            
+            html += '</table></div>';
+            modalBody.innerHTML = html;
+            
+            new bootstrap.Modal(document.getElementById('viewPatientModal')).show();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            modalBody.innerHTML = `<div class="alert alert-danger">Error loading patient data: ${error.message}</div>`;
+            new bootstrap.Modal(document.getElementById('viewPatientModal')).show();
+        });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Hierarchical filter setup
+    const projectFilter = document.getElementById('projectFilter');
+    const formFilter = document.getElementById('formFilter');
+    const fieldFilter = document.getElementById('fieldFilter');
+    
+    // Filter forms based on selected project
+    if (projectFilter) {
+        projectFilter.addEventListener('change', function() {
+            const selectedProjectId = this.value;
+            
+            // Show/hide form options based on project
+            Array.from(formFilter.options).forEach(option => {
+                if (option.value === '') {
+                    // Always show "All Forms" option
+                    option.style.display = '';
+                } else if (!selectedProjectId) {
+                    // Show all forms if no project selected
+                    option.style.display = '';
+                } else {
+                    // Only show forms for selected project
+                    option.style.display = (option.dataset.project === selectedProjectId) ? '' : 'none';
+                }
+            });
+            
+            // Reset form selection if current selection doesn't belong to selected project
+            const currentFormOption = formFilter.options[formFilter.selectedIndex];
+            if (currentFormOption.value !== '' && 
+                selectedProjectId && 
+                currentFormOption.dataset.project !== selectedProjectId) {
+                formFilter.value = '';
+            }
+            
+            // If only one form option is available (besides "All"), select it
+            let visibleOptions = Array.from(formFilter.options).filter(option => 
+                option.style.display !== 'none' && option.value !== '');
+            
+            if (visibleOptions.length === 1) {
+                formFilter.value = visibleOptions[0].value;
+            }
+        });
+        
+        // Trigger change event to apply initial filtering
+        projectFilter.dispatchEvent(new Event('change'));
+    }
+    
+    // Function to add a new row to the table
+    function addNewSubmission(data) {
+        const tbody = document.querySelector('#datasetTable tbody');
+        const newRow = document.createElement('tr');
+        
+        // Create patient ID cell
+        const patientIdCell = document.createElement('td');
+        patientIdCell.textContent = data.patient_id;
+        newRow.appendChild(patientIdCell);
+        
+        // Create cells for each field
+        {% for field in ordered_fields %}
+        const fieldCell = document.createElement('td');
+        const normalizedField = '{{ field }}'.toLowerCase().trim();
+        fieldCell.textContent = data.submission_data[normalizedField] || '';
+        newRow.appendChild(fieldCell);
+        {% endfor %}
+        
+        // Create actions cell
+        const actionsCell = document.createElement('td');
+        actionsCell.innerHTML = `
+            <button type="button" class="btn btn-sm btn-info" onclick="viewPatientData('${data.patient_id}')">
+                <i class="fas fa-eye me-1"></i>View Details
+            </button>
+        `;
+        newRow.appendChild(actionsCell);
+        
+        // Add the new row at the top of the table
+        if (tbody.firstChild) {
+            tbody.insertBefore(newRow, tbody.firstChild);
+        } else {
+            tbody.appendChild(newRow);
+        }
+        
+        // Show a notification
+        showNotification(`New submission from ${data.patient_id}`);
+    }
+    
+    // Function to show notifications
+    function showNotification(message) {
+        const notification = document.createElement('div');
+        notification.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3';
+        notification.style.zIndex = '9999';
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(notification);
+        
+        // Remove notification after 5 seconds
+        setTimeout(() => {
+            notification.remove();
+        }, 5000);
+    }
+    
+    // Connect to the SSE endpoint
+    const eventSource = new EventSource('/stream/submissions');
+    
+    eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        addNewSubmission(data);
+    };
+    
+    eventSource.onerror = function(error) {
+        console.error('EventSource failed:', error);
+        eventSource.close();
+        // Try to reconnect after 5 seconds
+        setTimeout(() => {
+            location.reload();
+        }, 5000);
+    };
+});
+</script>
+{% endblock %}

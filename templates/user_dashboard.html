@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Dashboard Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h1 class="display-6 fw-bold mb-1" style="color: var(--primary-color);">
+                                <i class="fas fa-tachometer-alt me-2" style="color: var(--gold-color);"></i>Staff Dashboard
+                            </h1>
+                            <p class="text-muted mb-0">Welcome back, {{ current_user.username }}! Here are the health camp programmes available to you.</p>
+                        </div>
+                        <div class="d-none d-md-block">
+                            <div class="bg-light rounded-circle p-3" style="width: 70px; height: 70px; display: flex; align-items: center; justify-content: center;">
+                                <i class="fas fa-clipboard-list fa-2x" style="color: var(--primary-color);"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Projects Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="h4 fw-bold" style="color: var(--primary-color);">
+                    <i class="fas fa-project-diagram me-2" style="color: var(--gold-color);"></i>Available Programmes
+                </h2>
+                <div class="text-muted small">
+                    <i class="fas fa-info-circle me-1"></i> Click on a programme to view details and forms
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        {% if projects %}
+            {% for project in projects %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card project-card h-100 border-0 shadow-sm hover-shadow position-relative overflow-hidden">
+                    {% if project.forms|length > 0 %}
+                    <div class="ribbon">
+                        <span>{{ project.forms|length }} form{% if project.forms|length > 1 %}s{% endif %}</span>
+                    </div>
+                    {% endif %}
+                    <div class="card-body p-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="project-icon me-3">
+                                <i class="fas fa-folder-open"></i>
+                            </div>
+                            <h5 class="card-title fw-bold mb-0">{{ project.name }}</h5>
+                        </div>
+                        
+                        <div class="project-details mb-4">
+                            <div class="detail-item">
+                                <i class="fas fa-clipboard-list me-2" style="color: var(--accent-color);"></i>
+                                <span class="fw-medium">Forms:</span> 
+                                {% if project.forms|length > 0 %}
+                                    {{ project.forms|length }} available
+                                {% else %}
+                                    <span class="text-muted">No forms yet</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <a href="{{ url_for('project_detail', project_id=project.id) }}" class="btn btn-project stretched-link">
+                            <i class="fas fa-eye me-2"></i>View Programme
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="col-12">
+                <div class="empty-state text-center p-5 border rounded-3 bg-light">
+                    <div class="empty-icon mb-4">
+                        <i class="fas fa-folder-open fa-3x" style="color: #ccc;"></i>
+                    </div>
+                    <h3 class="h4 mb-3">No Programmes Available</h3>
+                    <p class="text-muted mb-0">There are currently no health camp programmes assigned to you. New programmes will appear here once they are available.</p>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Accessible Forms Section -->
+    <div class="row mt-5 mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="h4 fw-bold" style="color: var(--primary-color);">
+                    <i class="fas fa-clipboard-check me-2" style="color: var(--gold-color);"></i>Your Assigned Forms
+                </h2>
+                <div class="text-muted small">
+                    <i class="fas fa-info-circle me-1"></i> Forms you have been granted access to
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        {% if accessible_forms %}
+            {% for form in accessible_forms %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100 border-0 shadow-sm hover-shadow">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-file-alt me-2"></i>{{ form.title }}
+                        </h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="mb-3">
+                            <div class="detail-item mb-2">
+                                <i class="fas fa-project-diagram me-2" style="color: var(--accent-color);"></i>
+                                <span class="fw-medium">Project:</span> {{ form.project_name }}
+                            </div>
+                            <div class="detail-item mb-2">
+                                <i class="fas fa-list-ul me-2" style="color: var(--accent-color);"></i>
+                                <span class="fw-medium">Fields:</span> {{ form.fields|length }}
+                            </div>
+                        </div>
+                        
+                        <a href="{{ url_for('view_form', form_id=form.id) }}" class="btn btn-project w-100">
+                            <i class="fas fa-pen-alt me-2"></i>Open Form
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>You don't have access to any forms yet. An administrator needs to grant you access to specific forms.
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    .project-card {
+        transition: all 0.3s ease;
+        border-radius: 10px;
+    }
+    
+    .hover-shadow:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 30px rgba(0,0,0,0.1) !important;
+    }
+    
+    .project-icon {
+        width: 45px;
+        height: 45px;
+        background-color: rgba(15, 52, 96, 0.1);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+        color: var(--primary-color);
+    }
+    
+    .project-details {
+        padding-left: 10px;
+        border-left: 3px solid rgba(15, 52, 96, 0.1);
+    }
+    
+    .detail-item {
+        font-size: 0.95rem;
+        color: #555;
+    }
+    
+    .btn-project {
+        background-color: var(--primary-color);
+        color: white;
+        border-radius: 50px;
+        padding: 0.5rem 1.5rem;
+        border: none;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-project:hover {
+        background-color: var(--accent-color);
+        color: white;
+    }
+    
+    .ribbon {
+        position: absolute;
+        top: 0;
+        right: 0;
+        z-index: 1;
+        overflow: hidden;
+        width: 150px;
+        height: 150px;
+        text-align: right;
+    }
+    
+    .ribbon span {
+        font-size: 0.8rem;
+        font-weight: bold;
+        color: #FFF;
+        text-align: center;
+        line-height: 30px;
+        transform: rotate(45deg);
+        width: 150px;
+        display: block;
+        background: var(--gold-color);
+        box-shadow: 0 5px 10px rgba(0,0,0,.1);
+        position: absolute;
+        top: 30px;
+        right: -40px;
+    }
+</style>
+{% endblock %} 
