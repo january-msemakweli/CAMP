@@ -18,7 +18,7 @@
                 <form id="dataEntryForm" method="POST" action="{{ url_for('submit_form', form_id=form.id) }}">
                     <div class="mb-3">
                         <label for="patientNumber" class="form-label">Patient Number</label>
-                        <input type="number" class="form-control" id="patientNumber" name="patient_number" required>
+                        <input type="text" class="form-control" id="patientNumber" name="patient_number" required>
                         <div class="form-text d-none">Patient ID will be generated as: {{ project.camp_date }}-[number]</div>
                     </div>
                     
