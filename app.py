@@ -889,21 +889,15 @@ def submit_form(form_id):
     current_date = datetime.now(EAT).strftime('%d%m%y')
     patient_id = f"{current_date}-{patient_number}"
     
-    # Check if patient ID already exists in this project
-    # First get all forms for this project
-    project_forms_response = supabase.table('forms').select('id').eq('project_id', project['id']).execute()
-    if project_forms_response.data:
-        project_form_ids = [pform['id'] for pform in project_forms_response.data]
-        
-        # Check if patient ID exists in any submission for these forms
-        existing_submission_query = supabase.table('form_submissions').select('id')
-        existing_submission_query = existing_submission_query.in_('form_id', project_form_ids)
-        existing_submission_query = existing_submission_query.eq('patient_id', patient_id)
-        existing_submission_response = existing_submission_query.execute()
-        
-        if existing_submission_response.data and len(existing_submission_response.data) > 0:
-            flash(f'Patient number {patient_number} already exists in this project. Please use a different number.', 'danger')
-            return redirect(url_for('view_form', form_id=form_id))
+    # Check if patient ID already exists in this form
+    existing_submission_query = supabase.table('form_submissions').select('id')
+    existing_submission_query = existing_submission_query.eq('form_id', form_id)
+    existing_submission_query = existing_submission_query.eq('patient_id', patient_id)
+    existing_submission_response = existing_submission_query.execute()
+    
+    if existing_submission_response.data and len(existing_submission_response.data) > 0:
+        flash(f'Patient number {patient_number} already exists in this form. Please use a different number.', 'danger')
+        return redirect(url_for('view_form', form_id=form_id))
     
     # Collect form data
     form_data = {}
