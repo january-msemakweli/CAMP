@@ -60,19 +60,33 @@ def create_tables():
     pass
 
 def ensure_admin_user():
-    """Check for admin user but don't create tables"""
+    """Create admin user if it doesn't exist"""
     try:
         print("Checking for admin user...")
         
         # Check if admin user exists
         response = supabase.table('users').select('*').eq('username', 'admin').execute()
         if not response.data:
-            print("Admin user not found, but automatic creation is disabled.")
-            print("Please run the database setup scripts to create the admin user.")
+            print("Admin user not found. Creating admin user...")
+            
+            # Create admin user with default password 'admin'
+            admin_id = str(uuid.uuid4())
+            admin_user = {
+                'id': admin_id,
+                'username': 'admin',
+                'password': generate_password_hash('admin'),
+                'is_admin': True,
+                'is_approved': True
+            }
+            
+            # Insert admin user
+            supabase.table('users').insert(admin_user).execute()
+            print("Admin user created successfully with default password 'admin'")
+            print("IMPORTANT: Please change the admin password after first login")
         else:
             print("Admin user exists")
     except Exception as e:
-        print(f"Error checking admin user: {str(e)}")
+        print(f"Error checking/creating admin user: {str(e)}")
         print("Using fallback authentication system instead.")
 
 def check_database_structure():
