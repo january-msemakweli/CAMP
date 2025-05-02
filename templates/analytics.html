@@ -92,9 +92,7 @@
                                             <option value="" {% if not selected_analysis %}selected{% endif %}>Select Analysis</option>
                                             <option value="summary_statistics" {% if selected_analysis == 'summary_statistics' %}selected{% endif %}>Summary Statistics</option>
                                             <option value="frequency" {% if selected_analysis == 'frequency' %}selected{% endif %}>Frequency Distribution</option>
-                                            <option value="crosstab" {% if selected_analysis == 'crosstab' %}selected{% endif %}>Cross-tabulation</option>
                                             <option value="timeseries" {% if selected_analysis == 'timeseries' %}selected{% endif %}>Time Series</option>
-                                            <option value="correlation" {% if selected_analysis == 'correlation' %}selected{% endif %}>Correlation Matrix</option>
                                             <option value="cohort" {% if selected_analysis == 'cohort' %}selected{% endif %}>Cohort Analysis</option>
                                         </select>
                                     </div>
@@ -198,7 +196,7 @@
                         <div class="col-12 {% if loop.index > 1 %}mt-4{% endif %}">
                             <h6 class="mb-3">{{ plot.title }}</h6>
                             <div class="text-center">
-                                <img src="data:image/png;base64,{{ plot.img }}" class="img-fluid" alt="{{ plot.title }}">
+                                <img src="{{ plot.img }}" class="img-fluid" alt="{{ plot.title }}">
                             </div>
                         </div>
                         {% endfor %}
@@ -227,19 +225,8 @@
             field2Container.style.display = 'none';
             correlationFieldsContainer.style.display = 'none';
             
-            // For crosstab, show both fields
-            if (analysisType.value === 'crosstab') {
-                field1Container.style.display = 'block';
-                field2Container.style.display = 'block';
-            } 
-            // For correlation matrix, hide individual fields and show multi-select
-            else if (analysisType.value === 'correlation') {
-                field1Container.style.display = 'none';
-                field2Container.style.display = 'none';
-                correlationFieldsContainer.style.display = 'block';
-            }
             // For cohort analysis, show only field1
-            else if (analysisType.value === 'cohort') {
+            if (analysisType.value === 'cohort') {
                 field1Container.style.display = 'block';
                 field2Container.style.display = 'none';
             }

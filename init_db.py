@@ -1,60 +1,81 @@
+#!/usr/bin/env python
+
+import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
-import os
-from app import supabase, create_tables
+import uuid
+from werkzeug.security import generate_password_hash
+import sys
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Supabase client
-supabase: Client = create_client(
-    os.getenv('SUPABASE_URL'),
-    os.getenv('SUPABASE_KEY')
-)
-
-def create_tables():
-    # Create users table
-    supabase.table('users').create({
-        'id': 'uuid primary key',
-        'username': 'text unique not null',
-        'password': 'text not null',
-        'is_admin': 'boolean default false',
-        'is_approved': 'boolean default false',
-        'created_at': 'timestamp with time zone default now()'
-    }).execute()
-
-    # Create projects table
-    supabase.table('projects').create({
-        'id': 'uuid primary key',
-        'name': 'text not null',
-        'created_at': 'timestamp with time zone default now()'
-    }).execute()
-
-    # Create forms table
-    supabase.table('forms').create({
-        'id': 'uuid primary key',
-        'project_id': 'uuid references projects(id)',
-        'title': 'text not null',
-        'fields': 'jsonb not null',
-        'created_at': 'timestamp with time zone default now()'
-    }).execute()
-
-    # Create form_submissions table (generic table for all form submissions)
-    supabase.table('form_submissions').create({
-        'id': 'uuid primary key',
-        'form_id': 'uuid references forms(id)',
-        'patient_id': 'text not null',
-        'submitted_by': 'uuid references users(id)',
-        'data': 'jsonb not null',
-        'created_at': 'timestamp with time zone default now()'
-    }).execute()
-
-    print("Database tables created successfully!")
-
 def initialize_database():
-    print("Initializing database...")
-    create_tables()
-    print("Database initialization complete!")
+    """Initialize the database with required tables and admin user"""
+    try:
+        print("Initializing database...")
+        
+        # Initialize Supabase client
+        supabase: Client = create_client(
+            os.getenv('SUPABASE_URL'),
+            os.getenv('SUPABASE_KEY')
+        )
+        
+        # Test connection
+        try:
+            supabase.table('users').select('id').limit(1).execute()
+            print("Connected to Supabase successfully.")
+        except Exception as e:
+            print(f"Error connecting to Supabase: {str(e)}")
+            print("Please check your SUPABASE_URL and SUPABASE_KEY environment variables.")
+            return
+        
+        # Run SQL file for patients table fix
+        with open('fix_simple.sql', 'r') as f:
+            sql_patients = f.read()
+            print("\nFixing patients table...")
+            print("SQL would be executed through database client.")
+            print("Please run the SQL file manually in your database client.")
+            
+        # Run SQL file for project access
+        with open('fix_project_access.sql', 'r') as f:
+            sql_project_access = f.read()
+            print("\nCreating project access table...")
+            print("SQL would be executed through database client.")
+            print("Please run the SQL file manually in your database client.")
+        
+        # Check if admin user exists
+        response = supabase.table('users').select('*').eq('username', 'admin').execute()
+        
+        if not response.data:
+            print("\nAdmin user not found, creating...")
+            try:
+                # Create admin user
+                admin_user = {
+                    'id': str(uuid.uuid4()),
+                    'username': 'admin',
+                    'password': generate_password_hash('moafya123'),
+                    'is_admin': True,
+                    'is_approved': True
+                }
+                supabase.table('users').insert(admin_user).execute()
+                print("Admin user created successfully!")
+                print("Username: admin")
+                print("Password: moafya123")
+            except Exception as e:
+                print(f"Error creating admin user: {str(e)}")
+        else:
+            print("\nAdmin user already exists.")
+        
+        print("\nDatabase initialization completed.")
+        print("For more detailed setup, please run the SQL files manually in your database client.")
+        print("SQL files to execute:")
+        print("- fix.sql: Complete database setup with all tables")
+        print("- fix_simple.sql: Quick fix for the patients table")
+        print("- fix_project_access.sql: Adds project access control")
+        
+    except Exception as e:
+        print(f"Error initializing database: {str(e)}")
 
 if __name__ == "__main__":
     initialize_database() 

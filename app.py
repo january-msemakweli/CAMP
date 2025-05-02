@@ -12,13 +12,23 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
+# Set matplotlib parameters for better rendering
+plt.rcParams['figure.dpi'] = 100
+plt.rcParams['savefig.dpi'] = 300
+plt.rcParams['font.size'] = 10
+plt.rcParams['figure.figsize'] = (10, 6)
+plt.rcParams['figure.autolayout'] = True
 import matplotlib.ticker as ticker
 import seaborn as sns
+# Configure seaborn
+sns.set_style('whitegrid')
+sns.set_context('notebook', font_scale=1.2)
 import base64
 from io import BytesIO, StringIO
 import time
 import re
 from collections import Counter
+import traceback
 
 # Set default timezone to GMT+3 (East African Time)
 EAT = timezone(timedelta(hours=3))
@@ -42,184 +52,53 @@ def to_eat_filter(timestamp):
     return utc_to_eat(timestamp).strftime('%Y-%m-%d %H:%M:%S') if timestamp else ''
 
 def create_tables():
-    try:
-        print("Attempting to create database tables...")
-        # Check if tables exist first (optional, but good practice)
-        # ... (existing checks or logic can go here)
-
-        # Execute raw SQL to create tables and add columns if they don't exist
-        sql = """
-        -- Drop existing foreign key constraints if they exist
-        DO $$ 
-        BEGIN
-            BEGIN
-                ALTER TABLE public.forms DROP CONSTRAINT IF EXISTS forms_project_id_fkey;
-            EXCEPTION
-                WHEN undefined_table THEN NULL;
-            END;
-            
-            BEGIN
-                ALTER TABLE public.form_submissions DROP CONSTRAINT IF EXISTS form_submissions_form_id_fkey;
-            EXCEPTION
-                WHEN undefined_table THEN NULL;
-            END;
-            
-            BEGIN
-                ALTER TABLE public.form_submissions DROP CONSTRAINT IF EXISTS form_submissions_submitted_by_fkey;
-            EXCEPTION
-                WHEN undefined_table THEN NULL;
-            END;
-            
-            BEGIN
-                ALTER TABLE public.form_permissions DROP CONSTRAINT IF EXISTS form_permissions_form_id_fkey;
-            EXCEPTION
-                WHEN undefined_table THEN NULL;
-            END;
-            
-            BEGIN
-                ALTER TABLE public.form_permissions DROP CONSTRAINT IF EXISTS form_permissions_user_id_fkey;
-            EXCEPTION
-                WHEN undefined_table THEN NULL;
-            END;
-        END $$;
-
-        CREATE TABLE IF NOT EXISTS public.users (
-            id TEXT PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            is_admin BOOLEAN DEFAULT FALSE,
-            is_approved BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS public.projects (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS public.forms (
-            id TEXT PRIMARY KEY,
-            project_id TEXT,
-            title TEXT NOT NULL,
-            fields JSONB NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS public.form_submissions (
-            id TEXT PRIMARY KEY,
-            form_id TEXT,
-            patient_id TEXT NOT NULL,
-            submitted_by TEXT,
-            data JSONB NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-        
-        CREATE TABLE IF NOT EXISTS public.form_permissions (
-            id TEXT PRIMARY KEY,
-            form_id TEXT NOT NULL,
-            user_id TEXT NOT NULL,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(form_id, user_id)
-        );
-
-        CREATE TABLE IF NOT EXISTS public.log_activities (
-            id TEXT PRIMARY KEY,
-            user_id TEXT REFERENCES public.users(id) ON DELETE SET NULL,
-            username TEXT NOT NULL,
-            action TEXT NOT NULL,
-            entity_type TEXT NOT NULL,
-            entity_id TEXT,
-            details TEXT,
-            ip_address TEXT,
-            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-
-        -- Add foreign key constraints with ON DELETE CASCADE
-        ALTER TABLE public.forms 
-        ADD CONSTRAINT forms_project_id_fkey 
-        FOREIGN KEY (project_id) 
-        REFERENCES public.projects(id) 
-        ON DELETE CASCADE;
-
-        ALTER TABLE public.form_submissions 
-        ADD CONSTRAINT form_submissions_form_id_fkey 
-        FOREIGN KEY (form_id) 
-        REFERENCES public.forms(id) 
-        ON DELETE CASCADE;
-
-        ALTER TABLE public.form_submissions 
-        ADD CONSTRAINT form_submissions_submitted_by_fkey 
-        FOREIGN KEY (submitted_by) 
-        REFERENCES public.users(id) 
-        ON DELETE SET NULL;
-        
-        ALTER TABLE public.form_permissions
-        ADD CONSTRAINT form_permissions_form_id_fkey
-        FOREIGN KEY (form_id)
-        REFERENCES public.forms(id)
-        ON DELETE CASCADE;
-        
-        ALTER TABLE public.form_permissions
-        ADD CONSTRAINT form_permissions_user_id_fkey
-        FOREIGN KEY (user_id)
-        REFERENCES public.users(id)
-        ON DELETE CASCADE;
-        """
-        try:
-            supabase.rpc('execute_sql', {'sql': sql}).execute()
-            print("Database tables and columns ensured successfully using raw SQL")
-        except Exception as sql_error:
-            print(f"Error ensuring tables/columns with raw SQL: {str(sql_error)}")
-
-    except Exception as e:
-        print(f"Error in create_tables function: {str(e)}")
+    """
+    This function is disabled to prevent automatic table creation attempts.
+    Use the SQL scripts (fix_project_access.sql, fix.sql, fix_simple.sql) to create tables manually.
+    """
+    print("Automatic table creation is disabled. Use SQL scripts to create tables manually.")
+    pass
 
 def ensure_admin_user():
+    """Check for admin user but don't create tables"""
     try:
         print("Checking for admin user...")
-        # Create tables first
-        create_tables()
         
         # Check if admin user exists
         response = supabase.table('users').select('*').eq('username', 'admin').execute()
         if not response.data:
-            print("Admin user not found, creating...")
-            # Create admin user if it doesn't exist
-            admin_user = {
-                'id': str(uuid.uuid4()),
-                'username': 'admin',
-                'password': generate_password_hash('moafya123'),
-                'is_admin': True,
-                'is_approved': True
-            }
-            supabase.table('users').insert(admin_user).execute()
-            print("Admin user created successfully")
+            print("Admin user not found, but automatic creation is disabled.")
+            print("Please run the database setup scripts to create the admin user.")
         else:
-            print("Admin user already exists")
+            print("Admin user exists")
     except Exception as e:
-        print(f"Error ensuring admin user: {str(e)}")
+        print(f"Error checking admin user: {str(e)}")
+        print("Using fallback authentication system instead.")
 
 def check_database_structure():
+    """Check if required tables exist but don't attempt to create them"""
+    print("Checking database structure (read-only)...")
+    
     try:
-        # Check form_submissions table
-        response = supabase.table('form_submissions').select('*').limit(1).execute()
-        print("form_submissions table exists:", bool(response.data))
+        # Only check if tables exist but don't create them
+        tables_to_check = ['users', 'projects', 'forms', 'form_submissions', 
+                          'form_permissions', 'log_activities', 'patients']
         
-        # Check forms table
-        response = supabase.table('forms').select('*').limit(1).execute()
-        print("forms table exists:", bool(response.data))
+        for table in tables_to_check:
+            try:
+                # Just check if we can access the table
+                # Special case for patients table which has patient_id as primary key, not id
+                if table == 'patients':
+                    response = supabase.table(table).select('patient_id').limit(1).execute()
+                else:
+                    response = supabase.table(table).select('id').limit(1).execute()
+                print(f"Table {table} exists.")
+            except Exception as e:
+                print(f"Table {table} error: {str(e)}")
         
-        # Check projects table
-        response = supabase.table('projects').select('*').limit(1).execute()
-        print("projects table exists:", bool(response.data))
-        
-        # Check users table
-        response = supabase.table('users').select('*').limit(1).execute()
-        print("users table exists:", bool(response.data))
-        
+        print("Database check completed.")
     except Exception as e:
-        print("Error checking database structure:", str(e))
+        print(f"Error checking database structure: {str(e)}")
 
 def log_activity(action, entity_type, entity_id=None, details=None):
     """
@@ -585,53 +464,139 @@ def project_detail(project_id):
     project_response = supabase.table('projects').select('*').eq('id', project_id).execute()
     if not project_response.data:
         flash('Project not found')
-        return redirect(url_for('user_dashboard' if not current_user.is_admin else 'admin_dashboard'))
+        return redirect(url_for('projects'))
     
     project = project_response.data[0]
-    # Remove camp_date if it exists in the fetched data, though it shouldn't anymore
-    project.pop('camp_date', None) 
+    # Remove camp_date if it exists in the fetched data
+    project.pop('camp_date', None)
     
-    # Get forms for this project
-    forms_response = supabase.table('forms').select('*').eq('project_id', project_id).execute()
+    # Get forms for this project, excluding archived forms
+    forms_response = supabase.table('forms').select('*').eq('project_id', project_id).eq('is_archived', False).order('created_at').execute()
     forms = forms_response.data
     
-    # Get submission count for each form and parse fields
+    # Parse the fields for each form
     for form in forms:
-        submissions_response = supabase.table('form_submissions').select('id').eq('form_id', form['id']).execute()
-        form['submissions_count'] = len(submissions_response.data)
-        
-        # Parse the fields JSON string into Python objects
         if isinstance(form['fields'], str):
             try:
                 form['fields'] = json.loads(form['fields'])
             except Exception as e:
-                print(f"Error parsing fields for form {form['id']}: {str(e)}")
+                print(f"Error parsing form fields: {str(e)}")
                 form['fields'] = []
-        
-        # If fields is still not a list, initialize it as an empty list
-        if not isinstance(form['fields'], list):
-            print(f"Form fields not a list for form {form['id']}: {type(form['fields'])}")
-            form['fields'] = []
-        
-        # If admin, get users with access to this form
-        if current_user.is_admin:
-            # Get all permissions for this form
-            permissions_response = supabase.table('form_permissions').select('*').eq('form_id', form['id']).execute()
-            permissions = permissions_response.data
-            
-            # Get user details separately for each permission
-            form['user_permissions'] = []
-            for permission in permissions:
-                user_response = supabase.table('users').select('username').eq('id', permission['user_id']).execute()
-                if user_response.data:
-                    # Add user info to the permission object
-                    permission['users'] = user_response.data[0]
-                    form['user_permissions'].append(permission)
     
-    # Log project detail view
+    # For admins, get users who have access to this project
+    project_access = []
+    users = []
+    if current_user.is_admin:
+        # Get users with access to this project
+        access_response = supabase.table('user_project_access').select('*').eq('project_id', project_id).execute()
+        
+        for access in access_response.data:
+            # Get user details
+            user_response = supabase.table('users').select('username').eq('id', access['user_id']).execute()
+            if user_response.data:
+                access['users'] = user_response.data[0]
+                project_access.append(access)
+        
+        # Get all approved users for the dropdown
+        users_response = supabase.table('users').select('*').eq('is_approved', True).execute()
+        users = users_response.data
+    
     log_activity('view', 'project', project_id, f"Project: {project['name']}")
     
-    return render_template('project_detail.html', project=project, forms=forms)
+    return render_template('project_detail.html', 
+                           project=project, 
+                           forms=forms,
+                           project_access=project_access,
+                           users=users)
+
+@app.route('/project/<project_id>/grant_access', methods=['POST'])
+@login_required
+def grant_project_access(project_id):
+    """Grant access to a project for a specific user"""
+    # Ensure user is an admin
+    if not current_user.is_admin:
+        flash('You do not have permission to manage project access.', 'danger')
+        return redirect(url_for('project_detail', project_id=project_id))
+    
+    try:
+        user_id = request.form.get('user_id')
+        if not user_id:
+            flash('No user selected.', 'warning')
+            return redirect(url_for('project_detail', project_id=project_id))
+        
+        # Check if project exists
+        project_response = supabase.table('projects').select('*').eq('id', project_id).execute()
+        if not project_response.data:
+            flash('Project not found.', 'danger')
+            return redirect(url_for('projects'))
+        
+        # Check if access already exists
+        existing_access = supabase.table('user_project_access').select('*').eq('project_id', project_id).eq('user_id', user_id).execute()
+        
+        if existing_access.data:
+            flash('User already has access to this project.', 'warning')
+            return redirect(url_for('project_detail', project_id=project_id))
+        
+        # Generate unique ID for the access record
+        access_id = str(uuid.uuid4())
+        
+        # Create access record
+        access_data = {
+            'id': access_id,
+            'project_id': project_id,
+            'user_id': user_id
+        }
+        
+        # Insert into database
+        supabase.table('user_project_access').insert(access_data).execute()
+        
+        # Log the activity
+        user_response = supabase.table('users').select('username').eq('id', user_id).execute()
+        username = user_response.data[0]['username'] if user_response.data else 'Unknown User'
+        
+        log_activity('grant_access', 'project', project_id, f"Granted access to user: {username}")
+        
+        flash(f'Access granted to {username}.', 'success')
+        
+    except Exception as e:
+        print(f"Error granting project access: {str(e)}")
+        flash(f'An error occurred while granting access: {str(e)}', 'danger')
+    
+    return redirect(url_for('project_detail', project_id=project_id))
+
+@app.route('/project/<project_id>/revoke_access/<access_id>', methods=['POST'])
+@login_required
+def revoke_project_access(project_id, access_id):
+    """Revoke access to a project for a specific user"""
+    # Ensure user is an admin
+    if not current_user.is_admin:
+        flash('You do not have permission to manage project access.', 'danger')
+        return redirect(url_for('project_detail', project_id=project_id))
+    
+    try:
+        # Get the access record to identify the user whose access is being revoked
+        access_response = supabase.table('user_project_access').select('*, users(username)').eq('id', access_id).execute()
+        
+        if not access_response.data:
+            flash('Access record not found.', 'danger')
+            return redirect(url_for('project_detail', project_id=project_id))
+        
+        access = access_response.data[0]
+        username = access.get('users', {}).get('username', 'Unknown User')
+        
+        # Delete the access record
+        supabase.table('user_project_access').delete().eq('id', access_id).execute()
+        
+        # Log the activity
+        log_activity('revoke_access', 'project', project_id, f"Revoked access for user: {username}")
+        
+        flash(f'Access revoked for {username}.', 'success')
+        
+    except Exception as e:
+        print(f"Error revoking project access: {str(e)}")
+        flash(f'An error occurred while revoking access: {str(e)}', 'danger')
+    
+    return redirect(url_for('project_detail', project_id=project_id))
 
 @app.route('/project/<project_id>/create_form', methods=['POST'])
 @login_required
@@ -714,35 +679,17 @@ def view_form(form_id):
     form_response = supabase.table('forms').select('*').eq('id', form_id).execute()
     if not form_response.data:
         flash('Form not found')
-        return redirect(url_for('user_dashboard' if not current_user.is_admin else 'admin_dashboard'))
+        return redirect(url_for('user_dashboard'))
     
     form = form_response.data[0]
     
-    # Parse the fields JSON string into Python objects if it's stored as a string
+    # Parse the fields JSON string into Python objects
     if isinstance(form['fields'], str):
         try:
             form['fields'] = json.loads(form['fields'])
-            print(f"Parsed fields JSON: {form['fields']}")
         except Exception as e:
-            print(f"Error parsing form fields: {str(e)}")
-            flash(f"Error loading form fields: {str(e)}", 'danger')
+            print(f"Error parsing form fields in view_form: {str(e)}")
             form['fields'] = []
-    
-    # Add location type identifier for location fields
-    if isinstance(form.get('fields'), list):
-        for field in form['fields']:
-            if isinstance(field, dict) and 'location_field_identifier' in field:
-                field['location_type'] = field['location_field_identifier']
-            else:
-                 # Ensure location_type key exists but is None for non-location fields
-                 # This prevents errors in the Jinja template if it checks for the key
-                 if isinstance(field, dict):
-                     field['location_type'] = None
-
-    # Log the type and content of fields for debugging
-    print(f"Form fields type: {type(form['fields'])}")
-    print(f"Form fields content after adding location_type: {form['fields']}") # Modified print
-    print(f"Number of fields: {len(form['fields']) if isinstance(form['fields'], list) else 'unknown'}")
     
     # Check if user has access (admins always have access)
     if not current_user.is_admin:
@@ -757,19 +704,38 @@ def view_form(form_id):
     # Remove camp_date if it exists in the fetched data
     project.pop('camp_date', None) 
     
+    # Check if this is the first form in the project (for Patient ID workflow)
+    # Get all forms for this project ordered by creation date
+    all_forms_response = supabase.table('forms').select('id').eq('project_id', form['project_id']).order('created_at').execute()
+    is_first_form = False
+    if all_forms_response.data and len(all_forms_response.data) > 0:
+        # Check if current form is the first one created
+        is_first_form = all_forms_response.data[0]['id'] == form_id
+    
     # Get form submissions (limited to 5 most recent)
     submissions_response = supabase.table('form_submissions').select('*').eq('form_id', form_id).order('created_at', desc=True).limit(5).execute()
     submissions = submissions_response.data
     
-    # If admin, get all users for assignment 
+    # If admin, get users for assignment - but only those with project access
     users = []
     user_permissions = []
+    project_users = []
+    
     if current_user.is_admin:
-        # Get all approved users
-        users_response = supabase.table('users').select('*').eq('is_approved', True).execute()
-        users = users_response.data
+        # Get users with project access
+        project_access_response = supabase.table('user_project_access').select('user_id').eq('project_id', form['project_id']).execute()
         
-        # Get users with permissions for this form
+        if project_access_response.data:
+            project_user_ids = [access['user_id'] for access in project_access_response.data]
+            
+            # Get details of users with project access
+            if project_user_ids:
+                # Convert list to comma-separated string for SQL in query
+                user_ids_str = ','.join([f"'{uid}'" for uid in project_user_ids])
+                users_response = supabase.table('users').select('*').eq('is_approved', True).in_('id', project_user_ids).execute()
+                project_users = users_response.data
+        
+        # Get users with form permissions
         permissions_response = supabase.table('form_permissions').select('*').eq('form_id', form_id).execute()
         permissions = permissions_response.data
         
@@ -787,8 +753,9 @@ def view_form(form_id):
                           form=form, 
                           project=project, 
                           submissions=submissions, 
-                          users=users,
-                          user_permissions=user_permissions)
+                          users=project_users,  # Now only showing users with project access
+                          user_permissions=user_permissions,
+                          is_first_form=is_first_form)
 
 @app.route('/form/<form_id>/grant_access', methods=['POST'])
 @login_required
@@ -884,42 +851,56 @@ def submit_form(form_id):
     project_response = supabase.table('projects').select('*').eq('id', form['project_id']).execute()
     project = project_response.data[0]
     
-    # Generate patient ID using current date
-    patient_number = request.form.get('patient_number')
-    current_date = datetime.now(EAT).strftime('%d%m%y')
-    patient_id = f"{current_date}-{patient_number}"
-    
-    # Check if patient ID already exists in this form
-    existing_submission_query = supabase.table('form_submissions').select('id')
-    existing_submission_query = existing_submission_query.eq('form_id', form_id)
-    existing_submission_query = existing_submission_query.eq('patient_id', patient_id)
-    existing_submission_response = existing_submission_query.execute()
-    
-    if existing_submission_response.data and len(existing_submission_response.data) > 0:
-        flash(f'Patient number {patient_number} already exists in this form. Please use a different number.', 'danger')
+    # Get the selected patient ID from the form submission
+    patient_id = request.form.get('patient_id')
+    if not patient_id:
+        flash('Patient ID is required', 'danger')
         return redirect(url_for('view_form', form_id=form_id))
     
     # Collect form data
     form_data = {}
     for field in form['fields']:
-        field_name = field['label'].lower().replace(' ', '_')
+        field_label = field['label']
         if field['type'] in ['dropdown', 'radio']:
-            form_data[field_name] = request.form.get(field_name)
+            form_data[field_label] = request.form.get(field_label)
         elif field['type'] == 'checkbox':
-            form_data[field_name] = request.form.getlist(field_name)
+            form_data[field_label] = request.form.getlist(field_label)
         else:
-            form_data[field_name] = request.form.get(field_name)
+            form_data[field_label] = request.form.get(field_label)
     
-    # Create submission
+    # Create submission in form_submissions table
     new_submission = {
         'id': str(uuid.uuid4()),
         'form_id': form_id,
         'patient_id': patient_id,
-        'submitted_by': current_user.username,
+        'submitted_by': current_user.id,
         'data': form_data
     }
     
-    supabase.table('form_submissions').insert(new_submission).execute()
+    submission_response = supabase.table('form_submissions').insert(new_submission).execute()
+    
+    # Update the consolidated patient data in the patients table
+    # First check if the patient already exists
+    patient_response = supabase.table('patients').select('*').eq('patient_id', patient_id).execute()
+    
+    if patient_response.data:
+        # Patient exists, update their data with this form's fields
+        patient_record = patient_response.data[0]
+        patient_data = patient_record.get('data', {})
+        
+        # Add the form's data to the patient record
+        patient_data[form_id] = form_data
+        
+        # Update the patient record
+        supabase.table('patients').update({'data': patient_data}).eq('patient_id', patient_id).execute()
+    else:
+        # Patient doesn't exist yet (could be from legacy data)
+        # Create a new patient record
+        new_patient = {
+            'patient_id': patient_id,
+            'data': {form_id: form_data}
+        }
+        supabase.table('patients').insert(new_patient).execute()
     
     # Log form submission
     log_activity('submit', 'form_submission', new_submission['id'], f"Form: {form['title']}, Patient ID: {patient_id}")
@@ -943,21 +924,32 @@ def delete_form(form_id):
     project_id = form['project_id']
     
     try:
-        # First delete form permissions
-        supabase.table('form_permissions').delete().eq('form_id', form_id).execute()
-        
-        # Then delete form submissions
-        supabase.table('form_submissions').delete().eq('form_id', form_id).execute()
-        
-        # Log form deletion
-        log_activity('delete', 'form', form_id, f"Form title: {form['title']}")
-        
-        # Finally delete the form
-        supabase.table('forms').delete().eq('id', form_id).execute()
-        
-        flash('Form deleted successfully')
+        # Check if is_archived column exists
+        try:
+            # First try to update with is_archived
+            supabase.table('forms').update({'is_archived': True}).eq('id', form_id).execute()
+            # Log form archival
+            log_activity('archive', 'form', form_id, f"Form title: {form['title']}")
+            flash('Form archived successfully')
+        except Exception as archive_error:
+            # If column doesn't exist, delete the form instead
+            print(f"Error archiving form, falling back to delete: {str(archive_error)}")
+            
+            # Delete form permissions
+            supabase.table('form_permissions').delete().eq('form_id', form_id).execute()
+            
+            # Delete form submissions
+            supabase.table('form_submissions').delete().eq('form_id', form_id).execute()
+            
+            # Log form deletion
+            log_activity('delete', 'form', form_id, f"Form title: {form['title']}")
+            
+            # Delete the form
+            supabase.table('forms').delete().eq('id', form_id).execute()
+            
+            flash('Form deleted successfully')
     except Exception as e:
-        flash(f'Error deleting form: {str(e)}', 'danger')
+        flash(f'Error processing form: {str(e)}', 'danger')
     
     return redirect(url_for('project_detail', project_id=project_id))
 
@@ -982,8 +974,8 @@ def user_dashboard():
     
     if permissions_response.data:
         for permission in permissions_response.data:
-            # Get form details separately
-            form_response = supabase.table('forms').select('*').eq('id', permission['form_id']).execute()
+            # Get form details separately - exclude archived forms
+            form_response = supabase.table('forms').select('*').eq('id', permission['form_id']).eq('is_archived', False).execute()
             if form_response.data:
                 form = form_response.data[0]
                 
@@ -1003,6 +995,21 @@ def user_dashboard():
     
     return render_template('user_dashboard.html', projects=projects, accessible_forms=accessible_forms)
 
+@app.route('/programs')
+@login_required
+def program_list():
+    """List all available programs before showing dataset view"""
+    # Get all projects
+    projects_response = supabase.table('projects').select('*').order('name').execute()
+    projects = projects_response.data if projects_response.data else []
+    
+    # Log activity
+    log_activity('view', 'programs_list', None, "Viewed programs list for dataset selection")
+    
+    return render_template('projects_list.html', 
+                         projects=projects,
+                         is_dataset_view=True)
+
 @app.route('/dataset')
 @login_required
 def dataset_view():
@@ -1014,6 +1021,10 @@ def dataset_view():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     search_term = request.args.get('search', '').strip()  # Get search term
+    
+    # If no project_id is provided, redirect to program list
+    if not project_id:
+        return redirect(url_for('program_list'))
     
     # Log dataset view with filters
     log_details = f"Filters - Project: {project_id or 'All'}, Form: {form_id or 'All'}"
@@ -1074,30 +1085,50 @@ def dataset_view():
     submissions = []
     submission_form_ids = [f['id'] for f in ordered_forms_data]
 
-    if submission_form_ids: # Only query if there are forms to query for
-        query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
-        query = query.in_('form_id', submission_form_ids) # Filter by the forms we care about
+    # Modified query to get submissions even if no forms match the criteria
+    query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
+    
+    if submission_form_ids: 
+        # Filter by the forms we care about if we have matching forms
+        query = query.in_('form_id', submission_form_ids)
+    elif form_id:
+        # If a specific form is requested but not found in the system, use its ID directly
+        query = query.eq('form_id', form_id)
+    elif project_id:
+        # If filtering by project and no forms were found, try to match via the form's project_id in joined data
+        # This works if forms data is accessible via the join
+        query = query.eq('forms.project_id', project_id)
         
-        # Apply date filters if present
-        if start_date:
-            query = query.gte('created_at', start_date)
-        if end_date:
-            # Add 1 day to end_date to make it inclusive
-            try:
-                end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
-                inclusive_end_date = (end_date_dt + timedelta(days=1)).strftime('%Y-%m-%d')
-                query = query.lt('created_at', inclusive_end_date) 
-            except ValueError:
-                 print(f"Invalid end date format: {end_date}")
-                 # Optionally handle error, or proceed without end date filter
-        
-        response = query.execute()
-        submissions = response.data
-        print(f"Initial submissions fetched: {len(submissions)}")
-    else:
-        # Handle case where no forms match criteria (e.g., selected project has no forms)
-        print(f"No forms found matching filters (Project: {project_id}, Form: {form_id}). No submissions fetched.")
-        submissions = []
+    # Apply date filters if present
+    if start_date:
+        query = query.gte('created_at', start_date)
+    if end_date:
+        # Add 1 day to end_date to make it inclusive
+        try:
+            end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            inclusive_end_date = (end_date_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+            query = query.lt('created_at', inclusive_end_date) 
+        except ValueError:
+             print(f"Invalid end date format: {end_date}")
+             # Optionally handle error, or proceed without end date filter
+    
+    response = query.execute()
+    submissions = response.data
+    print(f"Initial submissions fetched: {len(submissions)}")
+    
+    # If no submissions were found through the form-based filters,
+    # try a direct query on form_submissions without form filtering
+    if not submissions and (form_id or project_id):
+        print("No submissions found with form filters. Trying direct query.")
+        try:
+            # Direct query without form filtering
+            backup_query = supabase.table('form_submissions').select('*')
+            backup_response = backup_query.execute()
+            submissions = backup_response.data
+            print(f"Direct query found {len(submissions)} submissions")
+        except Exception as e:
+            print(f"Error in backup query: {str(e)}")
+            submissions = []
 
     # 4. Filter submissions based on search term (if any)
     if search_term:
@@ -1206,6 +1237,13 @@ def dataset_view():
     projects_response = supabase.table('projects').select('*').execute()
     all_projects = projects_response.data
     
+    # Get the selected project name if a project is selected
+    selected_project_name = None
+    if project_id:
+        project_response = supabase.table('projects').select('name').eq('id', project_id).execute()
+        if project_response.data:
+            selected_project_name = project_response.data[0]['name']
+
     # Get forms for filter dropdown (can reuse ordered_forms_data if appropriate or fetch all)
     # Fetching all forms ensures the dropdown is complete even if viewing a specific project's dataset
     all_forms_response = supabase.table('forms').select('*').order('project_id').order('title').execute()
@@ -1231,14 +1269,32 @@ def dataset_view():
     #         if 'created_at' in submission:
     #             submission['created_at'] = utc_to_eat(submission['created_at']).strftime('%Y-%m-%d %H:%M:%S')
 
+    # 11. Convert patient_data dictionary to patient_data_list for the template
+    patient_data_list = []
+    for patient_id, data in patient_data.items():
+        # Create a flattened representation with patient_id and all field values
+        patient_row = {'patient_id': patient_id}
+        
+        # Add all field values from merged_data using the original field labels
+        if 'merged_data' in data:
+            for normalized_key, value in data['merged_data'].items():
+                if normalized_key in field_label_map:
+                    original_key = field_label_map[normalized_key]
+                    patient_row[original_key] = value
+        
+        patient_data_list.append(patient_row)
+
     return render_template('dataset_view.html',
                          patient_data=patient_data,
+                         patient_data_list=patient_data_list,  # Add this new parameter
                          # Pass the final ordered list of field labels
                          ordered_fields=final_ordered_fields, 
+                         all_fields_for_filter=final_ordered_fields,  # Add this missing parameter
                          projects=all_projects,
                          forms=filter_forms, # Use all forms for the filter dropdown
                          field_values=sorted(list(field_values)),
                          selected_project=project_id,
+                         selected_project_name=selected_project_name,  # Add this parameter
                          selected_form=form_id,
                          selected_field=field_name,
                          selected_value=field_value,
@@ -1283,7 +1339,7 @@ def get_patient_data(patient_id):
         print(f"Fetching data for patient: {patient_id}")
         
         # Get all submissions for this patient
-        response = supabase.table('form_submissions').select('*, forms(title, fields, projects(name))').eq('patient_id', patient_id).execute()
+        response = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))').eq('patient_id', patient_id).execute()
         
         if not response.data:
             print(f"No data found for patient {patient_id}")
@@ -1292,33 +1348,126 @@ def get_patient_data(patient_id):
         submissions = response.data
         print(f"Number of submissions found: {len(submissions)}")
         
-        # Combine all data
-        result = {
-            'Patient ID': patient_id
-        }
+        # Step 1: Get ordered forms for this patient - keep original order by creation date
+        ordered_forms_data = []
+        form_ids = set(sub.get('form_id') for sub in submissions if sub.get('form_id'))
+        if form_ids:
+            forms_response = supabase.table('forms').select('*').in_('id', list(form_ids)).order('created_at', desc=False).execute()
+            if forms_response.data:
+                ordered_forms_data = forms_response.data
         
-        # Add data from all submissions
-        for submission in submissions:
-            form = submission.get('forms', {})
-            project = form.get('projects', {})
-            
-            # Add form submission info
-            form_title = form.get('title', 'Unknown Form')
-            project_name = project.get('name', 'Unknown Project')
-            submission_date = submission.get('created_at', 'Unknown Date')
-            
-            # Add form data with project and form context
-            form_data = submission.get('data', {})
-            for key, value in form_data.items():
-                result[f"{project_name} - {form_title} - {key}"] = value
-            
-            # Add submission metadata
-            result[f"{project_name} - {form_title} - Submission Date"] = submission_date
+        # Create a mapping of form_id to its position in the ordered_forms_data list
+        # This ensures we maintain the order of forms when sorting fields
+        form_position_map = {form['id']: idx for idx, form in enumerate(ordered_forms_data)}
         
-        return jsonify(result)
+        # Step 2: Build a structure that tracks fields by form
+        form_fields_map = {}  # form_id -> list of fields
+        field_to_form_map = {}  # field -> form_id
+        field_position_map = {}  # field -> position in its form
+        field_label_map = {}  # normalized_key -> original label
+
+        for form in ordered_forms_data:
+            form_id = form['id']
+            form_fields_map[form_id] = []
+            
+            fields_json = form.get('fields', '[]')
+            if isinstance(fields_json, str):
+                try:
+                    parsed_fields = json.loads(fields_json)
+                except json.JSONDecodeError:
+                    print(f"Warning: Could not parse fields for form {form.get('id')}")
+                    parsed_fields = []
+            elif isinstance(fields_json, list):
+                parsed_fields = fields_json
+            else:
+                parsed_fields = []
+
+            # Store fields by form and track their positions
+            if isinstance(parsed_fields, list):
+                for position, field in enumerate(parsed_fields):
+                    if isinstance(field, dict) and 'label' in field:
+                        label = field['label']
+                        normalized_label = label.lower().strip().replace(' ', '_')
+                        
+                        # Keep track of field's form and position
+                        field_to_form_map[normalized_label] = form_id
+                        field_position_map[normalized_label] = position
+                        field_label_map[normalized_label] = label
+                        form_fields_map[form_id].append(normalized_label)
         
+        # Step 3: Process submissions to get all field data
+        all_fields = set()
+        data_by_field = {}
+        last_updated = {}
+        
+        # Sort submissions by date (newest first) to prioritize recent data
+        sorted_submissions = sorted(submissions, key=lambda s: s.get('created_at', ''), reverse=True)
+        
+        for submission in sorted_submissions:
+            form_id = submission.get('form_id')
+            if submission.get('data') and form_id:
+                submission_date = submission.get('created_at')
+                
+                for key, value in submission['data'].items():
+                    normalized_key = key.lower().strip().replace(' ', '_')
+                    all_fields.add(normalized_key)
+                    
+                    # Track which form this field belongs to if not already known
+                    if normalized_key not in field_to_form_map:
+                        field_to_form_map[normalized_key] = form_id
+                        # For fields not in form definition, add to the end of their respective form
+                        if form_id in form_fields_map and normalized_key not in form_fields_map[form_id]:
+                            form_fields_map[form_id].append(normalized_key)
+                    
+                    # Store original label
+                    if normalized_key not in field_label_map:
+                        field_label_map[normalized_key] = key
+                    
+                    # Only update if this is newer data
+                    if normalized_key not in data_by_field or (submission_date and submission_date > last_updated.get(normalized_key, '')):
+                        data_by_field[normalized_key] = value
+                        if submission_date:
+                            last_updated[normalized_key] = submission_date
+        
+        # Step 4: Create ordered result array
+        ordered_data = [
+            {"field": "Patient ID", "value": patient_id}
+        ]
+        
+        # Process forms in their original order (by creation date)
+        for form in ordered_forms_data:
+            form_id = form['id']
+            if form_id in form_fields_map:
+                # Sort fields within this form by their original position
+                form_fields = sorted(
+                    form_fields_map[form_id],
+                    key=lambda f: field_position_map.get(f, 999)
+                )
+                
+                # Add each field from this form in order
+                for normalized_key in form_fields:
+                    if normalized_key in data_by_field:
+                        original_label = field_label_map.get(normalized_key, normalized_key)
+                        ordered_data.append({
+                            "field": original_label,
+                            "value": data_by_field[normalized_key]
+                        })
+        
+        # Add any fields not associated with a known form
+        unknown_fields = [f for f in all_fields if f not in field_to_form_map]
+        for normalized_key in sorted(unknown_fields):
+            if normalized_key in data_by_field:
+                original_label = field_label_map.get(normalized_key, normalized_key)
+                ordered_data.append({
+                    "field": original_label,
+                    "value": data_by_field[normalized_key]
+                })
+        
+        return jsonify(ordered_data)
+            
     except Exception as e:
-        print(f"Error in get_patient_data: {str(e)}")
+        print(f"Error fetching patient data: {str(e)}")
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/export_dataset')
@@ -1377,8 +1526,54 @@ def export_dataset():
         response = query.execute()
         submissions = response.data
     
+    # Get all ordered forms to build field ordering
+    # Similar to dataset_view, build ordered_fields list based on form definitions
+    ordered_forms_data = []
+    forms_query = supabase.table('forms').select('*')
+    if form_id: 
+        forms_query = forms_query.eq('id', form_id)
+    elif project_id: 
+        forms_query = forms_query.eq('project_id', project_id).order('created_at', desc=False)
+    else: 
+        forms_query = forms_query.order('project_id', desc=False).order('created_at', desc=False)
+    
+    forms_response = forms_query.execute()
+    if forms_response.data:
+        ordered_forms_data = forms_response.data
+
+    # Build ordered_fields list based on form definitions - similar to dataset_view
+    ordered_fields = []
+    seen_normalized_fields = set()
+    field_label_map = {}
+
+    for form in ordered_forms_data:
+        fields_json = form.get('fields', '[]')
+        if isinstance(fields_json, str):
+            try:
+                parsed_fields = json.loads(fields_json)
+            except json.JSONDecodeError:
+                print(f"Warning: Could not parse fields for form {form.get('id')}")
+                parsed_fields = []
+        elif isinstance(fields_json, list):
+            parsed_fields = fields_json
+        else:
+            parsed_fields = []
+
+        if isinstance(parsed_fields, list):
+            for field in parsed_fields:
+                if isinstance(field, dict) and 'label' in field:
+                    label = field['label']
+                    # Use same normalization as when accessing data later
+                    normalized_label = label.lower().strip().replace(' ', '_') 
+                    if normalized_label not in seen_normalized_fields:
+                        ordered_fields.append(label)
+                        seen_normalized_fields.add(normalized_label)
+                        field_label_map[normalized_label] = label
+    
     # Group submissions by patient_id
     patient_data = {}
+    all_data_fields_normalized = set()
+
     for submission in submissions:
         patient_id = submission['patient_id']
         if patient_id not in patient_data:
@@ -1387,44 +1582,53 @@ def export_dataset():
                 'submissions': []
             }
         patient_data[patient_id]['submissions'].append(submission)
+        
+        # Collect all unique field keys from actual data
+        if submission.get('data'):
+            for key in submission['data'].keys():
+                normalized_key = key.lower().strip().replace(' ', '_')
+                all_data_fields_normalized.add(normalized_key)
+                # Ensure field_label_map has original casing even for data-only fields
+                if normalized_key not in field_label_map:
+                    field_label_map[normalized_key] = key
+
+    # Identify Extra Fields (present in data but not in form definitions)
+    extra_normalized_fields = all_data_fields_normalized - seen_normalized_fields
+    extra_field_labels = sorted([field_label_map[norm_key] for norm_key in extra_normalized_fields if norm_key in field_label_map])
     
-    # Get all unique field names across all forms
-    all_fields = set()
-    for submission in submissions:
-        form = submission.get('forms', {})
-        if form and 'fields' in form:
-            for field in form['fields']:
-                normalized_field = field['label'].lower().strip()
-                all_fields.add(normalized_field)
-        if 'data' in submission:
-            for field in submission['data'].keys():
-                normalized_field = field.lower().strip()
-                all_fields.add(normalized_field)
+    # Combine ordered fields with extra fields - matches dataset_view
+    final_ordered_fields = ordered_fields + extra_field_labels
     
-    all_fields = sorted([field.title() for field in all_fields])
+    # Pre-process patient data to merge values
+    for patient_id, data in patient_data.items():
+        merged_data = {}
+        # Keep track of the latest submission date for each field
+        last_updated = {} 
+
+        # Sort submissions by date (newest first) to prioritize recent data
+        sorted_submissions = sorted(data['submissions'], key=lambda s: s.get('created_at', ''), reverse=True)
+
+        for submission in sorted_submissions:
+            if submission.get('data'):
+                submission_date = submission.get('created_at')
+                for key, value in submission['data'].items():
+                    normalized_key = key.lower().strip().replace(' ', '_')
+                    # Only add/update if this submission is newer or the key hasn't been seen
+                    if normalized_key not in merged_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
+                         merged_data[normalized_key] = value
+                         if submission_date:
+                              last_updated[normalized_key] = submission_date
+        data['merged_data'] = merged_data
     
     # Create DataFrame
     data = []
     for patient_id, data_dict in patient_data.items():
         row = {'Patient ID': patient_id}
-        for submission in data_dict['submissions']:
-            if 'data' in submission:
-                form = submission.get('forms', {})
-                project = form.get('projects', {})
-                form_title = form.get('title', 'Unknown Form')
-                project_name = project.get('name', 'Unknown Project')
-                
-                # Add context to fields
-                for key, value in submission['data'].items():
-                    normalized_key = key.lower().strip()
-                    # Include project and form name for clarity
-                    row[f"{project_name} - {form_title} - {normalized_key.title()}"] = value
-                
-                # Add submission date (convert to EAT timezone)
-                submission_date = submission.get('created_at', '')
-                if submission_date:
-                    submission_date = utc_to_eat(submission_date).strftime('%Y-%m-%d %H:%M:%S')
-                row[f"{project_name} - {form_title} - Submission Date"] = submission_date
+        if 'merged_data' in data_dict:
+            for field_label in final_ordered_fields:
+                normalized_key = field_label.lower().strip().replace(' ', '_')
+                if normalized_key in data_dict['merged_data']:
+                    row[field_label] = data_dict['merged_data'][normalized_key]
         data.append(row)
     
     df = pd.DataFrame(data)
@@ -1551,38 +1755,47 @@ def utc_to_eat(utc_timestamp):
 def activity_logs():
     # Ensure user is an admin
     if not current_user.is_admin:
-        flash('You do not have permission to view this page.', 'danger')
+        flash('You do not have permission to view this page', 'danger')
         return redirect(url_for('index'))
     
-    # Get page number for pagination (default to 1)
-    page = request.args.get('page', 1, type=int)
-    limit = 20
-    offset = (page - 1) * limit
+    # Get page number from query string
+    try:
+        page = int(request.args.get('page', 1))
+        if page < 1:
+            page = 1
+    except ValueError:
+        page = 1
     
-    # Get count of all logs for pagination
+    # Set records per page and calculate offset
+    per_page = 15
+    offset = (page - 1) * per_page
+    
+    # Get total count for pagination
     count_response = supabase.table('log_activities').select('id', count='exact').execute()
-    total_logs = count_response.count if hasattr(count_response, 'count') else 0
+    total_records = count_response.count if hasattr(count_response, 'count') else 0
+    total_pages = (total_records + per_page - 1) // per_page
     
-    # Get logs with pagination
-    response = supabase.table('log_activities').select('*').order('created_at', desc=True).range(offset, offset + limit - 1).execute()
-    logs = response.data
+    # Pagination controls
+    has_prev = page > 1
+    has_next = page < total_pages
     
-    # Convert timestamps to EAT timezone
+    # Get logs for current page
+    response = supabase.table('log_activities').select('*').order('created_at', desc=True).range(offset, offset + per_page - 1).execute()
+    logs = response.data if response.data else []
+    
+    # Convert UTC timestamps to EAT
     for log in logs:
-        if 'created_at' in log:
-            log['created_at_original'] = log['created_at']  # Keep original for reference
-            log['created_at'] = utc_to_eat(log['created_at']).strftime('%Y-%m-%d %H:%M:%S')
+        if log.get('created_at'):
+            log['created_at_eat'] = utc_to_eat(log['created_at'])
+        else:
+            log['created_at_eat'] = None
     
-    # Calculate total pages
-    total_pages = (total_logs + limit - 1) // limit
-    
-    # Log this view action
-    log_activity('view', 'activity_logs')
-    
-    return render_template('activity_logs.html', 
-                          logs=logs, 
-                          current_page=page, 
-                          total_pages=total_pages)
+    return render_template('activity_logs.html',
+                          logs=logs,
+                          page=page,
+                          total_pages=total_pages,
+                          has_prev=has_prev,
+                          has_next=has_next)
 
 @app.route('/admin/create_user', methods=['POST'])
 @login_required
@@ -1621,11 +1834,11 @@ def create_user():
 def fig_to_base64(fig):
     """Convert a matplotlib figure to base64 encoded string for HTML display"""
     buf = BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', dpi=150)
+    fig.savefig(buf, format='png', bbox_inches='tight', dpi=300)  # Increased DPI for better quality
     buf.seek(0)
     img_str = base64.b64encode(buf.read()).decode('utf-8')
     plt.close(fig)  # Close figure to free memory
-    return img_str
+    return f"data:image/png;base64,{img_str}"  # Add proper data URL format prefix
 
 def clean_field_name(name):
     """Clean field names for better display"""
@@ -2993,6 +3206,295 @@ def edit_form(form_id):
     
     # Redirect back to the project detail page
     return redirect(url_for('project_detail', project_id=project_id))
+
+@app.route('/api/create_patient_id', methods=['POST'])
+@login_required
+def create_patient_id():
+    try:
+        # Generate a unique patient ID using the current date and a sequential number
+        current_date = datetime.now(EAT).strftime('%d%m%y')
+        
+        # Check for existing patient IDs with this date prefix to determine the next number
+        response = supabase.table('patients').select('patient_id').like('patient_id', f"{current_date}-%").execute()
+        
+        # Determine the next sequential number
+        next_num = 1
+        if response.data:
+            existing_numbers = []
+            for record in response.data:
+                patient_id = record['patient_id']
+                # Extract number after the hyphen (format: DDMMYY-NNNN)
+                try:
+                    num = int(patient_id.split('-')[1])
+                    existing_numbers.append(num)
+                except (IndexError, ValueError):
+                    continue
+            
+            if existing_numbers:
+                next_num = max(existing_numbers) + 1
+        
+        # Format with leading zeros for a consistent 4-digit number (0001, 0002, etc.)
+        # Changed from 3 digits to 4 digits to support up to 9999 patients per day
+        patient_id = f"{current_date}-{next_num:04d}"
+        
+        # Create a new patient record in the patients table
+        new_patient = {
+            'patient_id': patient_id,
+            'data': {}  # Initialize with empty data, will be populated on form submissions
+        }
+        
+        insert_response = supabase.table('patients').insert(new_patient).execute()
+        
+        # Log the creation
+        log_activity('create', 'patient', patient_id, f"Created new patient ID: {patient_id}")
+        
+        return jsonify({'patient_id': patient_id, 'success': True})
+    
+    except Exception as e:
+        print(f"Error creating patient ID: {str(e)}")
+        return jsonify({'error': str(e), 'success': False}), 500
+
+@app.route('/api/search_patient_id', methods=['GET'])
+@login_required
+def search_patient_id():
+    try:
+        query = request.args.get('q', '')
+        if not query or len(query) < 2:  # Require at least 2 characters for search
+            return jsonify([])
+            
+        # Search patients table
+        response = supabase.table('patients').select('patient_id, data').like('patient_id', f"%{query}%").limit(10).execute()
+        
+        if not response.data:
+            # No direct matches, try using form submissions for backup
+            # This handles the case where old data might not be in the patients table
+            submissions_response = supabase.table('form_submissions').select('patient_id').like('patient_id', f"%{query}%").limit(10).execute()
+            
+            # Format the results as expected
+            results = []
+            seen_ids = set()  # To prevent duplicates
+            
+            for submission in submissions_response.data:
+                patient_id = submission['patient_id']
+                if patient_id not in seen_ids:
+                    results.append({
+                        'patient_id': patient_id,
+                        'data': {}  # No associated data for these legacy records
+                    })
+                    seen_ids.add(patient_id)
+            
+            return jsonify(results)
+        
+        # Return the results
+        return jsonify(response.data)
+    
+    except Exception as e:
+        print(f"Error searching for patient ID: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/patient_preview/<patient_id>')
+@login_required
+def get_patient_preview(patient_id):
+    try:
+        # Get patient data from patients table
+        patient_response = supabase.table('patients').select('*').eq('patient_id', patient_id).execute()
+        
+        # Initialize result structure
+        result = {
+            'patient_record': {
+                'patient_id': patient_id,
+                'data': {},
+                'created_at': None,
+                'created_at_eat': None
+            },
+            'form_details': {}
+        }
+        
+        if not patient_response.data:
+            # Try to get data from form_submissions (legacy data)
+            submissions_response = supabase.table('form_submissions').select('*, forms(id, title, fields, project_id, projects(name))').eq('patient_id', patient_id).order('created_at').execute()
+            
+            if not submissions_response.data:
+                return jsonify({'error': 'Patient not found'}), 404
+            
+            # Reconstruct patient data from submissions
+            submissions = submissions_response.data
+            
+            # Use the earliest submission date as patient creation date
+            if submissions and 'created_at' in submissions[0]:
+                created_at = submissions[0]['created_at']
+                result['patient_record']['created_at'] = created_at
+                # Convert to EAT timezone for display
+                try:
+                    created_at_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    eat_dt = created_at_dt.astimezone(EAT)
+                    result['patient_record']['created_at_eat'] = eat_dt.isoformat()
+                except Exception as e:
+                    print(f"Error converting timestamp: {str(e)}")
+            
+            # Group form data by form ID
+            for submission in submissions:
+                form = submission.get('forms', {})
+                form_id = form.get('id')
+                if not form_id:
+                    continue
+                
+                # Create form details entry if we haven't seen this form before
+                if form_id not in result['form_details']:
+                    result['form_details'][form_id] = {
+                        'title': form.get('title', 'Unknown Form'),
+                        'field_order': []  # Will populate with field names in the order they appear
+                    }
+                    
+                    # Get field order from form definition if available
+                    if 'fields' in form and isinstance(form['fields'], list):
+                        field_order = [field.get('label') for field in form['fields'] if 'label' in field]
+                        result['form_details'][form_id]['field_order'] = field_order
+                
+                # Extract data from this submission
+                submission_data = submission.get('data', {})
+                
+                # Add to patient record data under this form ID
+                if form_id not in result['patient_record']['data']:
+                    result['patient_record']['data'][form_id] = {}
+                
+                # Merge this submission's data with existing data for this form
+                result['patient_record']['data'][form_id].update(submission_data)
+            
+            return jsonify(result)
+        
+        # Patient found in patients table - use the data from there
+        patient = patient_response.data[0]
+        
+        # Format patient record
+        result['patient_record'] = {
+            'patient_id': patient_id,
+            'data': patient.get('data', {}),
+            'created_at': patient.get('created_at'),
+            'project_id': patient.get('project_id')
+        }
+        
+        # Convert created_at to EAT timezone if available
+        if 'created_at' in patient and patient['created_at']:
+            try:
+                created_at_dt = datetime.fromisoformat(patient['created_at'].replace('Z', '+00:00'))
+                eat_dt = created_at_dt.astimezone(EAT)
+                result['patient_record']['created_at_eat'] = eat_dt.isoformat()
+            except Exception as e:
+                print(f"Error converting timestamp: {str(e)}")
+        
+        # Get form details for each form ID in the patient data
+        form_ids = patient.get('data', {}).keys()
+        for form_id in form_ids:
+            form_response = supabase.table('forms').select('id, title, fields, project_id, projects(name)').eq('id', form_id).execute()
+            
+            if form_response.data:
+                form = form_response.data[0]
+                
+                # Add form details to the form_details map
+                result['form_details'][form_id] = {
+                    'title': form.get('title', 'Unknown Form'),
+                    'field_order': []
+                }
+                
+                # Extract field order from form definition if available
+                if 'fields' in form:
+                    fields_data = form['fields']
+                    if isinstance(fields_data, str):
+                        try:
+                            fields_data = json.loads(fields_data)
+                        except:
+                            fields_data = []
+                    
+                    if isinstance(fields_data, list):
+                        field_order = [field.get('label') for field in fields_data if 'label' in field]
+                        result['form_details'][form_id]['field_order'] = field_order
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"Error getting patient preview: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/patient/<patient_id>/delete', methods=['POST'])
+@login_required
+def delete_patient(patient_id):
+    # Only admins can delete patients
+    if not current_user.is_admin:
+        return jsonify({'error': 'Admin privileges required'}), 403
+    
+    try:
+        print(f"Attempting to delete patient: {patient_id}")
+        
+        # Start a transaction by getting connection
+        # (Supabase doesn't support true transactions via API, so we handle rollback manually)
+        deletion_successful = False
+        deleted_submissions = 0
+        patient_record_deleted = False
+        
+        # 1. First get all submissions for this patient
+        submissions_response = supabase.table('form_submissions').select('id').eq('patient_id', patient_id).execute()
+        
+        # 2. Also check if patient record exists
+        patient_response = supabase.table('patients').select('patient_id').eq('patient_id', patient_id).execute()
+        patient_exists = len(patient_response.data) > 0
+        
+        if not submissions_response.data and not patient_exists:
+            print(f"No records found for patient {patient_id}")
+            return jsonify({'error': 'Patient not found in any records'}), 404
+        
+        # 3. Delete all submissions for this patient
+        if submissions_response.data:
+            submission_ids = [sub['id'] for sub in submissions_response.data]
+            print(f"Found {len(submission_ids)} submissions to delete")
+            
+            try:
+                # Delete submissions in batches to avoid hitting API limits
+                batch_size = 50
+                for i in range(0, len(submission_ids), batch_size):
+                    batch = submission_ids[i:i + batch_size]
+                    delete_response = supabase.table('form_submissions').delete().in_('id', batch).execute()
+                    print(f"Deleted batch of {len(batch)} submissions")
+                    deleted_submissions += len(batch)
+                
+                deletion_successful = True
+            except Exception as e:
+                print(f"Error deleting patient submissions: {str(e)}")
+                return jsonify({'error': f'Failed to delete patient submissions: {str(e)}'}), 500
+        else:
+            # No submissions but patient might still exist
+            deletion_successful = True
+        
+        # 4. Delete the patient record from patients table
+        if patient_exists:
+            try:
+                patient_delete_response = supabase.table('patients').delete().eq('patient_id', patient_id).execute()
+                patient_record_deleted = True
+                print(f"Deleted patient record for {patient_id}")
+            except Exception as e:
+                print(f"Error deleting patient record: {str(e)}")
+                return jsonify({'error': f'Failed to delete patient record: {str(e)}'}), 500
+        
+        # 5. Log the deletion
+        if deletion_successful:
+            log_details = f"Deleted patient {patient_id} with {deleted_submissions} form submissions"
+            if patient_record_deleted:
+                log_details += " and patient record"
+            log_activity('delete', 'patient', patient_id, log_details)
+            
+            return jsonify({
+                'success': True,
+                'message': f'Patient {patient_id} completely deleted ({deleted_submissions} submissions, patient record: {patient_record_deleted})',
+                'deleted_submissions': deleted_submissions,
+                'patient_record_deleted': patient_record_deleted
+            })
+        else:
+            return jsonify({'error': 'Failed to delete patient - unknown error'}), 500
+            
+    except Exception as e:
+        print(f"Error in patient deletion: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 # Correctly indented start of the main execution block
 if __name__ == '__main__':

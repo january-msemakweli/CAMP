@@ -1,417 +1,556 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-    <!-- Header -->
-    <div class="page-header">
+<div class="container-fluid mt-4">
+    <!-- Programme Header -->
+    <div class="page-header mb-4">
         <div class="row align-items-center">
             <div class="col">
-                <h2>{{ project.name }}</h2>
-                <!-- Removed Camp Date -->
-                <!-- <p class="text-muted">Camp Date: {{ project.camp_date }}</p> -->
+                <h2 class="mb-1"><i class="fas fa-folder-open me-2"></i>{{ project.name }}</h2>
+                <p class="text-muted mb-0">Programme created on: {{ project.created_at | to_eat }}</p>
             </div>
-            <div>
-                <a href="{{ url_for('dataset_view', project_id=project.id) }}" class="btn btn-primary">
-                    <i class="fas fa-database me-2"></i>VIEW DATASET
-                </a>
-            </div>
+            <div class="col-auto">
+                {% if current_user.is_admin %}
+                <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteProjectModal">
+                    <i class="fas fa-trash me-1"></i> Delete Programme
+                </button>
+                {% endif %}
         </div>
     </div>
 </div>
 
-<div class="row">
-    <div class="col-12 mb-4">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Forms</h5>
+    <!-- Forms Section -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-list-alt me-2"></i>Forms in this Programme</h5>
                 {% if current_user.is_admin %}
-                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newFormModal">
-                    New Form
+                        <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#createFormModal">
+                            <i class="fas fa-plus me-1"></i> Create New Form
                 </button>
                 {% endif %}
             </div>
             <div class="card-body">
                 {% if forms %}
-                    <div class="table-responsive">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Form Title</th>
-                                    <th>Fields</th>
-                                    {% if current_user.is_admin %}
-                                    <th>User Access</th>
-                                    {% endif %}
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                        <div class="list-group list-group-flush">
                                 {% for form in forms %}
-                                <tr>
-                                    <td>{{ form.title }}</td>
-                                    <td>{{ form.fields|length }} fields</td>
-                                    {% if current_user.is_admin %}
-                                    <td>
-                                        {% if form.user_permissions %}
-                                            <div class="d-flex flex-wrap gap-1">
-                                                {% for permission in form.user_permissions %}
-                                                    <span class="badge bg-info text-dark">
-                                                        {{ permission.users.username }}
-                                                    </span>
-                                                {% endfor %}
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <a href="{{ url_for('view_form', form_id=form.id) }}" class="fw-bold">{{ form.title }}</a>
+                                        <br>
+                                        <small class="text-muted">Fields: {{ form.fields | length }} | Created: {{ form.created_at | to_eat }}</small>
                                             </div>
-                                        {% else %}
-                                            <span class="badge bg-warning text-dark">No users assigned</span>
-                                        {% endif %}
-                                    </td>
-                                    {% endif %}
-                                    <td>
-                                        <a href="{{ url_for('view_form', form_id=form.id) }}" class="btn btn-sm btn-primary">View</a>
+                                    <div class="form-actions">
+                                        <a href="{{ url_for('view_form', form_id=form.id) }}" class="btn btn-sm btn-outline-primary me-1">
+                                            <i class="fas fa-eye"></i> View / Submit
+                                        </a>
                                         {% if current_user.is_admin %}
-                                        <button type="button" class="btn btn-sm btn-warning edit-form-btn" 
-                                                data-bs-toggle="modal" 
-                                                data-bs-target="#newFormModal" 
-                                                data-form-id="{{ form.id }}">
-                                            Edit
+                                            <button type="button" class="btn btn-sm btn-outline-warning me-1" 
+                                                    onclick="openEditFormModal('{{ form.id }}')">
+                                                <i class="fas fa-edit"></i> Edit
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#deleteFormModal{{ form.id }}">
-                                            Delete
+                                            <form method="POST" action="{{ url_for('delete_form', form_id=form.id) }}" class="d-inline" 
+                                                  onsubmit="return confirm('Are you sure you want to archive this form? It will be hidden from the UI but all data will be preserved.');">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                    <i class="fas fa-archive"></i> Archive
                                         </button>
+                                            </form>
                                         {% endif %}
-                                    </td>
-                                </tr>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-center text-muted">No forms have been created for this programme yet.</p>
+                        {% if current_user.is_admin %}
+                        <div class="text-center">
+                            <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createFormModal">
+                                <i class="fas fa-plus me-1"></i> Create First Form
+                            </button>
+                        </div>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- NEW: User Access Control Section (Admin Only) -->
+        {% if current_user.is_admin %}
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="fas fa-users-cog me-2"></i>Programme User Access</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Grant Access Form -->
+                    <h6 class="mb-3">Grant Access</h6>
+                    <form method="POST" action="{{ url_for('grant_project_access', project_id=project.id) }}" class="mb-4">
+                        <div class="input-group">
+                            <select class="form-select" name="user_id" required>
+                                <option value="">Select User to Grant Access</option>
+                                {% for user in users %}
+                                    {% if user.is_approved and user.id != current_user.id %}
+                                        <option value="{{ user.id }}">{{ user.username }}</option>
+                                    {% endif %}
+                                {% else %}
+                                    <option value="" disabled>No eligible users found</option>
                                 {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <p class="text-center">No forms created yet.</p>
-                {% endif %}
+                            </select>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-plus me-1"></i> Grant
+                            </button>
+                        </div>
+                    </form>
+
+                    <hr>
+                    
+                    <!-- Users With Access List -->
+                    <h6 class="mb-3">Users With Access</h6>
+                    {% if project_access %}
+                        <ul class="list-group list-group-flush">
+                            {% for access in project_access %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span>
+                                        <i class="fas fa-user me-2 text-muted"></i>
+                                        {{ access.users.username if access.users else 'Unknown User' }}
+                                        <small class="text-muted ms-2">(Granted: {{ access.created_at | to_eat }})</small>
+                                    </span>
+                                    <form method="POST" action="{{ url_for('revoke_project_access', project_id=project.id, access_id=access.id) }}" 
+                                          onsubmit="return confirm('Are you sure you want to revoke access for this user?')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <i class="fas fa-user-times"></i> Revoke
+                                        </button>
+                                    </form>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p class="text-center text-muted">No users have been granted access to this programme yet.</p>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
+        {% endif %}
+        <!-- End User Access Control Section -->
+        
 </div>
 
+    <!-- Modals -->
 {% if current_user.is_admin %}
-<!-- New Form Modal -->
-<div class="modal fade" id="newFormModal" tabindex="-1">
+    <!-- Create Form Modal -->
+    <div class="modal fade" id="createFormModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Create New Form</h5>
+                    <h5 class="modal-title">Create New Form for {{ project.name }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form method="POST" action="{{ url_for('create_form', project_id=project.id) }}" id="formModalForm">
+                <form method="POST" action="{{ url_for('create_form', project_id=project.id) }}" id="createForm">
                 <div class="modal-body">
-                    <input type="hidden" name="form_id" id="formIdInput" value=""> 
                     <div class="mb-3">
                         <label for="formTitle" class="form-label">Form Title</label>
                         <input type="text" class="form-control" id="formTitle" name="title" required>
                     </div>
-                    <div id="formFields">
+                        <hr>
                         <h6>Form Fields</h6>
-                        <div class="field-group mb-3">
-                            <div class="row">
+                        <div id="formFieldsContainer">
+                            <!-- Initial field row -->
+                            <div class="row form-field-row mb-3 align-items-center">
                                 <div class="col-md-4">
-                                    <input type="text" class="form-control" name="field_labels[]" placeholder="Field Label" required>
+                                    <label class="form-label">Field Label</label>
+                                    <input type="text" class="form-control form-control-sm" name="field_labels[]" required>
                                 </div>
-                                <div class="col-md-4">
-                                    <select class="form-select" name="field_types[]" required>
+                                <div class="col-md-3">
+                                    <label class="form-label">Field Type</label>
+                                    <select class="form-select form-select-sm field-type" name="field_types[]">
                                         <option value="text">Text</option>
                                         <option value="number">Number</option>
+                                        <option value="date">Date</option>
                                         <option value="dropdown">Dropdown</option>
                                         <option value="radio">Radio Buttons</option>
                                         <option value="checkbox">Checkboxes</option>
                                     </select>
                                 </div>
-                                <div class="col-md-3">
-                                    <input type="text" class="form-control" name="field_options[]" placeholder="Options (comma-separated)">
+                                <div class="col-md-4 options-container" style="display: none;">
+                                    <label class="form-label">Options (comma-separated)</label>
+                                    <input type="text" class="form-control form-control-sm" name="field_options[]">
+                                    <input type="hidden" name="location_field_identifier[]" value=""> <!-- Hidden input for location type -->
                                 </div>
-                                <div class="col-md-1">
-                                    <button type="button" class="btn btn-danger btn-sm remove-field" disabled>
-                                        <i class="fas fa-times"></i>
-                                    </button>
+                                <div class="col-md-1 text-end">
+                                     <label class="form-label">&nbsp;</label><br/>
+                                    <button type="button" class="btn btn-sm btn-danger remove-field-btn" style="display: none;">X</button>
                                 </div>
                             </div>
                         </div>
-                        <div class="text-end mb-3">
-                            <button type="button" class="btn btn-secondary" id="addFieldBtn">
-                                <i class="fas fa-plus me-2"></i>Add Field
+                        <button type="button" id="addFieldBtn" class="btn btn-sm btn-outline-success mt-2">
+                            <i class="fas fa-plus me-1"></i> Add Another Field
                             </button>
-                            <button type="button" class="btn btn-info" id="addLocationBtn">
-                                <i class="fas fa-map-marker-alt me-2"></i>Add Location Fields
+                        {# --- Add Address Fields Button --- #}
+                        <button type="button" id="createAddAddressFieldsBtn" class="btn btn-sm btn-outline-secondary mt-2 ms-2">
+                            <i class="fas fa-map-marker-alt me-1"></i> Add Standard Address Fields
                             </button>
+                        {# --------------------------------- #}
                         </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Create Form</button>
                     </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Form Modal -->
+    <div class="modal fade" id="editFormModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Form</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form method="POST" action="" id="editForm">
+                    <div class="modal-body">
+                        <input type="hidden" id="editFormId" value="">
+                        <div class="mb-3">
+                            <label for="editFormTitle" class="form-label">Form Title</label>
+                            <input type="text" class="form-control" id="editFormTitle" name="title" required>
+                        </div>
+                        <hr>
+                        <h6>Form Fields</h6>
+                        <div id="editFormFieldsContainer">
+                            <!-- Fields will be loaded here by JavaScript -->
+                        </div>
+                        <button type="button" id="editAddFieldBtn" class="btn btn-sm btn-outline-success mt-2">
+                            <i class="fas fa-plus me-1"></i> Add Another Field
+                        </button>
+                        {# --- Add Address Fields Button (for Edit Modal) --- #}
+                        <button type="button" id="editAddAddressFieldsBtn" class="btn btn-sm btn-outline-secondary mt-2 ms-2">
+                            <i class="fas fa-map-marker-alt me-1"></i> Add Standard Address Fields
+                        </button>
+                        {# ---------------------------------------------- #}
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="formModalSubmitBtn">Create Form</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
                 </div>
             </form>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Delete Form Modals -->
-{% for form in forms %}
-<div class="modal fade" id="deleteFormModal{{ form.id }}" tabindex="-1">
+    <!-- Delete Programme Modal -->
+    <div class="modal fade" id="deleteProjectModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Delete Form</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">Confirm Programme Deletion</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                {% if form.submissions_count > 0 %}
-                    <div class="alert alert-warning">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        Cannot delete form. This form has {{ form.submissions_count }} submission(s).
-                    </div>
-                    <p>To delete this form, you must first delete all its submissions from the database.</p>
-                {% else %}
-                    <p>Are you sure you want to delete the form "{{ form.title }}"?</p>
-                {% endif %}
+                    <p><strong>Warning!</strong> Deleting this programme (<strong>{{ project.name }}</strong>) will permanently remove:</p>
+                    <ul>
+                        <li>All forms associated with this programme.</li>
+                        <li>Patient data associated with this programme will be disassociated (project_id set to NULL).</li>
+                    </ul>
+                    <p class="text-danger fw-bold">This action cannot be undone. Are you absolutely sure?</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                {% if form.submissions_count == 0 %}
-                    <form method="POST" action="{{ url_for('delete_form', form_id=form.id) }}" class="d-inline">
-                        <button type="submit" class="btn btn-danger">Delete</button>
+                    <form method="POST" action="{{ url_for('delete_project', project_id=project.id) }}">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-danger">Yes, Delete Programme Permanently</button>
                     </form>
-                {% endif %}
+                </div>
             </div>
         </div>
     </div>
-</div>
-{% endfor %}
-{% endif %}
+    {% endif %}
 
+</div>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/locations.js') }}"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const newFormModalElement = document.getElementById('newFormModal');
-    const newFormModal = new bootstrap.Modal(newFormModalElement);
-    const formModalForm = document.getElementById('formModalForm');
-    const formTitleInput = document.getElementById('formTitle');
-    const formIdInput = document.getElementById('formIdInput');
-    const formModalSubmitBtn = document.getElementById('formModalSubmitBtn');
-    const formFieldsContainer = document.getElementById('formFields');
-    const fieldsWrapper = formFieldsContainer.querySelector('.field-group').parentNode; // Container for field rows
-    const modalTitleElement = newFormModalElement.querySelector('.modal-title');
-
-    const addFieldBtn = document.getElementById('addFieldBtn');
-    const addLocationBtn = document.getElementById('addLocationBtn');
-    let fieldCounter = 1;
-
-    function createStandardFieldRow(label = '', type = 'text', options = '') {
-        fieldCounter++;
-        const fieldGroup = document.createElement('div');
-        fieldGroup.className = 'field-group mb-3';
-        fieldGroup.innerHTML = `
-            <div class="row">
+// Shared function to add a field row to a container
+function addFieldRow(containerId, allowRemove) {
+    const container = document.getElementById(containerId);
+    // const template = document.querySelector('.form-field-row'); // Use the one in create form as template
+    // Define template string directly
+    const fieldRowTemplate = `
+        <div class="row form-field-row mb-3 align-items-center">
                 <div class="col-md-4">
-                    <label for="field_label_${fieldCounter}" class="form-label visually-hidden">Field Label</label>
-                    <input type="text" class="form-control" id="field_label_${fieldCounter}" name="field_labels[]" placeholder="Field Label" value="${label}" required>
+                <label class="form-label">Field Label</label>
+                <input type="text" class="form-control form-control-sm" name="field_labels[]" required>
                 </div>
-                <div class="col-md-4">
-                    <label for="field_type_${fieldCounter}" class="form-label visually-hidden">Field Type</label>
-                    <select class="form-select" id="field_type_${fieldCounter}" name="field_types[]" required>
-                        <option value="text" ${type === 'text' ? 'selected' : ''}>Text</option>
-                        <option value="number" ${type === 'number' ? 'selected' : ''}>Number</option>
-                        <option value="dropdown" ${type === 'dropdown' ? 'selected' : ''}>Dropdown</option>
-                        <option value="radio" ${type === 'radio' ? 'selected' : ''}>Radio Buttons</option>
-                        <option value="checkbox" ${type === 'checkbox' ? 'selected' : ''}>Checkboxes</option>
-                    </select>
+            <div class="col-md-3">
+                <label class="form-label">Field Type</label>
+                <select class="form-select form-select-sm field-type" name="field_types[]">
+                    <option value="text">Text</option>
+                    <option value="number">Number</option>
+                    <option value="date">Date</option>
+                    <option value="dropdown">Dropdown</option>
+                    <option value="radio">Radio Buttons</option>
+                    <option value="checkbox">Checkboxes</option>
+                </select>
+            </div>
+            <div class="col-md-4 options-container" style="display: none;">
+                <label class="form-label">Options (comma-separated)</label>
+                <input type="text" class="form-control form-control-sm" name="field_options[]">
+                <input type="hidden" name="location_field_identifier[]" value=""> 
                 </div>
-                <div class="col-md-3">
-                    <label for="field_options_${fieldCounter}" class="form-label visually-hidden">Field Options</label>
-                    <input type="text" class="form-control" id="field_options_${fieldCounter}" name="field_options[]" placeholder="Options (comma-separated)" value="${options}">
-                </div>
-                <div class="col-md-1">
-                    <button type="button" class="btn btn-danger btn-sm remove-field">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
+            <div class="col-md-1 text-end">
+                 <label class="form-label">&nbsp;</label><br/>
+                <button type="button" class="btn btn-sm btn-danger remove-field-btn" style="display: none;">X</button>
+            </div>
             </div>
         `;
-        return fieldGroup;
-    }
-
-    function createLocationFieldRow(labelText, identifier) {
-        fieldCounter++;
-        const fieldGroup = document.createElement('div');
-        fieldGroup.className = 'field-group mb-3 location-field-group';
-        fieldGroup.innerHTML = `
-            <div class="row align-items-center">
-                <div class="col-md-4">
-                    <label class="form-control-plaintext">${labelText}</label>
-                    <input type="hidden" name="field_labels[]" value="${labelText}">
-                    <input type="hidden" name="field_types[]" value="dropdown">
-                    <input type="hidden" name="field_options[]" value=""> 
-                    <input type="hidden" name="location_field_identifier[]" value="${identifier}">
-                </div>
-                <div class="col-md-4">
-                    <span class="badge bg-secondary">Location Field</span>
-                </div>
-                <div class="col-md-3">
-                    <em class="text-muted">Options populated dynamically</em>
-                </div>
-                <div class="col-md-1">
-                    <button type="button" class="btn btn-danger btn-sm remove-field">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            </div>`;
-        return fieldGroup;
-    }
-
-    function updateRemoveButtons() {
-        const fieldGroups = fieldsWrapper.querySelectorAll('.field-group');
-        fieldGroups.forEach((group, index) => {
-            const removeBtn = group.querySelector('.remove-field');
-            if (removeBtn) {
-                const isLocationGroup = group.classList.contains('location-field-group');
-                const standardFields = fieldsWrapper.querySelectorAll('.field-group:not(.location-field-group)');
-                removeBtn.disabled = (!isLocationGroup && standardFields.length <= 1) || (isLocationGroup && standardFields.length === 0 && fieldGroups.length <= 3);
-            }
-        });
-        
-        const locationFieldExists = fieldsWrapper.querySelector('input[name="location_field_identifier[]"]');
-        if (addLocationBtn) {
-            addLocationBtn.disabled = !!locationFieldExists;
+    // Create element from template string
+    const templateEl = document.createElement('div');
+    templateEl.innerHTML = fieldRowTemplate.trim();
+    const newRow = templateEl.firstChild;
+    // const newRow = template.cloneNode(true);
+    
+    // Clear input values in the new row
+    newRow.querySelectorAll('input, select').forEach(input => {
+        if (input.type === 'checkbox' || input.type === 'radio') {
+            input.checked = false;
+        } else {
+            input.value = '';
         }
+        // Reset select to first option
+        if (input.tagName === 'SELECT') {
+            input.selectedIndex = 0;
+        }
+        // Reset options container visibility
+        if (input.classList.contains('field-type')) {
+            input.closest('.row').querySelector('.options-container').style.display = 'none';
+        }
+         // Reset hidden location identifier
+        if (input.name === 'location_field_identifier[]') {
+            input.value = '';
+        }
+    });
+
+    // Show remove button if applicable
+    const removeBtn = newRow.querySelector('.remove-field-btn');
+    if (removeBtn) {
+        removeBtn.style.display = allowRemove ? 'inline-block' : 'none';
+        removeBtn.addEventListener('click', () => newRow.remove());
     }
 
-    function removeField(event) {
-        if (event.target.closest('.remove-field')) {
-            const fieldGroup = event.target.closest('.field-group');
-            if (fieldGroup.classList.contains('location-field-group')) {
-                fieldsWrapper.querySelectorAll('.location-field-group').forEach(lg => lg.remove());
-                if (addLocationBtn) addLocationBtn.disabled = false;
+    container.appendChild(newRow);
+}
+
+// Add field functionality for Create Form Modal
+document.getElementById('addFieldBtn')?.addEventListener('click', () => {
+    addFieldRow('formFieldsContainer', true);
+    // Make remove buttons visible for all rows except the first one after adding a new row
+    const rows = document.querySelectorAll('#formFieldsContainer .form-field-row');
+    rows.forEach((row, index) => {
+        const removeBtn = row.querySelector('.remove-field-btn');
+        if(removeBtn) removeBtn.style.display = index > 0 ? 'inline-block' : 'none';
+    });
+});
+
+// Add field functionality for Edit Form Modal
+document.getElementById('editAddFieldBtn')?.addEventListener('click', () => {
+    addFieldRow('editFormFieldsContainer', true);
+     // Ensure all remove buttons are shown
+    document.querySelectorAll('#editFormFieldsContainer .remove-field-btn').forEach(btn => btn.style.display = 'inline-block');
+});
+
+// Handle field type change to show/hide options input
+function handleFieldTypeChange(event) {
+    const select = event.target;
+    const row = select.closest('.row');
+    const optionsContainer = row.querySelector('.options-container');
+    const locationIdentifierInput = row.querySelector('input[name="location_field_identifier[]"]');
+    const value = select.value;
+
+    if (value === 'dropdown' || value === 'radio' || value === 'checkbox') {
+        optionsContainer.style.display = 'block';
+        locationIdentifierInput.value = ''; // Clear location identifier if standard type selected
+    } else if (value.startsWith('location_')) {
+         optionsContainer.style.display = 'none';
+         optionsContainer.querySelector('input[name="field_options[]"]').value = ''; // Clear options input
+         locationIdentifierInput.value = value.split('_')[1]; // Set location type (region, district, ward)
             } else {
-                fieldGroup.remove();
-            }
-            updateRemoveButtons();
-        }
+        optionsContainer.style.display = 'none';
+        optionsContainer.querySelector('input[name="field_options[]"]').value = ''; // Clear options input
+        locationIdentifierInput.value = ''; // Clear location identifier
     }
+}
 
-    fieldsWrapper.addEventListener('click', removeField);
-
-    function setupModalForCreate() {
-        modalTitleElement.textContent = 'Create New Form';
-        formModalForm.action = `{{ url_for('create_form', project_id=project.id) }}`;
-        formModalSubmitBtn.textContent = 'Create Form';
-        formIdInput.value = ''; 
-        formTitleInput.value = '';
-        
-        const fieldGroups = fieldsWrapper.querySelectorAll('.field-group');
-        fieldGroups.forEach((group, index) => {
-            if (index > 0) {
-                group.remove();
-            }
-        });
-        
-        const firstGroup = fieldsWrapper.querySelector('.field-group');
-        if (firstGroup) {
-            firstGroup.querySelector('input[name="field_labels[]"]').value = '';
-            firstGroup.querySelector('select[name="field_types[]"]').value = 'text';
-            firstGroup.querySelector('input[name="field_options[]"]').value = '';
-        }
-        
-        if (addLocationBtn) addLocationBtn.disabled = false;
-        updateRemoveButtons(); 
+// Apply field type change handler to both create and edit forms dynamically
+document.addEventListener('change', function(event) {
+    if (event.target && event.target.classList.contains('field-type')) {
+        handleFieldTypeChange(event);
     }
+});
 
-    async function setupModalForEdit(formId) {
-        modalTitleElement.textContent = 'Edit Form';
-        formModalForm.action = `/form/${formId}/edit`;
-        formModalSubmitBtn.textContent = 'Save Changes';
-        formIdInput.value = formId;
+// Ensure initial remove buttons are hidden correctly for Create Form
+document.querySelectorAll('#formFieldsContainer .form-field-row').forEach((row, index) => {
+    const removeBtn = row.querySelector('.remove-field-btn');
+    if(removeBtn) removeBtn.style.display = index > 0 ? 'inline-block' : 'none';
+});
 
-        console.log(`Fetching details for form ID: ${formId}`);
-        try {
-            const response = await fetch(`/api/form/${formId}/details`); 
+// --- Edit Form Modal Logic ---
+const editFormModalElement = document.getElementById('editFormModal');
+const editFormModal = editFormModalElement ? new bootstrap.Modal(editFormModalElement) : null;
+
+function openEditFormModal(formId) {
+    if (!editFormModal) return;
+    console.log(`Opening edit modal for form: ${formId}`);
+
+    const formElement = document.getElementById('editForm');
+    const titleInput = document.getElementById('editFormTitle');
+    const fieldsContainer = document.getElementById('editFormFieldsContainer');
+    const formIdInput = document.getElementById('editFormId');
+
+    // Reset previous state and set the correct form action URL
+    formElement.action = `/form/${formId}/edit`;
+    titleInput.value = '';
+    fieldsContainer.innerHTML = '<p>Loading form fields...</p>';
+    formIdInput.value = formId;
+
+    // Correctly format the URL for the API endpoint
+    const apiUrl = `/api/form/${formId}/details`;
+    console.log(`Fetching form details from: ${apiUrl}`);
+
+    // Fetch form details
+    fetch(apiUrl)
+        .then(response => {
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-            const formData = await response.json(); 
-            console.log("Received form data:", formData);
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                 throw new Error(data.error);
+            }
+            console.log("Received form data:", data);
+            titleInput.value = data.title;
+            fieldsContainer.innerHTML = ''; // Clear loading message
 
-            formTitleInput.value = formData.title;
-
-            fieldsWrapper.innerHTML = '';
-            
-            let hasLocationFields = false;
-            if (formData.fields && formData.fields.length > 0) {
-                formData.fields.forEach(field => {
+            if (data.fields && data.fields.length > 0) {
+                 data.fields.forEach((field, index) => {
+                    addFieldRow('editFormFieldsContainer', true); // Add a new row structure
+                    const lastRow = fieldsContainer.querySelector('.form-field-row:last-child');
+                    
+                    // Populate the new row with fetched data
+                    lastRow.querySelector('input[name="field_labels[]"]').value = field.label;
+                    const typeSelect = lastRow.querySelector('select[name="field_types[]"]');
+                    const optionsInput = lastRow.querySelector('input[name="field_options[]"]');
+                    const locationInput = lastRow.querySelector('input[name="location_field_identifier[]"]');
+                    
+                    let fieldTypeValue = field.type;
                     if (field.location_field_identifier) {
-                        const locationRow = createLocationFieldRow(field.label, field.location_field_identifier);
-                        fieldsWrapper.appendChild(locationRow);
-                        hasLocationFields = true;
+                        fieldTypeValue = `location_${field.location_field_identifier}`;
+                        optionsInput.value = ''; // Clear options for location
+                        locationInput.value = field.location_field_identifier;
                     } else {
-                        const optionsString = Array.isArray(field.options) ? field.options.join(', ') : '';
-                        const standardRow = createStandardFieldRow(field.label, field.type, optionsString);
-                        fieldsWrapper.appendChild(standardRow);
+                         optionsInput.value = field.options ? field.options.join(',') : '';
+                         locationInput.value = '';
                     }
+                    typeSelect.value = fieldTypeValue;
+
+                    // Trigger change event to show/hide options container correctly
+                    handleFieldTypeChange({ target: typeSelect });
+                    
+                     // Ensure remove buttons are visible for all rows in edit mode
+                    lastRow.querySelector('.remove-field-btn').style.display = 'inline-block';
                 });
             } else {
-                fieldsWrapper.appendChild(createStandardFieldRow());
+                // If no fields, add one empty row
+                 addFieldRow('editFormFieldsContainer', false); // Don't allow remove if it's the only one
+                 fieldsContainer.querySelector('.remove-field-btn').style.display = 'none';
             }
             
-            if (addLocationBtn) addLocationBtn.disabled = hasLocationFields;
-            updateRemoveButtons();
-
-        } catch (error) {
-            console.error("Error fetching/populating form for edit:", error);
-            alert("Could not load form details for editing: " + error.message);
-            newFormModal.hide();
-        }
-    }
-
-    if (addFieldBtn) {
-        addFieldBtn.addEventListener('click', function() {
-            fieldsWrapper.appendChild(createStandardFieldRow());
-            updateRemoveButtons();
+            editFormModal.show();
+        })
+        .catch(error => {
+            console.error('Error fetching or processing form details:', error);
+            fieldsContainer.innerHTML = `<div class="alert alert-danger">Error loading form details: ${error.message}</div>`;
+            editFormModal.show(); // Show modal even if error to display message
         });
-    }
+}
 
-    if (addLocationBtn && typeof LOCATION_DATA !== 'undefined') {
-        addLocationBtn.addEventListener('click', function() {
-            fieldsWrapper.appendChild(createLocationFieldRow('Region', 'region'));
-            fieldsWrapper.appendChild(createLocationFieldRow('District', 'district'));
-            fieldsWrapper.appendChild(createLocationFieldRow('Ward', 'ward'));
-            updateRemoveButtons();
-        });
-    } else if (addLocationBtn) {
-        addLocationBtn.disabled = true;
-        addLocationBtn.title = "Location data failed to load";
+// --- Logic for "Add Standard Address Fields" --- 
+function addStandardAddressFields(containerSelector, buttonSelector) {
+    const fieldsContainer = document.querySelector(containerSelector);
+    const button = document.querySelector(buttonSelector);
+    if (!fieldsContainer || !button) return;
+
+    // Prevent adding multiple times
+    if (button.dataset.added === 'true') {
+         alert('Address fields have already been added.');
+        return;
     }
     
-    document.querySelector('.table tbody').addEventListener('click', function(event) {
-        const editButton = event.target.closest('.edit-form-btn');
-        if (editButton) {
-            const formId = editButton.dataset.formId;
-            if (formId) {
-                setupModalForEdit(formId);
-            }
-        }
-    });
-    
-    document.querySelectorAll('[data-bs-target="#newFormModal"]').forEach(button => {
-        if (!button.classList.contains('edit-form-btn')) {
-            button.addEventListener('click', setupModalForCreate);
-        }
+    console.log('Adding standard address fields...');
+
+    const addressFields = [
+        { label: 'Region', identifier: 'region' },
+        { label: 'District', identifier: 'district' },
+        { label: 'Ward', identifier: 'ward' }
+    ];
+
+    addressFields.forEach(fieldInfo => {
+        const newFieldRow = document.createElement('div');
+        newFieldRow.className = 'row form-field-row mb-3 align-items-center address-field-row'; // Added specific class
+        newFieldRow.innerHTML = `
+            <div class="col-md-4">
+                <label class="form-label">Field Label</label>
+                <input type="text" class="form-control form-control-sm" name="field_labels[]" value="${fieldInfo.label}" readonly required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Field Type</label>
+                <input type="text" class="form-control form-control-sm" value="Location Dropdown" readonly>
+                <input type="hidden" name="field_types[]" value="dropdown">
+                <input type="hidden" name="location_field_identifier[]" value="${fieldInfo.identifier}">
+                <input type="hidden" name="field_options[]" value=""> {# Ensure options array is present even if empty #}
+            </div>
+            <div class="col-md-4 options-container" style="display: none;">
+                {# Options not applicable for location #}
+            </div>
+            <div class="col-md-1 text-end">
+                <label class="form-label">&nbsp;</label><br/>
+                <button type="button" class="btn btn-sm btn-danger remove-field-btn">X</button> {# Allow removal #}
+            </div>
+        `;
+        fieldsContainer.appendChild(newFieldRow);
+        // Attach event listener to the new remove button
+        newFieldRow.querySelector('.remove-field-btn').addEventListener('click', function() {
+             newFieldRow.remove();
+             // Re-enable the add button if all address fields are removed?
+             // Check if any .address-field-row remains. If not, enable.
+             if (!fieldsContainer.querySelector('.address-field-row')) {
+                button.disabled = false;
+                 button.dataset.added = 'false';
+             }
+        });
     });
 
-    newFormModalElement.addEventListener('hidden.bs.modal', function (event) {
-        console.log('Modal hidden');
-    });
+    // Disable the button after adding
+    button.disabled = true;
+    button.dataset.added = 'true';
+    console.log('Address fields added.');
+}
 
-    updateRemoveButtons();
-});
+// Attach listener for Create Modal
+const createAddBtn = document.getElementById('createAddAddressFieldsBtn');
+if (createAddBtn) {
+    createAddBtn.addEventListener('click', () => addStandardAddressFields('#formFieldsContainer', '#createAddAddressFieldsBtn'));
+}
+
+// Attach listener for Edit Modal
+const editAddBtn = document.getElementById('editAddAddressFieldsBtn');
+if (editAddBtn) {
+    editAddBtn.addEventListener('click', () => addStandardAddressFields('#editFormFieldsContainer', '#editAddAddressFieldsBtn'));
+}
+
 </script>
 {% endblock %} 

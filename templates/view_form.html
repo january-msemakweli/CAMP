@@ -5,42 +5,90 @@
     <div class="col-12">
         <h2>{{ form.title }}</h2>
         <p class="text-muted">Programme: {{ project.name }}</p>
+        {# Pass is_first_form flag from backend #}
+        {% if is_first_form %}
+            <span class="badge bg-info">Registration Form</span>
+        {% endif %}
     </div>
 </div>
 
 <div class="row">
-    <div class="col-md-6 mb-4">
+    {# Form Column #}
+    <div class="col-md-7 mb-4">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0">Submit Form</h5>
+                <h5 class="mb-0">Data Entry</h5>
             </div>
             <div class="card-body">
-                <form id="dataEntryForm" method="POST" action="{{ url_for('submit_form', form_id=form.id) }}">
-                    <div class="mb-3">
-                        <label for="patientNumber" class="form-label">Patient Number</label>
-                        <input type="text" class="form-control" id="patientNumber" name="patient_number" required>
-                        <div class="form-text d-none">Patient ID will be generated as: {{ project.camp_date }}-[number]</div>
+                {# Patient ID Workflow UI remains here #}
+                <div id="patientIdSection" class="mb-4 p-3 border rounded bg-light">
+                    <h6 class="mb-3">Patient Identification</h6>
+                    <div class="row g-2 align-items-end">
+                        {# Conditionally show Create button only for the first form #}
+                        {% if is_first_form %}
+                        <div class="col-auto">
+                            <button type="button" id="createPatientIdBtn" class="btn btn-success">
+                                <i class="fas fa-plus me-1"></i> Create New Patient ID
+                            </button>
+                        </div>
+                        {% else %}
+                         <div class="col-12">
+                            <div class="alert alert-warning small p-2">
+                                <i class="fas fa-info-circle me-1"></i> New patient IDs can only be created from the programme's first form (Registration).
+                            </div>
+                         </div>
+                        {% endif %}
+                        
+                        {# Search Section (Always shown, but functionality might differ) #}
+                        <div class="col">
+                            <label for="searchPatientIdInput" class="form-label visually-hidden">Search Existing Patient ID</label>
+                            <input type="search" id="searchPatientIdInput" class="form-control" placeholder="Search Existing Patient ID...">
+                            <div id="searchPatientIdResults" class="list-group mt-1 position-absolute w-100" style="z-index: 1000;"></div>
+                        </div>
                     </div>
+                    <div id="selectedPatientIdDisplay" class="mt-3" style="display: none;">
+                        <span class="badge bg-primary fs-6 me-2">Selected ID: <strong id="selectedPatientIdValue"></strong></span>
+                        <button type="button" id="usePatientIdBtn" class="btn btn-sm btn-primary" disabled>
+                            <i class="fas fa-check me-1"></i> Use This ID for Form
+                        </button>
+                        <button type="button" id="clearPatientIdBtn" class="btn btn-sm btn-outline-secondary ms-1">
+                             <i class="fas fa-times"></i> Clear
+                        </button>
+                    </div>
+                </div>
+                {# --- End Patient ID Workflow UI --- #}
+
+                {# Form Separator #}
+                <hr id="formSeparator" style="display: none;" />
                     
+                {# Data Entry Form #}
+                <form id="dataEntryForm" method="POST" action="{{ url_for('submit_form', form_id=form.id) }}" style="display: none;">
+                    {# Hidden input #}
+                    <input type="hidden" id="patientIdInput" name="patient_id" value="">
+                    {# Form fields loop #}
                     {% for field in form.fields %}
                     <div class="mb-3">
                         <label class="form-label" for="field-{{ loop.index }}">{{ field.label }}</label>
                         {% if field.location_type %}
-                            {# Handle location dropdowns #}
-                            <select class="form-select location-dropdown choices-select" 
+                            {# Add specific class based on location_type #}
+                            {% set location_class = 'location-' + field.location_type %}
+                            <select class="form-select location-dropdown choices-select {{ location_class }}" 
                                     id="field-{{ loop.index }}" 
-                                    name="{{ field.label.lower().replace(' ', '_') }}" 
+                                    name="{{ field.label }}" 
+                                    {# Keep data-location-type for potential future use, but select by class #}
                                     data-location-type="{{ field.location_type }}" 
                                     required 
                                     {% if field.location_type != 'region' %}disabled{% endif %}>
                                 {# Options will be populated by JS #}
                             </select>
                         {% elif field.type == 'text' %}
-                            <input type="text" class="form-control" id="field-{{ loop.index }}" name="{{ field.label.lower().replace(' ', '_') }}" required>
+                            <input type="text" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" required>
                         {% elif field.type == 'number' %}
-                            <input type="number" class="form-control" id="field-{{ loop.index }}" name="{{ field.label.lower().replace(' ', '_') }}" required>
+                            <input type="number" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" required>
+                        {% elif field.type == 'date' %}
+                            <input type="date" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" required>
                         {% elif field.type == 'dropdown' %}
-                            <select class="form-select choices-select" id="field-{{ loop.index }}" name="{{ field.label.lower().replace(' ', '_') }}" required>
+                            <select class="form-select choices-select" id="field-{{ loop.index }}" name="{{ field.label }}" required>
                                 <option value="">Select an option</option>
                                 {% for option in field.options %}
                                 <option value="{{ option }}">{{ option }}</option>
@@ -49,352 +97,555 @@
                         {% elif field.type == 'radio' %}
                             {% for option in field.options %}
                             <div class="form-check">
-                                <input class="form-check-input" type="radio" name="{{ field.label.lower().replace(' ', '_') }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}" required>
+                                <input class="form-check-input" type="radio" name="{{ field.label }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}" required>
                                 <label class="form-check-label" for="field-{{ loop.index }}-{{ loop.index0 }}">{{ option }}</label>
                             </div>
                             {% endfor %}
                         {% elif field.type == 'checkbox' %}
                             {% for option in field.options %}
                             <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="{{ field.label.lower().replace(' ', '_') }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}">
+                                <input class="form-check-input" type="checkbox" name="{{ field.label }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}">
                                 <label class="form-check-label" for="field-{{ loop.index }}-{{ loop.index0 }}">{{ option }}</label>
                             </div>
                             {% endfor %}
                         {% endif %}
                     </div>
                     {% endfor %}
-                    
-                    <button type="submit" class="btn btn-primary">Submit Form</button>
+                    <button type="submit" class="btn btn-primary w-100">Submit Form Data</button>
                 </form>
             </div>
         </div>
-    </div>
+    </div> {# End of col-md-7 #}
     
-    <div class="col-md-6 mb-4">
-        <div class="card">
+    {# Preview Column #}
+    <div class="col-md-5 mb-4">
+        <div id="patientPreviewCard" class="card"> {# Removed style="display: none;" #}
             <div class="card-header">
-                <h5 class="mb-0">Recent Submissions</h5>
+                <h6 class="mb-0">Patient Preview</h6>
             </div>
-            <div class="card-body">
-                {% if submissions %}
-                    <div class="table-responsive">
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Patient ID</th>
-                                    <th>Submitted By</th>
-                                    <th>Date</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for submission in submissions %}
-                                <tr>
-                                    <td>{{ submission.patient_id }}</td>
-                                    <td>{{ submission.submitted_by }}</td>
-                                    <td>{{ submission.created_at }}</td>
-                                    <td>
-                                        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#viewSubmissionModal{{ submission.id }}">
-                                            View
-                                        </button>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                {% else %}
-                    <p class="text-center">No submissions yet.</p>
-                {% endif %}
+            <div class="card-body" id="patientPreviewBody">
+                <p class="text-center text-muted">Search and select a patient ID to view details.</p> {# Updated placeholder #}
             </div>
         </div>
-    </div>
-</div>
-
-{% if current_user.is_admin %}
-<!-- User Access Control Section -->
-<div class="row">
-    <div class="col-12 mb-4">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">
-                        <i class="fas fa-user-lock me-2"></i>User Access Control
-                    </h5>
-                </div>
+        
+        {% if current_user.is_admin %}
+        <!-- Form Access Management Card -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h6 class="mb-0"><i class="fas fa-key me-2"></i>Form Access Management</h6>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <!-- Grant Access Form -->
-                        <h6 class="mb-3">Grant Access</h6>
-                        <form method="POST" action="{{ url_for('grant_form_access', form_id=form.id) }}" class="mb-4">
-                            <div class="input-group">
-                                <select class="form-select" name="user_id" required>
-                                    <option value="">Select User</option>
-                                    {% for user in users %}
-                                        {% if not user.is_admin %}
-                                            <option value="{{ user.id }}">{{ user.username }}</option>
-                                        {% endif %}
-                                    {% endfor %}
-                                </select>
-                                <button type="submit" class="btn btn-success">
-                                    <i class="fas fa-plus me-1"></i>Grant Access
-                                </button>
-                            </div>
-                            <small class="form-text text-muted">Select a user to grant access to this form.</small>
+                <h6 class="mb-3">Current Access</h6>
+                {% if user_permissions %}
+                <ul class="list-group list-group-flush mb-4">
+                    {% for permission in user_permissions %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>
+                            <i class="fas fa-user me-1"></i>
+                            {{ permission.users.username }}
+                        </span>
+                        <form method="POST" action="{{ url_for('revoke_form_access', form_id=form.id, permission_id=permission.id) }}" 
+                            class="d-inline" onsubmit="return confirm('Are you sure you want to revoke access for this user?')">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                <i class="fas fa-user-times"></i> Revoke
+                            </button>
                         </form>
-                    </div>
-                    <div class="col-md-6">
-                        <!-- Users With Access -->
-                        <h6 class="mb-3">Users With Access</h6>
-                        {% if user_permissions %}
-                            <div class="table-responsive">
-                                <table class="table table-sm">
-                                    <thead>
-                                        <tr>
-                                            <th>Username</th>
-                                            <th>Granted On</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for permission in user_permissions %}
-                                        <tr>
-                                            <td>{{ permission.users.username }}</td>
-                                            <td>{{ permission.created_at }}</td>
-                                            <td>
-                                                <form method="POST" action="{{ url_for('revoke_form_access', form_id=form.id, permission_id=permission.id) }}">
-                                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to revoke access for this user?')">
-                                                        <i class="fas fa-times me-1"></i>Revoke
-                                                    </button>
-                                                </form>
-                                            </td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
-                        {% else %}
-                            <div class="alert alert-warning">
-                                <i class="fas fa-exclamation-triangle me-2"></i>No users have been granted access to this form yet.
-                            </div>
-                        {% endif %}
-                    </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>No users have specific access to this form yet.
                 </div>
-                <div class="alert alert-info mt-3">
-                    <i class="fas fa-info-circle me-2"></i>Admin users automatically have access to all forms. Regular users need explicit access to view and submit forms.
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<!-- Submission View Modals -->
-{% for submission in submissions %}
-<div class="modal fade" id="viewSubmissionModal{{ submission.id }}" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Submission Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <strong>Patient ID:</strong> {{ submission.patient_id }}<br>
-                    <strong>Submitted By:</strong> {{ submission.submitted_by }}<br>
-                    <strong>Date:</strong> {{ submission.created_at }}
-                </div>
-                <div class="table-responsive">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Field</th>
-                                <th>Value</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for field, value in submission.data.items() %}
-                            <tr>
-                                <td>{{ field.replace('_', ' ').title() }}</td>
-                                <td>
-                                    {% if value is iterable and value is not string %}
-                                        {{ value|join(', ') }}
-                                    {% else %}
-                                        {{ value }}
-                                    {% endif %}
-                                </td>
-                            </tr>
+                {% endif %}
+                
+                <h6 class="mb-3">Grant Access</h6>
+                <form method="POST" action="{{ url_for('grant_form_access', form_id=form.id) }}">
+                    <div class="mb-3">
+                        <label for="userSelect" class="form-label">Select User</label>
+                        <select class="form-select" id="userSelect" name="user_id" required>
+                            <option value="">-- Select User --</option>
+                            {% for user in users %}
+                                {% if not user.id in user_permissions|map(attribute='user_id')|list %}
+                                <option value="{{ user.id }}">{{ user.username }}</option>
+                                {% endif %}
                             {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            {% if not users %}
+                            <option value="" disabled>No users with project access found - grant project access first</option>
+                            {% endif %}
+                        </select>
+                        <div class="form-text">Only users with project access are shown. <a href="{{ url_for('project_detail', project_id=project.id) }}">Manage project access here</a>.</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" {% if not users %}disabled{% endif %}>
+                        <i class="fas fa-user-plus me-1"></i> Grant Access
+                    </button>
+                </form>
             </div>
         </div>
-    </div>
-</div>
-{% endfor %}
+        {% endif %}
+    </div> {# End of col-md-5 #}
+
+</div> {# End of row #}
+
+{# Removed Submission View Modals - Viewing is now patient-centric #}
+{# {% for submission in submissions %} ... {% endfor %} #}
+
 {% endblock %}
 
 {% block scripts %}
+<!-- Include Choices.js CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
+<!-- Include Choices.js JS -->
+<script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+
+<!-- Include locations data -->
 <script src="{{ url_for('static', filename='js/locations.js') }}"></script> 
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM Loaded. Initializing form script with Choices.js...");
-    const form = document.getElementById('dataEntryForm');
-    
-    // --- Initialize Choices.js instances --- 
-    let regionChoices = null;
-    let districtChoices = null;
-    let wardChoices = null;
-    const standardChoicesInstances = {}; // Store standard dropdown instances
+    console.log('DOM Content Loaded. Initializing scripts...'); // Log start
 
-    const choicesConfig = {
+    // --- Choices.js Initialization (Apply to all selects - RUNS IMMEDIATELY) ---
+    const allDropdowns = document.querySelectorAll('select.form-select:not([multiple])'); 
+    console.log(`Found ${allDropdowns.length} dropdowns to initialize with Choices.js`); 
+    allDropdowns.forEach(el => {
+        // Avoid re-initializing 
+        if (!el.choicesInstance) { 
+            el.choicesInstance = new Choices(el, {
         searchEnabled: true,
-        itemSelectText: 'Select',
-        shouldSort: true, // Sorts options alphabetically in the dropdown
-        removeItemButton: false, 
-        // No placeholder options needed here, they are in the HTML for standard dropdowns
-    };
-
-    const locationChoicesConfig = {
-        ...choicesConfig, // Inherit base config
-        placeholder: true, // Use placeholder for location fields
-    };
-
-    // Function to create Choices.js options array (for dynamic population)
-    function createChoicesOptions(optionsArray) {
-        return optionsArray.map(option => ({
-            value: option,
-            label: option,
-            selected: false,
-            disabled: false,
-        }));
-    }
-
-    // Initialize Location Dropdowns
-    const regionSelectElement = form.querySelector('select[data-location-type=\"region\"]');
-    const districtSelectElement = form.querySelector('select[data-location-type=\"district\"]');
-    const wardSelectElement = form.querySelector('select[data-location-type=\"ward\"]');
-
-    if (regionSelectElement) {
-        regionChoices = new Choices(regionSelectElement, {
-            ...locationChoicesConfig,
-            placeholderValue: '-- Select Region --',
-        });
-        console.log("Region Choices initialized:", regionChoices);
-    }
-    if (districtSelectElement) {
-        districtChoices = new Choices(districtSelectElement, {
-            ...locationChoicesConfig,
-            placeholderValue: '-- Select Region First --',
-        });
-        districtChoices.disable();
-        console.log("District Choices initialized (disabled):", districtChoices);
-    }
-    if (wardSelectElement) {
-        wardChoices = new Choices(wardSelectElement, {
-            ...locationChoicesConfig,
-            placeholderValue: '-- Select District First --',
-        });
-        wardChoices.disable();
-        console.log("Ward Choices initialized (disabled):", wardChoices);
-    }
-
-    // Initialize Standard Dropdowns (that are not location dropdowns)
-    const standardSelects = form.querySelectorAll('select.choices-select:not([data-location-type])');
-    standardSelects.forEach(selectElement => {
-        try {
-            const instance = new Choices(selectElement, choicesConfig);
-            standardChoicesInstances[selectElement.id || selectElement.name] = instance;
-            console.log(`Standard Choices initialized for: ${selectElement.id || selectElement.name}`, instance);
-        } catch (error) {
-            console.error(`Failed to initialize Choices.js for element:`, selectElement, error);
+                itemSelectText: 'Press to select',
+                shouldSort: false, 
+                allowHTML: false,
+            });
         }
     });
-    
-    // Function to set choices for a Location Choices.js instance
-    function updateLocationChoices(choicesInstance, optionsArray, placeholder) {
-        if (!choicesInstance) return;
-        console.log(`Updating Location Choices for: ${placeholder}`, choicesInstance, optionsArray);
-        
-        const choicesOptions = createChoicesOptions(optionsArray);
-        choicesInstance.setChoices(
-            [
-                { value: '', label: placeholder, selected: true, disabled: true },
-                ...choicesOptions
-            ],
-            'value', 'label', true
-        );
+    console.log('Choices.js initialization complete.'); // Log after init
+
+    // --- Find Location Dropdowns by NAME (after init) ---
+    let regionDropdown = null;
+    let districtDropdown = null;
+    let wardDropdown = null;
+
+    allDropdowns.forEach(el => {
+        if (el.name === 'Region') {
+            regionDropdown = el;
+        } else if (el.name === 'District') {
+            districtDropdown = el;
+        } else if (el.name === 'Ward') {
+            wardDropdown = el;
+        }
+    });
+    console.log('Region Dropdown Element (by name):', regionDropdown);
+    console.log('District Dropdown Element (by name):', districtDropdown);
+    console.log('Ward Dropdown Element (by name):', wardDropdown);
+    // --------------------------------------------------
+
+    // --- Location Dropdown Logic ---
+    console.log('Running location logic...');
+
+    // Helper Function: Populate Dropdown 
+    function populateDropdown(dropdownElement, optionsArray) {
+        // Add null check for dropdownElement itself
+        if (!dropdownElement) {
+            console.error("populateDropdown called with null element");
+            return;
+        }
+        const choicesInstance = dropdownElement.choicesInstance;
+        console.log('Inside populateDropdown for:', dropdownElement, 'Choices Instance:', choicesInstance);
+        if (!choicesInstance) {
+            console.error('Choices instance not found for:', dropdownElement);
+            // Fallback: Maybe try initializing Choices here if not found?
+            // Or just disable the raw element
+            dropdownElement.disabled = true;
+            return;
+        }
+        choicesInstance.clearStore(); 
+        choicesInstance.clearInput();
+        const choices = optionsArray.map(option => ({ value: option, label: option }));
+        choicesInstance.setChoices(choices, 'value', 'label', true); 
         choicesInstance.enable();
-        choicesInstance.setChoiceByValue(''); // Ensure placeholder is selected
+        console.log('Enabled choices for:', dropdownElement);
     }
 
-    // Function to reset and disable a Location Choices.js instance
-    function resetLocationChoices(choicesInstance, placeholder) {
-        if (!choicesInstance) return;
-        console.log(`Resetting Location Choices: ${placeholder}`, choicesInstance);
-        choicesInstance.setChoices(
-            [{ value: '', label: placeholder, selected: true, disabled: true }],
-            'value', 'label', true
-        );
+    // Helper Function: Reset Dropdown
+    function resetDropdown(dropdownElement) {
+        // Add null check for dropdownElement itself
+        if (!dropdownElement) {
+             console.error("resetDropdown called with null element");
+            return;
+        }
+        const choicesInstance = dropdownElement.choicesInstance;
+        if (!choicesInstance) { 
+            // If no instance, just disable the raw element
+             console.warn('Choices instance not found for reset, disabling raw element:', dropdownElement);
+            dropdownElement.disabled = true;
+            return; 
+        }
+        choicesInstance.clearStore(); 
+        choicesInstance.clearInput(); 
         choicesInstance.disable();
-        choicesInstance.setChoiceByValue('');
     }
 
-    // --- Initial Population (Only for Region) ---
-    if (regionChoices && typeof LOCATION_DATA !== 'undefined') {
-        console.log("Attempting to populate Region dropdown using Choices.js.");
-        const regions = Object.keys(LOCATION_DATA);
-        console.log("Regions found:", regions);
-        updateLocationChoices(regionChoices, regions, '-- Select Region --');
-    } else if (regionSelectElement) { // Log error only if element exists but data/Choices failed
-        console.error("Failed to populate Region dropdown. Check LOCATION_DATA.", typeof LOCATION_DATA);
+    // Populate Initial Regions - Simplified Check
+    if (regionDropdown && LOCATION_DATA) {
+        const regions = Object.keys(LOCATION_DATA).sort();
+        // Attempt to set config and populate, relying on checks inside populateDropdown
+        if (regionDropdown.choicesInstance) { // Check instance before accessing config
+             regionDropdown.choicesInstance.config.shouldSort = true; 
+        } else {
+             console.warn('Cannot set shouldSort, choicesInstance not found yet for Region');
+        }
+        populateDropdown(regionDropdown, regions);
+    } else {
+        console.error('Could not populate initial regions. Region dropdown or LOCATION_DATA missing.');
+        if(regionDropdown) regionDropdown.disabled = true; // Disable raw element if found but data missing
     }
-
-    // --- Event Listeners for Location Fields ---
-    if (regionSelectElement && districtChoices) {
-        regionSelectElement.addEventListener('change', function(event) {
-            const selectedRegion = event.detail.value;
-            console.log("Region changed (Choices.js):", selectedRegion);
+    
+    // Add Event Listeners FIRST
+    if (regionDropdown && districtDropdown) {
+        regionDropdown.addEventListener('change', function() {
+            console.log('Region changed. Selected value:', this.value);
+            resetDropdown(districtDropdown);
+            if (wardDropdown) resetDropdown(wardDropdown);
             
+            const selectedRegion = this.value; // Choices.js sets the value on the original select
             if (selectedRegion && LOCATION_DATA[selectedRegion]) {
-                const districts = Object.keys(LOCATION_DATA[selectedRegion]);
-                console.log("Districts found:", districts);
-                updateLocationChoices(districtChoices, districts, '-- Select District --');
+                console.log('Found districts for region:', selectedRegion);
+                const districts = Object.keys(LOCATION_DATA[selectedRegion]).sort();
+                console.log('Populating districts:', districts);
+                populateDropdown(districtDropdown, districts);
             } else {
-                console.log("Resetting District dropdown (Choices.js).");
-                resetLocationChoices(districtChoices, '-- Select Region First --');
-            }
-            if (wardChoices) {
-                console.log("Resetting Ward dropdown due to Region change (Choices.js).");
-                resetLocationChoices(wardChoices, '-- Select District First --');
+                 console.log('No districts found or no region selected for:', selectedRegion);
+                 if(districtDropdown && districtDropdown.choicesInstance) districtDropdown.choicesInstance.disable(); 
+                 else if(districtDropdown) districtDropdown.disabled = true;
+                 if(wardDropdown && wardDropdown.choicesInstance) wardDropdown.choicesInstance.disable();
+                 else if(wardDropdown) wardDropdown.disabled = true;
             }
         });
     }
 
-    if (districtSelectElement && wardChoices) {
-        districtSelectElement.addEventListener('change', function(event) {
-            const selectedDistrict = event.detail.value;
-            const selectedRegion = regionChoices ? regionChoices.getValue(true) : null; 
-            console.log("District changed (Choices.js):", selectedDistrict, "(Region:", selectedRegion, ")");
-            
+    if (districtDropdown && wardDropdown) {
+        districtDropdown.addEventListener('change', function() {
+            console.log('District changed. Selected value:', this.value);
+            resetDropdown(wardDropdown);
+            const selectedRegion = regionDropdown ? regionDropdown.value : null; // Need region value
+            const selectedDistrict = this.value;
+            console.log(`Looking for wards in Region: ${selectedRegion}, District: ${selectedDistrict}`);
             if (selectedRegion && selectedDistrict && LOCATION_DATA[selectedRegion] && LOCATION_DATA[selectedRegion][selectedDistrict]) {
-                const wards = LOCATION_DATA[selectedRegion][selectedDistrict];
-                console.log("Wards found:", wards);
-                updateLocationChoices(wardChoices, wards, '-- Select Ward --');
+                console.log('Found wards for district:', selectedDistrict);
+                const wards = LOCATION_DATA[selectedRegion][selectedDistrict].sort();
+                console.log('Populating wards:', wards);
+                populateDropdown(wardDropdown, wards);
             } else {
-                console.log("Resetting Ward dropdown (Choices.js).");
-                resetLocationChoices(wardChoices, '-- Select District First --');
+                 console.log('No wards found or no district/region selected.');
+                 if(wardDropdown && wardDropdown.choicesInstance) wardDropdown.choicesInstance.disable();
+                 else if(wardDropdown) wardDropdown.disabled = true;
             }
         });
     }
 
-    console.log("Form script initialization with Choices.js complete for all dropdowns.");
-});
+    // Disable district and ward initially using reset function AFTER listeners are attached
+    resetDropdown(districtDropdown);
+    resetDropdown(wardDropdown);
+
+    // --- Patient ID Workflow JavaScript (Remains unchanged) ---
+    const createBtn = document.getElementById('createPatientIdBtn');
+    const searchInput = document.getElementById('searchPatientIdInput');
+    const searchResultsContainer = document.getElementById('searchPatientIdResults');
+    const selectedDisplay = document.getElementById('selectedPatientIdDisplay');
+    const selectedValueSpan = document.getElementById('selectedPatientIdValue');
+    const useIdBtn = document.getElementById('usePatientIdBtn');
+    const clearIdBtn = document.getElementById('clearPatientIdBtn');
+    const patientIdInputHidden = document.getElementById('patientIdInput');
+    const dataEntryForm = document.getElementById('dataEntryForm');
+    const formSeparator = document.getElementById('formSeparator');
+    const patientIdSection = document.getElementById('patientIdSection');
+
+    let searchTimeout;
+    const previewCard = document.getElementById('patientPreviewCard');
+    const previewBody = document.getElementById('patientPreviewBody');
+    const defaultPreviewMessage = '<p class="text-center text-muted">Search and select a patient ID to view details.</p>';
+
+    // Function to fetch and display patient preview
+    function displayPatientPreview(patientId) {
+        if (!previewBody) return;
+
+        // Don't hide/show the card, just update the body
+        // previewCard.style.display = 'block'; 
+        previewBody.innerHTML = '<p class="text-center text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading preview...</p>';
+
+        fetch(`/api/patient_preview/${patientId}`)
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        throw new Error('Patient data not found. Database tables may not be set up correctly.');
+                    } else {
+                        // Try to get error message from JSON body if possible
+                        return response.json().then(errData => { 
+                            throw new Error(errData.error || `HTTP error ${response.status}`); 
+                        }).catch(() => {
+                            // Fallback if response body isn't JSON or error field missing
+                            throw new Error(`HTTP error ${response.status}`);
+                        });
+                    }
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Process the response structure: { patient_record: {...}, form_details: {form_id: {title: ..., field_order: [...]}} }
+                if (!data || !data.patient_record) {
+                    console.error('Invalid data received from API:', data);
+                    previewBody.innerHTML = '<p class="text-danger">Error: Could not load patient details from API.</p>';
+                    return;
+                }
+                
+                const patient = data.patient_record;
+                const formDetailsMap = data.form_details || {}; // Use provided details or default to empty object
+                
+                // Helper function to escape HTML special characters
+                function escapeHtml(unsafe) {
+                    if (unsafe === null || typeof unsafe === 'undefined') return '';
+                    return String(unsafe)
+                         .replace(/&/g, "&amp;")
+                         .replace(/</g, "&lt;")
+                         .replace(/>/g, "&gt;")
+                         .replace(/"/g, "&quot;")
+                         .replace(/'/g, "&#039;");
+                 }
+
+                // Build basic patient info
+                let content = '<dl class="row">' + 
+                              `<dt class="col-sm-3">Patient ID</dt><dd class="col-sm-9">${escapeHtml(patient.patient_id)}</dd>` + 
+                              `<dt class="col-sm-3">Created</dt><dd class="col-sm-9">${patient.created_at_eat ? new Date(patient.created_at_eat).toLocaleString('en-GB') : 'N/A'}</dd>` + // Added locale for clarity
+                              '</dl>';
+
+                // Build accordion for form data
+                const patientFormData = patient.data;
+                if (patientFormData && typeof patientFormData === 'object' && Object.keys(patientFormData).length > 0) {
+                    content += '<h6>Previous Form Data:</h6>';
+                    content += '<div class="accordion accordion-flush" id="patientDataAccordion">'; // Added accordion-flush for less border
+                    
+                    for (const [formId, formData] of Object.entries(patientFormData)) {
+                         const formDetails = formDetailsMap[formId]; // Get details for this form
+                         const formTitle = formDetails ? formDetails.title : `Form ID: ${formId}`; 
+                         const fieldOrder = formDetails ? formDetails.field_order : null; // Get the ordered labels
+                         
+                         let safeFormTitle = escapeHtml(formTitle);
+                         let safeFormId = escapeHtml(formId);
+
+                         content += `
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-${safeFormId}">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${safeFormId}" aria-expanded="false" aria-controls="collapse-${safeFormId}">
+                                    ${safeFormTitle} <span class="text-muted ms-2 small">(${safeFormId.substring(0,8)}...)</span>
+                                </button>
+                                </h2>
+                                <div id="collapse-${safeFormId}" class="accordion-collapse collapse" aria-labelledby="heading-${safeFormId}">
+                                <div class="accordion-body">
+                                    <dl class="row">`;
+                                    
+                        if (typeof formData === 'object' && formData !== null) {
+                            // --- Use fieldOrder if available --- 
+                            if (fieldOrder && Array.isArray(fieldOrder) && fieldOrder.length > 0) {
+                                console.log(`Using field order for form ${formId}:`, fieldOrder);
+                                for (const fieldLabel of fieldOrder) {
+                                    // Check if the label actually exists in the submitted data
+                                    if (formData.hasOwnProperty(fieldLabel)) {
+                                        const fieldValue = formData[fieldLabel];
+                                        const displayValue = escapeHtml(Array.isArray(fieldValue) ? fieldValue.join(', ') : fieldValue);
+                                        content += `<dt class="col-sm-5">${escapeHtml(fieldLabel)}</dt><dd class="col-sm-7 text-break">${displayValue || '<em>(empty)</em>'}</dd>`;
+                                    }
+                                }
+                                // Optional: Display fields present in data but not in fieldOrder?
+                                // for (const [fieldLabel, fieldValue] of Object.entries(formData)) {
+                                //     if (!fieldOrder.includes(fieldLabel)) { ... } 
+                                // }
+                            } else {
+                                // --- Fallback to iterating data object if no order --- 
+                                console.warn(`No field order found for form ${formId}, using default object iteration.`);
+                                for (const [fieldLabel, fieldValue] of Object.entries(formData)) {
+                                    const displayValue = escapeHtml(Array.isArray(fieldValue) ? fieldValue.join(', ') : fieldValue);
+                                    content += `<dt class="col-sm-5">${escapeHtml(fieldLabel)}</dt><dd class="col-sm-7 text-break">${displayValue || '<em>(empty)</em>'}</dd>`;
+                                }
+                            }
+                            // ------------------------------------
+                        } else {
+                             content += `<dd class="col-12"><em>Invalid/non-object data format for this form entry.</em></dd>`;
+                        }
+                        content += '</dl></div></div></div>'; // Close dl, accordion-body, accordion-collapse, accordion-item
+                    }
+                    content += '</div>'; // End accordion
+                } else {
+                    content += '<p><em>No previous form data recorded for this patient.</em></p>';
+                }
+                previewBody.innerHTML = content;
+            })
+            .catch(error => {
+                console.error('Error fetching patient preview:', error);
+                previewBody.innerHTML = `<p class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>Could not load patient preview: ${error.message}</p>`;
+            });
+    }
+
+    // Function to show the form once an ID is selected and confirmed
+    function activateForm(patientId) {
+        patientIdInputHidden.value = patientId;
+        dataEntryForm.style.display = 'block';
+        formSeparator.style.display = 'block';
+        // Disable workflow UI
+        if(createBtn) createBtn.disabled = true;
+        searchInput.disabled = true;
+        useIdBtn.disabled = true;
+        searchResultsContainer.innerHTML = ''; 
+        selectedDisplay.style.display = 'flex'; // Ensure display is flex
+        selectedValueSpan.textContent = patientId;
+    }
+
+    // Function to reset the workflow UI
+    function resetWorkflow() {
+        patientIdInputHidden.value = '';
+        dataEntryForm.style.display = 'none';
+        formSeparator.style.display = 'none';
+        selectedDisplay.style.display = 'none';
+        selectedValueSpan.textContent = '';
+        if(createBtn) createBtn.disabled = false;
+        searchInput.disabled = false;
+        searchInput.value = '';
+        searchResultsContainer.innerHTML = ''; 
+        useIdBtn.disabled = true;
+        // Set preview body back to default message on reset
+        if (previewBody) previewBody.innerHTML = defaultPreviewMessage;
+    }
+
+    // Set initial state for preview body
+    if (previewBody) previewBody.innerHTML = defaultPreviewMessage;
+
+    // Event Listener for Create Button
+    if (createBtn) {
+        createBtn.addEventListener('click', function() {
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
+            
+            fetch('/api/create_patient_id', { method: 'POST' })
+                .then(response => {
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            throw new Error('API endpoint not found. Check server configuration.');
+                        } else {
+                            return response.json().then(errData => {
+                                throw new Error(errData.error || `Server error: ${response.status}`);
+                            }).catch(err => {
+                                throw new Error(`Failed to create patient ID: ${response.status}`);
+                            });
+                        }
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.error) {
+                        alert('Error creating patient ID: ' + data.error);
+                        this.disabled = false;
+                         this.innerHTML = '<i class="fas fa-plus me-1"></i> Create New Patient ID';
+                    } else {
+                        // ID created, show it and enable 'Use ID'
+                        selectedValueSpan.textContent = data.patient_id;
+                        selectedDisplay.style.display = 'flex';
+                        useIdBtn.disabled = false;
+                         this.innerHTML = '<i class="fas fa-check"></i> ID Created!'; // Feedback
+                         searchInput.disabled = true; // Disable search while ID is pending use
+                    }
+                })
+                .catch(error => {
+                    console.error('Fetch error:', error);
+                    alert('An network error occurred while creating patient ID.');
+                     this.disabled = false;
+                     this.innerHTML = '<i class="fas fa-plus me-1"></i> Create New Patient ID';
+                });
+        });
+    }
+
+    // Event Listener for Search Input (with debounce)
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchTimeout);
+        const query = this.value.trim();
+        searchResultsContainer.innerHTML = ''; // Clear previous results
+        selectedDisplay.style.display = 'none'; // Hide selected display on new search
+        useIdBtn.disabled = true;
+        if(createBtn) createBtn.disabled = false; // Re-enable create button
+
+        if (query.length < 2) { // Only search if query is at least 2 chars
+            return;
+        }
+
+        searchResultsContainer.innerHTML = '<div class="list-group-item">Searching...</div>';
+
+        searchTimeout = setTimeout(() => {
+            fetch(`/api/search_patient_id?q=${encodeURIComponent(query)}`)
+                .then(response => {
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            throw new Error('Search endpoint not found. Check server configuration.');
+                        } else {
+                            throw new Error(`Server error: ${response.status}`);
+                        }
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    searchResultsContainer.innerHTML = ''; // Clear "Searching..."
+                    if (data.error) {
+                        searchResultsContainer.innerHTML = `<div class="list-group-item text-danger">Error: ${data.error}</div>`;
+                    } else if (data.length === 0) {
+                        searchResultsContainer.innerHTML = '<div class="list-group-item">No matching patient IDs found.</div>';
+                    } else {
+                        data.forEach(patient => {
+                            const item = document.createElement('button');
+                            item.type = 'button';
+                            item.className = 'list-group-item list-group-item-action';
+                            item.textContent = patient.patient_id;
+                            item.addEventListener('click', () => {
+                                const selectedPatientId = patient.patient_id; // Capture ID
+                                selectedValueSpan.textContent = selectedPatientId;
+                                selectedDisplay.style.display = 'flex';
+                                useIdBtn.disabled = false;
+                                searchResultsContainer.innerHTML = ''; // Clear results after selection
+                                if(createBtn) createBtn.disabled = true; // Disable create if search result selected
+                                searchInput.value = selectedPatientId; // Optional: fill search box
+                                // --- Call displayPatientPreview --- 
+                                displayPatientPreview(selectedPatientId);
+                            });
+                            searchResultsContainer.appendChild(item);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Fetch error:', error);
+                    searchResultsContainer.innerHTML = '<div class="list-group-item text-danger">Search failed.</div>';
+                });
+        }, 300); // Debounce time: 300ms
+    });
+
+    // Event Listener for "Use ID" Button
+    useIdBtn.addEventListener('click', function() {
+        const selectedId = selectedValueSpan.textContent;
+        if (selectedId) {
+            activateForm(selectedId);
+        }
+    });
+
+    // Event Listener for "Clear" Button
+    clearIdBtn.addEventListener('click', function() {
+        resetWorkflow();
+    });
+    
+    // Prevent form submission if patient ID is not set (extra safety)
+    dataEntryForm.addEventListener('submit', function(event) {
+        if (!patientIdInputHidden.value) {
+            event.preventDefault();
+            alert('No Patient ID is associated with this form. Please create or select one first.');
+        }
+    });
+
+}); // End of the second DOMContentLoaded listener (Patient ID workflow)
+
 </script>
 {% endblock %} 
