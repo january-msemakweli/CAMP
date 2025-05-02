@@ -74,14 +74,14 @@ def ensure_admin_user():
             admin_user = {
                 'id': admin_id,
                 'username': 'admin',
-                'password': generate_password_hash('admin'),
+                'password': generate_password_hash('moafya123'),
                 'is_admin': True,
                 'is_approved': True
             }
             
             # Insert admin user
             supabase.table('users').insert(admin_user).execute()
-            print("Admin user created successfully with default password 'admin'")
+            print("Admin user created successfully with default password 'moafya123'")
             print("IMPORTANT: Please change the admin password after first login")
         else:
             print("Admin user exists")
