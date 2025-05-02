@@ -196,6 +196,10 @@ def index():
         return redirect(url_for('user_dashboard' if not current_user.is_admin else 'admin_dashboard'))
     return render_template('index.html')
 
+@app.route('/documentation')
+def documentation():
+    return render_template('documentation.html')
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -3509,6 +3513,39 @@ def delete_patient(patient_id):
         print(f"Error in patient deletion: {str(e)}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/reset_password/<user_id>', methods=['POST'])
+@login_required
+def reset_user_password(user_id):
+    # Ensure user is an admin
+    if not current_user.is_admin:
+        flash('You do not have permission to reset passwords.', 'danger')
+        return redirect(url_for('index'))
+    
+    new_password = request.form.get('new_password')
+    if not new_password:
+        flash('Password cannot be empty', 'danger')
+        return redirect(url_for('admin_dashboard'))
+    
+    # Get user details to ensure they exist
+    response = supabase.table('users').select('*').eq('id', user_id).execute()
+    if not response.data:
+        flash('User not found', 'danger')
+        return redirect(url_for('admin_dashboard'))
+    
+    user = response.data[0]
+    
+    # Hash the new password
+    hashed_password = generate_password_hash(new_password)
+    
+    # Update the user's password
+    supabase.table('users').update({'password': hashed_password}).eq('id', user_id).execute()
+    
+    # Log password reset
+    log_activity('update', 'user', user_id, f"Password reset for user: {user['username']}")
+    
+    flash(f"Password for {user['username']} has been reset successfully", 'success')
+    return redirect(url_for('admin_dashboard'))
 
 # Correctly indented start of the main execution block
 if __name__ == '__main__':

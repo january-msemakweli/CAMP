@@ -1,0 +1,1290 @@
+{% extends 'base.html' %}
+
+{% block title %}MoAfyaCamps Documentation{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Only keeping structural CSS, removing color specifications */
+    :root {
+        --section-padding: 20px;
+        --border-radius: 5px;
+        --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    h2 {
+        border-bottom: 2px solid var(--gold-color);
+        padding-bottom: 10px;
+        margin-top: 40px;
+    }
+    
+    h3 {
+        margin-top: 30px;
+        padding-left: 10px;
+        border-left: 4px solid var(--gold-color);
+    }
+    
+    .content-section {
+        display: none;
+    }
+    
+    .content-section.active {
+        display: block;
+        animation: fadeIn 0.5s;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+    
+    .toc {
+        background-color: white;
+        border: 1px solid rgba(0,0,0,0.1);
+        border-radius: 8px;
+        padding: 25px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+        position: sticky;
+        top: 100px;
+        min-height: calc(100vh - 150px);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+    
+    .toc li {
+        margin-bottom: 5px;
+    }
+    
+    .toc ul {
+        list-style-type: none;
+        padding-left: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .toc a {
+        color: var(--primary-color);
+        text-decoration: none;
+        transition: all 0.3s ease;
+    }
+    
+    .toc a:hover {
+        color: var(--gold-color);
+        text-decoration: none;
+    }
+    
+    .toc a.active {
+        color: var(--gold-color);
+        font-weight: bold;
+    }
+    
+    .intro-box {
+        background-color: var(--primary-color);
+        color: white;
+        padding: 25px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+    }
+    
+    .intro-box .highlight {
+        color: var(--gold-color);
+        font-weight: bold;
+    }
+    
+    .image-container {
+        margin: 30px 0;
+        text-align: center;
+    }
+    
+    .image-container img {
+        max-width: 100%;
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        border: 1px solid rgba(0,0,0,0.05);
+    }
+    
+    .caption {
+        font-style: italic;
+        text-align: center;
+        margin-top: 10px;
+        color: #666;
+    }
+    
+    .highlight-box {
+        border-left: 4px solid var(--gold-color);
+        padding: 15px;
+        margin: 20px 0;
+        background-color: rgba(255, 255, 255, 0.7);
+        border-radius: 0 8px 8px 0;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.05);
+    }
+    
+    .info-box {
+        background-color: white;
+        border: 1px solid rgba(0,0,0,0.1);
+        padding: 20px;
+        border-radius: 8px;
+        margin: 20px 0;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+    }
+    
+    .info-box-title {
+        color: var(--primary-color);
+        font-weight: 600;
+        margin-bottom: 15px;
+        font-size: 1.1em;
+    }
+    
+    .dark-box {
+        background-color: var(--primary-color);
+        color: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 20px 0;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+    }
+    
+    .dark-box-title {
+        color: var(--gold-color);
+        font-weight: 600;
+        margin-bottom: 15px;
+        font-size: 1.1em;
+    }
+    
+    .bordered-box {
+        border: 2px solid var(--gold-color);
+        padding: 25px;
+        border-radius: 8px;
+        margin: 20px 0;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+    }
+    
+    ol {
+        padding-left: 20px;
+    }
+    
+    ol li {
+        margin-bottom: 15px;
+    }
+    
+    code {
+        background-color: #f0f0f0;
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+    }
+    
+    /* Navigation styling */
+    .nav-button {
+        display: inline-block;
+        background-color: var(--primary-color);
+        color: white;
+        padding: 8px 20px;
+        border-radius: 4px;
+        margin: 5px;
+        transition: all 0.3s ease;
+        font-weight: 500;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .nav-button:hover {
+        background-color: var(--gold-color);
+        color: var(--primary-color);
+        text-decoration: none;
+        transform: translateY(-2px);
+    }
+    
+    .nav-container {
+        display: none;
+    }
+    
+    .doc-header {
+        background-color: white;
+        color: var(--primary-color);
+        padding: 30px;
+        border-radius: var(--border-radius);
+        margin-bottom: 30px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        box-shadow: var(--box-shadow);
+        border-bottom: 4px solid var(--gold-color);
+    }
+    
+    .doc-header h1 {
+        margin: 0;
+        color: var(--primary-color);
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+    
+    .doc-header p {
+        color: #666;
+        font-size: 1.1rem;
+    }
+    
+    .doc-header h1 i {
+        color: var(--gold-color);
+    }
+    
+    /* Responsive improvements */
+    @media (max-width: 768px) {
+        .doc-header {
+            flex-direction: column;
+            text-align: center;
+        }
+        
+        .doc-header h1 {
+            margin-bottom: 10px;
+        }
+    }
+
+    /* Hide navigation buttons */
+    .nav-container {
+        display: none;
+    }
+
+    /* Responsive styles */
+    @media (max-width: 991px) {
+        .toc {
+            position: relative;
+            top: 0;
+            margin-bottom: 20px;
+        }
+    }
+
+    /* Make table of contents and content sections the same height */
+    .doc-row {
+        display: flex;
+        min-height: calc(100vh - 100px);
+    }
+    
+    .doc-row > div {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .doc-row .toc-column {
+        position: sticky;
+        top: 0;
+        height: 100%;
+    }
+    
+    @media (max-width: 991px) {
+        .doc-row {
+            display: block;
+            min-height: auto;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="doc-header">
+        <h1><i class="fas fa-book me-2"></i>MoAfyaCamps Documentation</h1>
+        <p class="mb-0">Complete guide to using the MoAfyaCamps healthcare data collection system</p>
+    </div>
+    <div class="row doc-row">
+        <div class="col-lg-4 toc-column">
+            <div class="toc">
+                <h2 id="table-of-contents">Table of Contents</h2>
+                <ul>
+                    <li><a href="#introduction" class="toc-link">Introduction</a></li>
+                    <li><a href="#getting-started" class="toc-link">Getting Started</a></li>
+                    <li><a href="#for-regular-users" class="toc-link">For Regular Users</a></li>
+                    <li><a href="#for-administrators" class="toc-link">For Administrators</a></li>
+                    <li><a href="#troubleshooting" class="toc-link">Troubleshooting</a></li>
+                </ul>
+                
+                <div class="foundation-section" style="margin-top: 30px; text-align: center; padding-top: 20px; padding-bottom: 20px;">
+                    <p style="text-align: center; font-size: 0.9rem; color: #777; margin-bottom: 10px;">Powered by</p>
+                    <img src="{{ url_for('static', filename='MDF.png') }}" alt="Mo Dewji Foundation" style="max-width: 80%; height: auto;">
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-8">
+            <div id="introduction" class="content-section">
+                <h2 id="introduction">Introduction</h2>
+                <div class="intro-box">
+                    <span class="highlight">MoAfyaCamps</span> Healthcare Data Collection System is designed to facilitate the collection, management, and analysis of patient data during healthcare programmes. The system allows for creating customized forms, managing patient records, and generating analytical insights from collected data.
+                </div>
+
+                <div class="image-container">
+                    <img src="{{ url_for('static', filename='First Page.png') }}" alt="MoAfyaCamps Welcome Page">
+                    <div class="caption">MoAfyaCamps Welcome Page - A centralized platform for healthcare data collection and management in field settings</div>
+                </div>
+            </div>
+
+            <div id="getting-started" class="content-section">
+                <h2 id="getting-started">Getting Started</h2>
+
+                <h3 id="registration-and-login">Registration and Login</h3>
+                <ol>
+                    <li>
+                        <strong>Registration</strong>:
+                        <ul>
+                            <li>Navigate to the registration page by clicking "Register" on the landing page</li>
+                            <li>Enter a username and password</li>
+                            <li>Submit the form</li>
+                            <li>Wait for an administrator to approve your account</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Login</strong>:
+                        <ul>
+                            <li>Enter your username and password on the login page</li>
+                            <li>If your account has been approved, you will be redirected to the appropriate dashboard</li>
+                            <li>If not approved, you will see a message indicating pending approval</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <div class="image-container">
+                    <img src="{{ url_for('static', filename='Login page.png') }}" alt="MoAfyaCamps Login Page">
+                    <div class="caption">MoAfyaCamps Login Page - Access the system with your approved credentials</div>
+                </div>
+            </div>
+
+            <div id="registration-and-login" class="content-section">
+                <h3 id="registration-and-login">Registration and Login</h3>
+                <ol>
+                    <li>
+                        <strong>Registration</strong>:
+                        <ul>
+                            <li>Navigate to the registration page by clicking "Register" on the landing page</li>
+                            <li>Enter a username and password</li>
+                            <li>Submit the form</li>
+                            <li>Wait for an administrator to approve your account</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Login</strong>:
+                        <ul>
+                            <li>Enter your username and password on the login page</li>
+                            <li>If your account has been approved, you will be redirected to the appropriate dashboard</li>
+                            <li>If not approved, you will see a message indicating pending approval</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <div class="image-container">
+                    <img src="{{ url_for('static', filename='Login page.png') }}" alt="MoAfyaCamps Login Page">
+                    <div class="caption">MoAfyaCamps Login Page - Access the system with your approved credentials</div>
+                </div>
+            </div>
+
+            <div id="for-regular-users" class="content-section">
+                <h2 id="for-regular-users">For Regular Users</h2>
+
+                <h3 id="user-dashboard-overview">User Dashboard Overview</h3>
+                <p>After logging in, you will see your dashboard showing:</p>
+                <ul>
+                    <li>Available programmes you have access to</li>
+                    <li>Forms you are permitted to fill out</li>
+                    <li>Recent activity</li>
+                </ul>
+
+                <h3 id="viewing-available-forms">Viewing Available Forms</h3>
+                <ol>
+                    <li>Navigate to "My Forms" section on the dashboard</li>
+                    <li>Click on any form to open it</li>
+                    <li>Forms are organized by programme</li>
+                </ol>
+
+                <h3 id="patient-registration">Patient Registration</h3>
+                <div class="highlight-box">
+                    <p>Before filling out forms, you need to register a patient or search for an existing patient:</p>
+                    <ol>
+                        <li>When opening a form, you'll see a patient ID field at the top</li>
+                        <li>
+                            To register a new patient:
+                            <ul>
+                                <li>Click "Generate New Patient ID"</li>
+                                <li>The system will automatically create a unique ID following the format DDMMYY-NNNN (date-sequential number)</li>
+                            </ul>
+                        </li>
+                        <li>
+                            To use an existing patient:
+                            <ul>
+                                <li>Start typing the patient ID in the search field</li>
+                                <li>Select the correct patient from the dropdown list</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+
+                <h3 id="submitting-forms">Submitting Forms</h3>
+                <ol>
+                    <li>After selecting a patient, fill out all required fields in the form</li>
+                    <li>Fields marked with an asterisk (*) are mandatory</li>
+                    <li>
+                        Different field types include:
+                        <ul>
+                            <li>Text fields for free text</li>
+                            <li>Dropdown menus for selecting from options</li>
+                            <li>Radio buttons for single selections</li>
+                            <li>Checkboxes for multiple selections</li>
+                            <li>Date fields for selecting dates</li>
+                        </ul>
+                    </li>
+                    <li>Location fields (Region, District, Ward) are interdependent - select in order</li>
+                    <li>Click "Submit" when the form is complete</li>
+                    <li>You will see a confirmation message upon successful submission</li>
+                </ol>
+
+                <h3 id="viewing-dataset">Viewing Dataset</h3>
+                <p>Regular users can view dataset information:</p>
+                <ol>
+                    <li>Navigate to "Dataset" in the main menu</li>
+                    <li>Select a programme to view its data</li>
+                    <li>Use filters to narrow down the displayed data</li>
+                    <li>Search functionality allows finding specific patients or data</li>
+                    <li>Click on "Details" for any patient to view their complete record</li>
+                </ol>
+            </div>
+
+            <div id="user-dashboard-overview" class="content-section">
+                <h3 id="user-dashboard-overview">User Dashboard Overview</h3>
+                <p>After logging in, you will see your dashboard showing:</p>
+                <ul>
+                    <li>Available programmes you have access to</li>
+                    <li>Forms you are permitted to fill out</li>
+                    <li>Recent activity</li>
+                </ul>
+            </div>
+
+            <div id="viewing-available-forms" class="content-section">
+                <h3 id="viewing-available-forms">Viewing Available Forms</h3>
+                <ol>
+                    <li>Navigate to "My Forms" section on the dashboard</li>
+                    <li>Click on any form to open it</li>
+                    <li>Forms are organized by programme</li>
+                </ol>
+            </div>
+
+            <div id="patient-registration" class="content-section">
+                <h3 id="patient-registration">Patient Registration</h3>
+                <div class="highlight-box">
+                    <p>Before filling out forms, you need to register a patient or search for an existing patient:</p>
+                    <ol>
+                        <li>When opening a form, you'll see a patient ID field at the top</li>
+                        <li>
+                            To register a new patient:
+                            <ul>
+                                <li>Click "Generate New Patient ID"</li>
+                                <li>The system will automatically create a unique ID following the format DDMMYY-NNNN (date-sequential number)</li>
+                            </ul>
+                        </li>
+                        <li>
+                            To use an existing patient:
+                            <ul>
+                                <li>Start typing the patient ID in the search field</li>
+                                <li>Select the correct patient from the dropdown list</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+
+            <div id="submitting-forms" class="content-section">
+                <h3 id="submitting-forms">Submitting Forms</h3>
+                <ol>
+                    <li>After selecting a patient, fill out all required fields in the form</li>
+                    <li>Fields marked with an asterisk (*) are mandatory</li>
+                    <li>
+                        Different field types include:
+                        <ul>
+                            <li>Text fields for free text</li>
+                            <li>Dropdown menus for selecting from options</li>
+                            <li>Radio buttons for single selections</li>
+                            <li>Checkboxes for multiple selections</li>
+                            <li>Date fields for selecting dates</li>
+                        </ul>
+                    </li>
+                    <li>Location fields (Region, District, Ward) are interdependent - select in order</li>
+                    <li>Click "Submit" when the form is complete</li>
+                    <li>You will see a confirmation message upon successful submission</li>
+                </ol>
+            </div>
+
+            <div id="viewing-dataset" class="content-section">
+                <h3 id="viewing-dataset">Viewing Dataset</h3>
+                <p>Regular users can view dataset information:</p>
+                <ol>
+                    <li>Navigate to "Dataset" in the main menu</li>
+                    <li>Select a programme to view its data</li>
+                    <li>Use filters to narrow down the displayed data</li>
+                    <li>Search functionality allows finding specific patients or data</li>
+                    <li>Click on "Details" for any patient to view their complete record</li>
+                </ol>
+            </div>
+
+            <div id="for-administrators" class="content-section">
+                <h2 id="for-administrators">For Administrators</h2>
+
+                <h3 id="admin-dashboard">Admin Dashboard</h3>
+                <p>As an administrator, your dashboard provides an overview of:</p>
+                <ul>
+                    <li>Pending user approvals</li>
+                    <li>Programme statistics</li>
+                    <li>Recent activity</li>
+                    <li>Quick access to all administrative functions</li>
+                </ul>
+
+                <div class="image-container">
+                    <img src="{{ url_for('static', filename='Admin Dashboard.png') }}" alt="MoAfyaCamps Admin Dashboard">
+                    <div class="caption">MoAfyaCamps Admin Control Panel - Manage programmes, users, and system settings</div>
+                </div>
+
+                <h3 id="user-management">User Management</h3>
+                <div class="info-box">
+                    <div class="info-box-title">Administrators can manage all users in the system:</div>
+                    <ol>
+                        <li>
+                            <strong>Approving New Users</strong>:
+                            <ul>
+                                <li>From the admin dashboard, see "Pending Approvals" section</li>
+                                <li>Review each user request</li>
+                                <li>Click "Approve" to grant access or "Delete" to reject</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Creating Users</strong>:
+                            <ul>
+                                <li>Click "Create New User" button</li>
+                                <li>Fill in username and password</li>
+                                <li>Check "Admin" checkbox to create an administrator account</li>
+                                <li>All admin-created accounts are automatically approved</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Managing Existing Users</strong>:
+                            <ul>
+                                <li>View all users in the user management section</li>
+                                <li>Toggle admin status</li>
+                                <li>Delete users as needed</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+
+                <h3 id="programme-management">Programme Management</h3>
+                <p>Programmes are the top-level organization for forms and data:</p>
+                <ol>
+                    <li>
+                        <strong>Creating a New Programme</strong>:
+                        <ul>
+                            <li>From the admin dashboard, click "Create New Programme"</li>
+                            <li>Enter the programme name</li>
+                            <li>Click "Create"</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Managing Programmes</strong>:
+                        <ul>
+                            <li>View all programmes in the programmes section</li>
+                            <li>Click on any programme to see its details</li>
+                            <li>Delete programmes as needed (this will delete all associated forms and data)</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Programme Access</strong>:
+                        <ul>
+                            <li>For each programme, you can grant access to specific users</li>
+                            <li>In the programme details page, use the "Grant Access" section</li>
+                            <li>Select a user from the dropdown and click "Grant Access"</li>
+                            <li>Remove access using the "Revoke" button next to each user</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <h3 id="form-creation-and-management">Form Creation and Management</h3>
+                <div class="bordered-box">
+                    <p>Forms are the tools for data collection within programmes:</p>
+                    <ol>
+                        <li>
+                            <strong>Creating Forms</strong>:
+                            <ul>
+                                <li>Navigate to a programme's detail page</li>
+                                <li>Click "Create New Form"</li>
+                                <li>Enter a form title</li>
+                                <li>Add fields by clicking "Add Field"</li>
+                                <li>
+                                    For each field, specify:
+                                    <ul>
+                                        <li>Label (field name)</li>
+                                        <li>Type (text, number, dropdown, radio, checkbox, date)</li>
+                                        <li>Options (for dropdown, radio, and checkbox types)</li>
+                                        <li>Location field identifier (for Region, District, Ward fields)</li>
+                                    </ul>
+                                </li>
+                                <li>Click "Create Form" to save</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Editing Forms</strong>:
+                            <ul>
+                                <li>Open the form details page</li>
+                                <li>Click "Edit Form"</li>
+                                <li>Modify fields as needed</li>
+                                <li>Save changes</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Managing Form Access</strong>:
+                            <ul>
+                                <li>In the form details page, use the "Grant Access" section</li>
+                                <li>Select a user and click "Grant Access"</li>
+                                <li>Only users with access to the parent programme will be available</li>
+                                <li>Remove access using the "Revoke" button</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+
+                <h3 id="dataset-management">Dataset Management</h3>
+                <p>The dataset view allows comprehensive exploration of collected data:</p>
+                <ol>
+                    <li>
+                        <strong>Viewing Dataset</strong>:
+                        <ul>
+                            <li>Navigate to "Dataset" in the main menu</li>
+                            <li>Select a programme to view its data</li>
+                            <li>All patients and form submissions will be displayed in a table</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Filtering Data</strong>:
+                        <ul>
+                            <li>Use the filter button to open filtering options</li>
+                            <li>
+                                Filter by:
+                                <ul>
+                                    <li>Programme</li>
+                                    <li>Form</li>
+                                    <li>Field value</li>
+                                    <li>Date range</li>
+                                </ul>
+                            </li>
+                            <li>Apply filters to narrow down displayed data</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Searching</strong>:
+                        <ul>
+                            <li>Use the search box to find specific patients or data values</li>
+                            <li>Search works across all fields</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Exporting Data</strong>:
+                        <ul>
+                            <li>Click "Export Dataset" to download data as Excel file</li>
+                            <li>The export respects current filters</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <h3 id="patient-management">Patient Management</h3>
+                <div class="dark-box">
+                    <div class="dark-box-title">Administrators have special capabilities for patient management:</div>
+                    <ol>
+                        <li>
+                            <strong>Viewing Patient Details</strong>:
+                            <ul>
+                                <li>In the dataset view, click "Details" on any patient record</li>
+                                <li>A modal will display all information collected for the patient</li>
+                                <li>Data is organized by the forms it was collected in</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Deleting Patients</strong>:
+                            <ul>
+                                <li>In the patient details modal, administrators see a "Delete Patient" button</li>
+                                <li>Clicking this button prompts for confirmation</li>
+                                <li>
+                                    Confirming will completely remove:
+                                    <ul>
+                                        <li>All form submissions for the patient</li>
+                                        <li>The patient record itself</li>
+                                    </ul>
+                                </li>
+                                <li>This action cannot be undone</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+
+                <h3 id="analytics">Analytics</h3>
+                <p>The analytics section provides data visualization and analysis:</p>
+                <ol>
+                    <li>
+                        <strong>Accessing Analytics</strong>:
+                        <ul>
+                            <li>Navigate to "Analytics" in the admin menu</li>
+                            <li>Select a programme and form to analyze</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Analysis Types</strong>:
+                        <ul>
+                            <li><strong>Summary Statistics</strong>: View statistical measures for numeric fields</li>
+                            <li><strong>Frequency Distribution</strong>: See distribution of values in any field</li>
+                            <li><strong>Cross-tabulation</strong>: Examine relationships between two fields</li>
+                            <li><strong>Time Series</strong>: Analyze data changes over time</li>
+                            <li><strong>Correlation Matrix</strong>: Discover correlations between numeric fields</li>
+                            <li><strong>Cohort Analysis</strong>: Track groups over time</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Visualization</strong>:
+                        <ul>
+                            <li>Each analysis type provides appropriate visualizations</li>
+                            <li>Charts include histograms, bar charts, line graphs, heatmaps</li>
+                            <li>Statistical tables accompany visualizations</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Exporting Analysis</strong>:
+                        <ul>
+                            <li>Export analyses in Excel or CSV format</li>
+                            <li>Charts can be copied or saved as images</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <h3 id="activity-logs">Activity Logs</h3>
+                <p>Monitors all system activity for security and auditing:</p>
+                <ol>
+                    <li>
+                        <strong>Viewing Logs</strong>:
+                        <ul>
+                            <li>Navigate to "Activity Logs" in the admin menu</li>
+                            <li>See all actions taken in the system</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Log Information</strong>:
+                        <ul>
+                            <li>User who performed the action</li>
+                            <li>Action type (create, update, delete, etc.)</li>
+                            <li>Entity affected (patient, form, project, etc.)</li>
+                            <li>Timestamp</li>
+                            <li>IP address</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Clearing Logs</strong>:
+                        <ul>
+                            <li>Use "Clear Logs" button to remove all logs</li>
+                            <li>This action is logged itself for accountability</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+
+            <div id="admin-dashboard" class="content-section">
+                <h3 id="admin-dashboard">Admin Dashboard</h3>
+                <p>As an administrator, your dashboard provides an overview of:</p>
+                <ul>
+                    <li>Pending user approvals</li>
+                    <li>Programme statistics</li>
+                    <li>Recent activity</li>
+                    <li>Quick access to all administrative functions</li>
+                </ul>
+
+                <div class="image-container">
+                    <img src="{{ url_for('static', filename='Admin Dashboard.png') }}" alt="MoAfyaCamps Admin Dashboard">
+                    <div class="caption">MoAfyaCamps Admin Control Panel - Manage programmes, users, and system settings</div>
+                </div>
+            </div>
+
+            <div id="user-management" class="content-section">
+                <h3 id="user-management">User Management</h3>
+                <div class="info-box">
+                    <div class="info-box-title">Administrators can manage all users in the system:</div>
+                    <ol>
+                        <li>
+                            <strong>Approving New Users</strong>:
+                            <ul>
+                                <li>From the admin dashboard, see "Pending Approvals" section</li>
+                                <li>Review each user request</li>
+                                <li>Click "Approve" to grant access or "Delete" to reject</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Creating Users</strong>:
+                            <ul>
+                                <li>Click "Create New User" button</li>
+                                <li>Fill in username and password</li>
+                                <li>Check "Admin" checkbox to create an administrator account</li>
+                                <li>All admin-created accounts are automatically approved</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Managing Existing Users</strong>:
+                            <ul>
+                                <li>View all users in the user management section</li>
+                                <li>Toggle admin status</li>
+                                <li>Delete users as needed</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+
+            <div id="programme-management" class="content-section">
+                <h3 id="programme-management">Programme Management</h3>
+                <p>Programmes are the top-level organization for forms and data:</p>
+                <ol>
+                    <li>
+                        <strong>Creating a New Programme</strong>:
+                        <ul>
+                            <li>From the admin dashboard, click "Create New Programme"</li>
+                            <li>Enter the programme name</li>
+                            <li>Click "Create"</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Managing Programmes</strong>:
+                        <ul>
+                            <li>View all programmes in the programmes section</li>
+                            <li>Click on any programme to see its details</li>
+                            <li>Delete programmes as needed (this will delete all associated forms and data)</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Programme Access</strong>:
+                        <ul>
+                            <li>For each programme, you can grant access to specific users</li>
+                            <li>In the programme details page, use the "Grant Access" section</li>
+                            <li>Select a user from the dropdown and click "Grant Access"</li>
+                            <li>Remove access using the "Revoke" button next to each user</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+
+            <div id="form-creation-and-management" class="content-section">
+                <h3 id="form-creation-and-management">Form Creation and Management</h3>
+                <div class="bordered-box">
+                    <p>Forms are the tools for data collection within programmes:</p>
+                    <ol>
+                        <li>
+                            <strong>Creating Forms</strong>:
+                            <ul>
+                                <li>Navigate to a programme's detail page</li>
+                                <li>Click "Create New Form"</li>
+                                <li>Enter a form title</li>
+                                <li>Add fields by clicking "Add Field"</li>
+                                <li>
+                                    For each field, specify:
+                                    <ul>
+                                        <li>Label (field name)</li>
+                                        <li>Type (text, number, dropdown, radio, checkbox, date)</li>
+                                        <li>Options (for dropdown, radio, and checkbox types)</li>
+                                        <li>Location field identifier (for Region, District, Ward fields)</li>
+                                    </ul>
+                                </li>
+                                <li>Click "Create Form" to save</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Editing Forms</strong>:
+                            <ul>
+                                <li>Open the form details page</li>
+                                <li>Click "Edit Form"</li>
+                                <li>Modify fields as needed</li>
+                                <li>Save changes</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Managing Form Access</strong>:
+                            <ul>
+                                <li>In the form details page, use the "Grant Access" section</li>
+                                <li>Select a user and click "Grant Access"</li>
+                                <li>Only users with access to the parent programme will be available</li>
+                                <li>Remove access using the "Revoke" button</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+
+            <div id="dataset-management" class="content-section">
+                <h3 id="dataset-management">Dataset Management</h3>
+                <p>The dataset view allows comprehensive exploration of collected data:</p>
+                <ol>
+                    <li>
+                        <strong>Viewing Dataset</strong>:
+                        <ul>
+                            <li>Navigate to "Dataset" in the main menu</li>
+                            <li>Select a programme to view its data</li>
+                            <li>All patients and form submissions will be displayed in a table</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Filtering Data</strong>:
+                        <ul>
+                            <li>Use the filter button to open filtering options</li>
+                            <li>
+                                Filter by:
+                                <ul>
+                                    <li>Programme</li>
+                                    <li>Form</li>
+                                    <li>Field value</li>
+                                    <li>Date range</li>
+                                </ul>
+                            </li>
+                            <li>Apply filters to narrow down displayed data</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Searching</strong>:
+                        <ul>
+                            <li>Use the search box to find specific patients or data values</li>
+                            <li>Search works across all fields</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Exporting Data</strong>:
+                        <ul>
+                            <li>Click "Export Dataset" to download data as Excel file</li>
+                            <li>The export respects current filters</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+
+            <div id="patient-management" class="content-section">
+                <h3 id="patient-management">Patient Management</h3>
+                <div class="dark-box">
+                    <div class="dark-box-title">Administrators have special capabilities for patient management:</div>
+                    <ol>
+                        <li>
+                            <strong>Viewing Patient Details</strong>:
+                            <ul>
+                                <li>In the dataset view, click "Details" on any patient record</li>
+                                <li>A modal will display all information collected for the patient</li>
+                                <li>Data is organized by the forms it was collected in</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Deleting Patients</strong>:
+                            <ul>
+                                <li>In the patient details modal, administrators see a "Delete Patient" button</li>
+                                <li>Clicking this button prompts for confirmation</li>
+                                <li>
+                                    Confirming will completely remove:
+                                    <ul>
+                                        <li>All form submissions for the patient</li>
+                                        <li>The patient record itself</li>
+                                    </ul>
+                                </li>
+                                <li>This action cannot be undone</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+
+            <div id="analytics" class="content-section">
+                <h3 id="analytics">Analytics</h3>
+                <p>The analytics section provides data visualization and analysis:</p>
+                <ol>
+                    <li>
+                        <strong>Accessing Analytics</strong>:
+                        <ul>
+                            <li>Navigate to "Analytics" in the admin menu</li>
+                            <li>Select a programme and form to analyze</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Analysis Types</strong>:
+                        <ul>
+                            <li><strong>Summary Statistics</strong>: View statistical measures for numeric fields</li>
+                            <li><strong>Frequency Distribution</strong>: See distribution of values in any field</li>
+                            <li><strong>Cross-tabulation</strong>: Examine relationships between two fields</li>
+                            <li><strong>Time Series</strong>: Analyze data changes over time</li>
+                            <li><strong>Correlation Matrix</strong>: Discover correlations between numeric fields</li>
+                            <li><strong>Cohort Analysis</strong>: Track groups over time</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Visualization</strong>:
+                        <ul>
+                            <li>Each analysis type provides appropriate visualizations</li>
+                            <li>Charts include histograms, bar charts, line graphs, heatmaps</li>
+                            <li>Statistical tables accompany visualizations</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Exporting Analysis</strong>:
+                        <ul>
+                            <li>Export analyses in Excel or CSV format</li>
+                            <li>Charts can be copied or saved as images</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+
+            <div id="activity-logs" class="content-section">
+                <h3 id="activity-logs">Activity Logs</h3>
+                <p>Monitors all system activity for security and auditing:</p>
+                <ol>
+                    <li>
+                        <strong>Viewing Logs</strong>:
+                        <ul>
+                            <li>Navigate to "Activity Logs" in the admin menu</li>
+                            <li>See all actions taken in the system</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Log Information</strong>:
+                        <ul>
+                            <li>User who performed the action</li>
+                            <li>Action type (create, update, delete, etc.)</li>
+                            <li>Entity affected (patient, form, project, etc.)</li>
+                            <li>Timestamp</li>
+                            <li>IP address</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>Clearing Logs</strong>:
+                        <ul>
+                            <li>Use "Clear Logs" button to remove all logs</li>
+                            <li>This action is logged itself for accountability</li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+
+            <div id="troubleshooting" class="content-section">
+                <h2 id="troubleshooting">Troubleshooting</h2>
+
+                <h3 id="common-issues">Common Issues</h3>
+                <div class="highlight-box">
+                    <ol>
+                        <li>
+                            <strong>Form Submission Errors</strong>:
+                            <ul>
+                                <li>Ensure all required fields are completed</li>
+                                <li>Check that dates are in the correct format</li>
+                                <li>Verify the patient ID is valid</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Access Denied</strong>:
+                            <ul>
+                                <li>Ensure your account has been approved</li>
+                                <li>Check that you have been granted access to the specific programme or form</li>
+                                <li>Contact an administrator if you believe you should have access</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Patient ID Search Issues</strong>:
+                            <ul>
+                                <li>Ensure you're typing the ID in the correct format (DDMMYY-NNNN)</li>
+                                <li>Patient IDs are case-sensitive</li>
+                                <li>Try using partial search with just the numeric portion</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Data Not Appearing in Dataset</strong>:
+                            <ul>
+                                <li>Verify your filters aren't excluding the data</li>
+                                <li>Ensure forms were successfully submitted</li>
+                                <li>Try clearing all filters and search terms</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Database Connection Issues</strong>:
+                            <ul>
+                                <li>If you see database connection errors, notify your system administrator</li>
+                                <li>The application may need to be restarted</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+
+                <p>For any persistent issues, please contact your system administrator.</p>
+            </div>
+
+            <div id="common-issues" class="content-section">
+                <h3 id="common-issues">Common Issues</h3>
+                <div class="highlight-box">
+                    <ol>
+                        <li>
+                            <strong>Form Submission Errors</strong>:
+                            <ul>
+                                <li>Ensure all required fields are completed</li>
+                                <li>Check that dates are in the correct format</li>
+                                <li>Verify the patient ID is valid</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Access Denied</strong>:
+                            <ul>
+                                <li>Ensure your account has been approved</li>
+                                <li>Check that you have been granted access to the specific programme or form</li>
+                                <li>Contact an administrator if you believe you should have access</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Patient ID Search Issues</strong>:
+                            <ul>
+                                <li>Ensure you're typing the ID in the correct format (DDMMYY-NNNN)</li>
+                                <li>Patient IDs are case-sensitive</li>
+                                <li>Try using partial search with just the numeric portion</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Data Not Appearing in Dataset</strong>:
+                            <ul>
+                                <li>Verify your filters aren't excluding the data</li>
+                                <li>Ensure forms were successfully submitted</li>
+                                <li>Try clearing all filters and search terms</li>
+                            </ul>
+                        </li>
+                        <li>
+                            <strong>Database Connection Issues</strong>:
+                            <ul>
+                                <li>If you see database connection errors, notify your system administrator</li>
+                                <li>The application may need to be restarted</li>
+                            </ul>
+                        </li>
+                    </ol>
+                </div>
+
+                <p>For any persistent issues, please contact your system administrator.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Get all main content sections
+    const mainSections = {
+        'introduction': document.getElementById('introduction'),
+        'getting-started': document.getElementById('getting-started'),
+        'for-regular-users': document.getElementById('for-regular-users'),
+        'for-administrators': document.getElementById('for-administrators'),
+        'troubleshooting': document.getElementById('troubleshooting')
+    };
+    
+    // Get all TOC links
+    const tocLinks = document.querySelectorAll('.toc-link');
+    
+    // Map of all subsections belonging to each main section
+    const subsections = {
+        'getting-started': [
+            document.getElementById('registration-and-login')
+        ],
+        'for-regular-users': [
+            document.getElementById('user-dashboard-overview'),
+            document.getElementById('viewing-available-forms'),
+            document.getElementById('patient-registration'),
+            document.getElementById('submitting-forms'),
+            document.getElementById('viewing-dataset')
+        ],
+        'for-administrators': [
+            document.getElementById('admin-dashboard'),
+            document.getElementById('user-management'),
+            document.getElementById('programme-management'),
+            document.getElementById('form-creation-and-management'),
+            document.getElementById('dataset-management'),
+            document.getElementById('patient-management'),
+            document.getElementById('analytics'),
+            document.getElementById('activity-logs')
+        ],
+        'troubleshooting': [
+            document.getElementById('common-issues')
+        ]
+    };
+    
+    // Function to hide all sections (main and sub)
+    function hideAllSections() {
+        // Hide all main sections
+        Object.values(mainSections).forEach(section => {
+            if (section) {
+                section.style.display = 'none';
+            }
+        });
+        
+        // Hide all subsections
+        Object.values(subsections).flat().forEach(section => {
+            if (section) {
+                section.style.display = 'none';
+            }
+        });
+    }
+    
+    // Function to show a specific main section and its subsections
+    function showSection(sectionId) {
+        // Show the main section
+        const mainSection = mainSections[sectionId];
+        if (mainSection) {
+            mainSection.style.display = 'block';
+        }
+        
+        // Show subsections if this main section has any
+        if (subsections[sectionId]) {
+            subsections[sectionId].forEach(subsection => {
+                if (subsection) {
+                    subsection.style.display = 'block';
+                }
+            });
+        }
+    }
+    
+    // Hide all sections initially
+    hideAllSections();
+    
+    // Show the introduction section by default
+    showSection('introduction');
+    
+    // Add click event listeners to TOC links
+    tocLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // Remove active class from all links
+            tocLinks.forEach(l => l.classList.remove('active'));
+            
+            // Add active class to clicked link
+            this.classList.add('active');
+            
+            // Get the target section ID
+            const targetId = this.getAttribute('href').substring(1);
+            
+            // Hide all sections
+            hideAllSections();
+            
+            // Show the target section and its subsections
+            showSection(targetId);
+            
+            // Smooth scroll to the section on mobile
+            if (window.innerWidth < 992) {
+                const targetSection = document.getElementById(targetId);
+                if (targetSection) {
+                    targetSection.scrollIntoView({ behavior: 'smooth' });
+                }
+            }
+        });
+    });
+    
+    // Set the first TOC link as active by default
+    if (tocLinks.length > 0) {
+        tocLinks[0].classList.add('active');
+    }
+});
+</script>
+{% endblock %}
