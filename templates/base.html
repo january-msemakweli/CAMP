@@ -1047,7 +1047,12 @@
                                 <p class="hero-subtitle">A centralized platform for healthcare data collection and management in field settings.</p>
                                 
                                 <div class="hero-buttons">
-                                    <a href="{{ url_for('documentation') }}" class="btn btn-light btn-lg me-3">
+                                    <!-- Mobile version - visible only on small screens -->
+                                    <a href="{{ url_for('register') }}" class="btn btn-light btn-lg me-3 d-block d-md-none">
+                                        <i class="fas fa-user-plus me-2"></i>Get Started
+                                    </a>
+                                    <!-- Desktop version - hidden on small screens -->
+                                    <a href="{{ url_for('documentation') }}" class="btn btn-light btn-lg me-3 d-none d-md-inline-block">
                                         <i class="fas fa-book me-2"></i>Get Started
                                     </a>
                                     <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">
@@ -1183,7 +1188,12 @@
                         <h2 class="cta-title">Ready to Get Started?</h2>
                         <p class="cta-subtitle">Join MoAfyaCamps today and transform how you manage health camps</p>
                         <div class="cta-buttons">
-                            <a href="{{ url_for('documentation') }}" class="btn btn-light btn-lg me-3">
+                            <!-- Mobile version - visible only on small screens -->
+                            <a href="{{ url_for('register') }}" class="btn btn-light btn-lg me-3 d-block d-md-none">
+                                <i class="fas fa-user-plus me-2"></i>Register Now
+                            </a>
+                            <!-- Desktop version - hidden on small screens -->
+                            <a href="{{ url_for('documentation') }}" class="btn btn-light btn-lg me-3 d-none d-md-inline-block">
                                 <i class="fas fa-book me-2"></i>Register Now
                             </a>
                             <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">
