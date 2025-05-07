@@ -1,13 +1,3 @@
--- First drop all existing tables and relations
-DROP TABLE IF EXISTS public.form_submissions CASCADE;
-DROP TABLE IF EXISTS public.form_permissions CASCADE;
-DROP TABLE IF EXISTS public.user_project_access CASCADE;
-DROP TABLE IF EXISTS public.log_activities CASCADE;
-DROP TABLE IF EXISTS public.forms CASCADE;
-DROP TABLE IF EXISTS public.patients CASCADE;
-DROP TABLE IF EXISTS public.projects CASCADE;
-DROP TABLE IF EXISTS public.users CASCADE;
-
 -- Create users table
 CREATE TABLE IF NOT EXISTS public.users (
     id TEXT PRIMARY KEY,
@@ -65,25 +55,6 @@ CREATE TABLE IF NOT EXISTS public.user_project_access (
     UNIQUE (user_id, project_id) -- Ensure a user can only be granted access once per project
 );
 
--- Create form_submissions table
-CREATE TABLE IF NOT EXISTS public.form_submissions (
-    id TEXT PRIMARY KEY,
-    form_id TEXT NOT NULL,
-    patient_id TEXT NOT NULL,
-    submitted_by TEXT NOT NULL,
-    data JSONB NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create form_permissions table
-CREATE TABLE IF NOT EXISTS public.form_permissions (
-    id TEXT PRIMARY KEY,
-    form_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (form_id, user_id) -- Ensure a user can only be granted access once per form
-);
-
 -- Add ON DELETE clauses to foreign key constraints
 
 -- Drop existing constraints first to modify them
@@ -91,10 +62,6 @@ ALTER TABLE public.forms DROP CONSTRAINT IF EXISTS forms_project_id_fkey;
 ALTER TABLE public.log_activities DROP CONSTRAINT IF EXISTS log_activities_user_id_fkey;
 ALTER TABLE public.user_project_access DROP CONSTRAINT IF EXISTS user_project_access_user_id_fkey;
 ALTER TABLE public.user_project_access DROP CONSTRAINT IF EXISTS user_project_access_project_id_fkey;
-ALTER TABLE public.form_submissions DROP CONSTRAINT IF EXISTS form_submissions_form_id_fkey;
-ALTER TABLE public.form_submissions DROP CONSTRAINT IF EXISTS form_submissions_submitted_by_fkey;
-ALTER TABLE public.form_permissions DROP CONSTRAINT IF EXISTS form_permissions_form_id_fkey;
-ALTER TABLE public.form_permissions DROP CONSTRAINT IF EXISTS form_permissions_user_id_fkey;
 
 -- Re-add constraints with desired ON DELETE behavior
 
@@ -120,28 +87,4 @@ ON DELETE CASCADE;
 ALTER TABLE public.user_project_access
 ADD CONSTRAINT user_project_access_project_id_fkey
 FOREIGN KEY (project_id) REFERENCES public.projects (id)
-ON DELETE CASCADE;
-
--- Form Submissions -> Forms: Delete submissions if form is deleted
-ALTER TABLE public.form_submissions
-ADD CONSTRAINT form_submissions_form_id_fkey
-FOREIGN KEY (form_id) REFERENCES public.forms (id)
-ON DELETE CASCADE;
-
--- Form Submissions -> Users: Keep submissions even if user is deleted
-ALTER TABLE public.form_submissions
-ADD CONSTRAINT form_submissions_submitted_by_fkey
-FOREIGN KEY (submitted_by) REFERENCES public.users (id)
-ON DELETE SET NULL;
-
--- Form Permissions -> Forms: Delete permissions if form is deleted
-ALTER TABLE public.form_permissions
-ADD CONSTRAINT form_permissions_form_id_fkey
-FOREIGN KEY (form_id) REFERENCES public.forms (id)
-ON DELETE CASCADE;
-
--- Form Permissions -> Users: Delete permissions if user is deleted
-ALTER TABLE public.form_permissions
-ADD CONSTRAINT form_permissions_user_id_fkey
-FOREIGN KEY (user_id) REFERENCES public.users (id)
 ON DELETE CASCADE;

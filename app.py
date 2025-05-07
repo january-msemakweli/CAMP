@@ -60,33 +60,19 @@ def create_tables():
     pass
 
 def ensure_admin_user():
-    """Create admin user if it doesn't exist"""
+    """Check for admin user but don't create tables"""
     try:
         print("Checking for admin user...")
         
         # Check if admin user exists
         response = supabase.table('users').select('*').eq('username', 'admin').execute()
         if not response.data:
-            print("Admin user not found. Creating admin user...")
-            
-            # Create admin user with default password 'admin'
-            admin_id = str(uuid.uuid4())
-            admin_user = {
-                'id': admin_id,
-                'username': 'admin',
-                'password': generate_password_hash('moafya123'),
-                'is_admin': True,
-                'is_approved': True
-            }
-            
-            # Insert admin user
-            supabase.table('users').insert(admin_user).execute()
-            print("Admin user created successfully with default password 'moafya123'")
-            print("IMPORTANT: Please change the admin password after first login")
+            print("Admin user not found, but automatic creation is disabled.")
+            print("Please run the database setup scripts to create the admin user.")
         else:
             print("Admin user exists")
     except Exception as e:
-        print(f"Error checking/creating admin user: {str(e)}")
+        print(f"Error checking admin user: {str(e)}")
         print("Using fallback authentication system instead.")
 
 def check_database_structure():
@@ -195,10 +181,6 @@ def index():
     if current_user.is_authenticated:
         return redirect(url_for('user_dashboard' if not current_user.is_admin else 'admin_dashboard'))
     return render_template('index.html')
-
-@app.route('/documentation')
-def documentation():
-    return render_template('documentation.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -3448,63 +3430,41 @@ def delete_patient(patient_id):
         # (Supabase doesn't support true transactions via API, so we handle rollback manually)
         deletion_successful = False
         deleted_submissions = 0
-        patient_record_deleted = False
         
         # 1. First get all submissions for this patient
         submissions_response = supabase.table('form_submissions').select('id').eq('patient_id', patient_id).execute()
         
-        # 2. Also check if patient record exists
-        patient_response = supabase.table('patients').select('patient_id').eq('patient_id', patient_id).execute()
-        patient_exists = len(patient_response.data) > 0
+        if not submissions_response.data:
+            print(f"No submissions found for patient {patient_id}")
+            return jsonify({'error': 'Patient not found or has no submissions'}), 404
         
-        if not submissions_response.data and not patient_exists:
-            print(f"No records found for patient {patient_id}")
-            return jsonify({'error': 'Patient not found in any records'}), 404
+        submission_ids = [sub['id'] for sub in submissions_response.data]
+        print(f"Found {len(submission_ids)} submissions to delete")
         
-        # 3. Delete all submissions for this patient
-        if submissions_response.data:
-            submission_ids = [sub['id'] for sub in submissions_response.data]
-            print(f"Found {len(submission_ids)} submissions to delete")
+        # 2. Delete all submissions for this patient
+        try:
+            # Delete submissions in batches to avoid hitting API limits
+            batch_size = 50
+            for i in range(0, len(submission_ids), batch_size):
+                batch = submission_ids[i:i + batch_size]
+                delete_response = supabase.table('form_submissions').delete().in_('id', batch).execute()
+                print(f"Deleted batch of {len(batch)} submissions")
+                deleted_submissions += len(batch)
             
-            try:
-                # Delete submissions in batches to avoid hitting API limits
-                batch_size = 50
-                for i in range(0, len(submission_ids), batch_size):
-                    batch = submission_ids[i:i + batch_size]
-                    delete_response = supabase.table('form_submissions').delete().in_('id', batch).execute()
-                    print(f"Deleted batch of {len(batch)} submissions")
-                    deleted_submissions += len(batch)
-                
-                deletion_successful = True
-            except Exception as e:
-                print(f"Error deleting patient submissions: {str(e)}")
-                return jsonify({'error': f'Failed to delete patient submissions: {str(e)}'}), 500
-        else:
-            # No submissions but patient might still exist
             deletion_successful = True
+        except Exception as e:
+            print(f"Error deleting patient submissions: {str(e)}")
+            return jsonify({'error': f'Failed to delete patient submissions: {str(e)}'}), 500
         
-        # 4. Delete the patient record from patients table
-        if patient_exists:
-            try:
-                patient_delete_response = supabase.table('patients').delete().eq('patient_id', patient_id).execute()
-                patient_record_deleted = True
-                print(f"Deleted patient record for {patient_id}")
-            except Exception as e:
-                print(f"Error deleting patient record: {str(e)}")
-                return jsonify({'error': f'Failed to delete patient record: {str(e)}'}), 500
-        
-        # 5. Log the deletion
+        # Log the deletion
         if deletion_successful:
             log_details = f"Deleted patient {patient_id} with {deleted_submissions} form submissions"
-            if patient_record_deleted:
-                log_details += " and patient record"
             log_activity('delete', 'patient', patient_id, log_details)
             
             return jsonify({
                 'success': True,
-                'message': f'Patient {patient_id} completely deleted ({deleted_submissions} submissions, patient record: {patient_record_deleted})',
-                'deleted_submissions': deleted_submissions,
-                'patient_record_deleted': patient_record_deleted
+                'message': f'Patient {patient_id} and {deleted_submissions} submissions deleted successfully',
+                'deleted_submissions': deleted_submissions
             })
         else:
             return jsonify({'error': 'Failed to delete patient - unknown error'}), 500
@@ -3513,39 +3473,6 @@ def delete_patient(patient_id):
         print(f"Error in patient deletion: {str(e)}")
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-
-@app.route('/admin/reset_password/<user_id>', methods=['POST'])
-@login_required
-def reset_user_password(user_id):
-    # Ensure user is an admin
-    if not current_user.is_admin:
-        flash('You do not have permission to reset passwords.', 'danger')
-        return redirect(url_for('index'))
-    
-    new_password = request.form.get('new_password')
-    if not new_password:
-        flash('Password cannot be empty', 'danger')
-        return redirect(url_for('admin_dashboard'))
-    
-    # Get user details to ensure they exist
-    response = supabase.table('users').select('*').eq('id', user_id).execute()
-    if not response.data:
-        flash('User not found', 'danger')
-        return redirect(url_for('admin_dashboard'))
-    
-    user = response.data[0]
-    
-    # Hash the new password
-    hashed_password = generate_password_hash(new_password)
-    
-    # Update the user's password
-    supabase.table('users').update({'password': hashed_password}).eq('id', user_id).execute()
-    
-    # Log password reset
-    log_activity('update', 'user', user_id, f"Password reset for user: {user['username']}")
-    
-    flash(f"Password for {user['username']} has been reset successfully", 'success')
-    return redirect(url_for('admin_dashboard'))
 
 # Correctly indented start of the main execution block
 if __name__ == '__main__':
