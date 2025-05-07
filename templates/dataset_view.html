@@ -342,5 +342,249 @@
         }
         return '';
     }
+
+    // Chrome-friendly approach for fixed columns with horizontal scrolling
+    document.addEventListener('DOMContentLoaded', function() {
+        // Wait a moment for the table to fully render
+        setTimeout(function() {
+            setupHorizontalScrollWithFixedColumns();
+        }, 100);
+        
+        // Also handle window resize
+        window.addEventListener('resize', function() {
+            // Remove any existing implementation
+            const existingFixedColumns = document.querySelectorAll('.fixed-column-container');
+            existingFixedColumns.forEach(el => el.remove());
+            
+            // Re-setup with new dimensions
+            setupHorizontalScrollWithFixedColumns();
+        });
+    });
+    
+    function setupHorizontalScrollWithFixedColumns() {
+        const table = document.getElementById('datasetTable');
+        const tableContainer = table.closest('.table-responsive');
+        
+        if (!table || !tableContainer) return;
+        
+        // First, modify the table to allow proper horizontal scrolling
+        table.style.tableLayout = 'auto';
+        tableContainer.style.position = 'relative';
+        table.style.width = 'auto';
+        table.style.minWidth = '100%';
+        
+        // Set minimum widths for data columns to prevent compression
+        const dataCells = table.querySelectorAll('tr > *:not(:first-child):not(:last-child)');
+        dataCells.forEach(cell => {
+            cell.style.minWidth = '180px';
+        });
+        
+        // Add a bit of padding to the container to ensure we can see the whole table
+        tableContainer.style.paddingBottom = '2px';
+        
+        // Create container for fixed column (only Patient ID)
+        createFixedLeftColumn(table, tableContainer);
+        
+        // Synchronize scrolling for the left column only
+        tableContainer.addEventListener('scroll', function() {
+            document.querySelectorAll('.fixed-col-left').forEach(el => {
+                el.style.transform = `translateX(${this.scrollLeft}px)`;
+            });
+        });
+    }
+    
+    function createFixedLeftColumn(table, tableContainer) {
+        // Get all table rows
+        const tableRows = Array.from(table.rows);
+        if (tableRows.length <= 1) return; // Need header + at least one data row
+        
+        // Copy table styling
+        const tableStyle = window.getComputedStyle(table);
+        
+        // Measure first column width and ensure minimum width to prevent wrapping
+        const minColumnWidth = 200; // Increased minimum width to prevent wrapping
+        const measuredWidth = tableRows[0].cells[0].offsetWidth;
+        const firstColWidth = Math.max(minColumnWidth, measuredWidth);
+        
+        // Update the original first column width to match
+        tableRows.forEach(row => {
+            if (row.cells[0]) {
+                row.cells[0].style.minWidth = `${firstColWidth}px`;
+                row.cells[0].style.width = `${firstColWidth}px`;
+            }
+        });
+        
+        // Create left fixed column container
+        const leftContainer = document.createElement('div');
+        leftContainer.className = 'fixed-column-container fixed-col-left';
+        leftContainer.style.position = 'absolute';
+        leftContainer.style.left = '0';
+        leftContainer.style.top = '0';
+        leftContainer.style.zIndex = '10';
+        leftContainer.style.width = `${firstColWidth}px`;
+        leftContainer.style.height = '100%';
+        leftContainer.style.overflow = 'hidden';
+        
+        // Create clone of original table for fixed column
+        const leftTable = document.createElement('table');
+        leftTable.className = table.className;
+        leftTable.style.tableLayout = 'fixed';
+        leftTable.style.width = `${firstColWidth}px`;
+        leftTable.style.position = 'absolute';
+        leftTable.style.left = '0';
+        leftTable.style.top = '0';
+        leftTable.style.borderCollapse = tableStyle.borderCollapse;
+        leftTable.style.borderSpacing = tableStyle.borderSpacing;
+        leftTable.style.margin = '0';
+        leftTable.style.fontFamily = tableStyle.fontFamily;
+        leftTable.style.fontSize = tableStyle.fontSize;
+        leftTable.style.lineHeight = tableStyle.lineHeight;
+        
+        // Clone rows for fixed first column
+        tableRows.forEach((row, rowIndex) => {
+            // Get the computed style of the original row
+            const rowStyle = window.getComputedStyle(row);
+            
+            const leftRow = document.createElement('tr');
+            leftRow.className = row.className;
+            leftRow.style.height = `${row.offsetHeight}px`;
+            leftRow.style.borderTop = rowStyle.borderTop;
+            leftRow.style.borderBottom = rowStyle.borderBottom;
+            
+            // Clone first cell for left fixed column
+            if (row.cells[0]) {
+                const firstCellOriginal = row.cells[0];
+                const firstCellStyle = window.getComputedStyle(firstCellOriginal);
+                
+                const firstCellClone = document.createElement(firstCellOriginal.tagName);
+                firstCellClone.innerHTML = firstCellOriginal.innerHTML;
+                firstCellClone.className = firstCellOriginal.className;
+                
+                // Copy all styles exactly
+                copyStyles(firstCellOriginal, firstCellClone);
+                
+                // Override specific styles for fixed column
+                firstCellClone.style.width = `${firstColWidth}px`;
+                firstCellClone.style.minWidth = `${firstColWidth}px`;
+                firstCellClone.style.maxWidth = `${firstColWidth}px`;
+                firstCellClone.style.height = `${firstCellOriginal.offsetHeight}px`;
+                
+                // Ensure background matches - for header row specifically get the correct color from other headers
+                if (rowIndex === 0) {
+                    // Get color from another header cell that's not the first or last
+                    const otherHeaderCell = row.cells[1] || row.cells[0]; // Fallback to first if only one
+                    const otherHeaderStyle = window.getComputedStyle(otherHeaderCell);
+                    firstCellClone.style.backgroundColor = otherHeaderStyle.backgroundColor;
+                } else {
+                    firstCellClone.style.backgroundColor = firstCellStyle.backgroundColor;
+                }
+                
+                leftRow.appendChild(firstCellClone);
+            }
+            
+            leftTable.appendChild(leftRow);
+        });
+        
+        // Helper function to copy all computed styles from one element to another
+        function copyStyles(source, target) {
+            const sourceStyle = window.getComputedStyle(source);
+            
+            // Copy the most important styles
+            target.style.padding = sourceStyle.padding;
+            target.style.textAlign = sourceStyle.textAlign;
+            target.style.verticalAlign = sourceStyle.verticalAlign;
+            target.style.fontWeight = sourceStyle.fontWeight;
+            target.style.border = sourceStyle.border;
+            target.style.borderTop = sourceStyle.borderTop;
+            target.style.borderBottom = sourceStyle.borderBottom;
+            target.style.borderLeft = sourceStyle.borderLeft;
+            target.style.borderRight = sourceStyle.borderRight;
+            target.style.color = sourceStyle.color;
+            target.style.fontSize = sourceStyle.fontSize;
+            target.style.lineHeight = sourceStyle.lineHeight;
+            target.style.fontFamily = sourceStyle.fontFamily;
+        }
+        
+        // Add tables to containers
+        leftContainer.appendChild(leftTable);
+        
+        // Add container to the table container
+        tableContainer.appendChild(leftContainer);
+        
+        // Add shadow for visual separation (more subtle)
+        leftContainer.style.boxShadow = '1px 0 3px -1px rgba(0,0,0,0.15)';
+        
+        // Hover effect synchronization
+        addHoverSynchronization(table, leftTable);
+    }
+    
+    function addHoverSynchronization(mainTable, leftTable) {
+        // Skip header row, start from index 1
+        for (let i = 1; i < mainTable.rows.length; i++) {
+            const mainRow = mainTable.rows[i];
+            const leftRow = leftTable.rows[i];
+            
+            if (!mainRow || !leftRow) continue;
+            
+            // Ensure row heights match exactly
+            const rowHeight = mainRow.offsetHeight;
+            leftRow.style.height = `${rowHeight}px`;
+            
+            // Ensure cell heights match exactly
+            if (leftRow.cells[0] && mainRow.cells[0]) {
+                leftRow.cells[0].style.height = `${mainRow.cells[0].offsetHeight}px`;
+            }
+            
+            // When hovering over main row
+            mainRow.addEventListener('mouseenter', function() {
+                // Get the actual hover background color from the main table
+                const hoverColor = window.getComputedStyle(this).backgroundColor;
+                
+                if (leftRow) {
+                    leftRow.classList.add('table-active');
+                    if (leftRow.cells[0]) {
+                        leftRow.cells[0].style.backgroundColor = hoverColor;
+                    }
+                }
+            });
+            
+            mainRow.addEventListener('mouseleave', function() {
+                // Get the original background color for the row
+                const mainRowIndex = Array.from(mainRow.parentElement.children).indexOf(mainRow);
+                const isOdd = mainRowIndex % 2 === 1;
+                // Use computed style from original cell to get exact color
+                const origBgColor = window.getComputedStyle(mainRow.cells[0]).backgroundColor;
+                
+                if (leftRow) {
+                    leftRow.classList.remove('table-active');
+                    if (leftRow.cells[0]) {
+                        leftRow.cells[0].style.backgroundColor = origBgColor;
+                    }
+                }
+            });
+            
+            // When hovering over left fixed column
+            if (leftRow) {
+                leftRow.addEventListener('mouseenter', function() {
+                    // Make main row appear hovered
+                    mainRow.dispatchEvent(new Event('mouseenter', {bubbles: true}));
+                });
+                
+                leftRow.addEventListener('mouseleave', function() {
+                    // Make main row appear not hovered
+                    mainRow.dispatchEvent(new Event('mouseleave', {bubbles: true}));
+                });
+            }
+        }
+    }
+    
+    function makeButtonsInteractive(container) {
+        // Find all buttons and make sure they're clickable
+        const buttons = container.querySelectorAll('button');
+        buttons.forEach(button => {
+            button.style.pointerEvents = 'auto';
+            container.style.pointerEvents = 'auto';
+        });
+    }
 </script>
 {% endblock %}
