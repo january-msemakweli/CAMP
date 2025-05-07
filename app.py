@@ -29,6 +29,7 @@ import time
 import re
 from collections import Counter
 import traceback
+import urllib.parse
 
 # Set default timezone to GMT+3 (East African Time)
 EAT = timezone(timedelta(hours=3))
@@ -1176,24 +1177,54 @@ def dataset_view():
     # 5. Group submissions by patient_id
     patient_data = {}
     all_data_fields_normalized = set() # Keep track of fields actually in data
+    project_form_ids = set() # Keep track of form IDs that belong to the selected project
+
+    # If project_id is specified, identify forms that belong to this project
+    if project_id:
+        project_forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
+        if project_forms_response.data:
+            project_form_ids = {form['id'] for form in project_forms_response.data}
+            print(f"Forms from project {project_id}: {project_form_ids}")
 
     for submission in submissions:
         patient_id = submission['patient_id']
+        submission_form_id = submission.get('form_id')
+        
+        # Skip processing data fields if this submission is from a different project
+        # and we have a project filter active
+        should_process_fields = (not project_id) or (not project_form_ids) or (submission_form_id in project_form_ids)
+        
         if patient_id not in patient_data:
             patient_data[patient_id] = {
                 'patient_id': patient_id,
-                'submissions': []
+                'submissions': [],
+                'has_project_submissions': False  # Flag to track if patient has submissions in this project
             }
+        
+        # Only add submissions to the patient record if they're from the selected project or no project filter is active
         patient_data[patient_id]['submissions'].append(submission)
         
-        # Collect all unique field keys from actual data
-        if submission.get('data'):
+        # Mark if this submission belongs to the selected project
+        if should_process_fields:
+            patient_data[patient_id]['has_project_submissions'] = True
+        
+        # Collect all unique field keys from actual data, but only if they belong to the selected project
+        if submission.get('data') and should_process_fields:
             for key in submission['data'].keys():
                 normalized_key = key.lower().strip().replace(' ', '_')
                 all_data_fields_normalized.add(normalized_key)
                 # Ensure field_label_map has original casing even for data-only fields
                 if normalized_key not in field_label_map:
                     field_label_map[normalized_key] = key
+                    
+    # If a project is selected, filter out patients who don't have any submissions in this project
+    if project_id and project_form_ids:
+        filtered_patient_data = {
+            patient_id: data for patient_id, data in patient_data.items() 
+            if data.get('has_project_submissions', False)
+        }
+        print(f"Filtered out {len(patient_data) - len(filtered_patient_data)} patients with no submissions in project {project_id}")
+        patient_data = filtered_patient_data
 
     # 6. Apply field value filtering (if specified) AFTER grouping
     if field_name and field_value:
@@ -1229,6 +1260,30 @@ def dataset_view():
     # 8. Combine ordered fields with extra fields
     final_ordered_fields = ordered_fields + extra_field_labels
     
+    # Determine which fields to show in the filter dropdown based on form selection
+    fields_for_filter = []
+    if form_id:
+        # If a specific form is selected, only show fields from that form
+        form_fields = []
+        for form in ordered_forms_data:
+            if form['id'] == form_id:
+                fields_json = form.get('fields', '[]')
+                if isinstance(fields_json, str):
+                    try:
+                        parsed_fields = json.loads(fields_json)
+                        form_fields = [field.get('label') for field in parsed_fields 
+                                     if isinstance(field, dict) and 'label' in field]
+                    except json.JSONDecodeError:
+                        print(f"Warning: Could not parse fields for selected form {form_id}")
+                elif isinstance(fields_json, list):
+                    form_fields = [field.get('label') for field in fields_json 
+                                 if isinstance(field, dict) and 'label' in field]
+                break
+        fields_for_filter = form_fields
+    else:
+        # If no specific form selected, show all fields
+        fields_for_filter = final_ordered_fields
+    
     # 9. Pre-process patient data to merge values using normalized keys
     for patient_id, data in patient_data.items():
         merged_data = {}
@@ -1263,8 +1318,11 @@ def dataset_view():
             selected_project_name = project_response.data[0]['name']
 
     # Get forms for filter dropdown (can reuse ordered_forms_data if appropriate or fetch all)
-    # Fetching all forms ensures the dropdown is complete even if viewing a specific project's dataset
-    all_forms_response = supabase.table('forms').select('*').order('project_id').order('title').execute()
+    # Only include forms that belong to the selected project if a project is selected
+    all_forms_response = supabase.table('forms').select('*')
+    if project_id:
+        all_forms_response = all_forms_response.eq('project_id', project_id)
+    all_forms_response = all_forms_response.order('project_id').order('title').execute()
     filter_forms = all_forms_response.data if all_forms_response.data else []
 
     # Get distinct values for the selected field_name (if any) for the datalist
@@ -1307,7 +1365,7 @@ def dataset_view():
                          patient_data_list=patient_data_list,  # Add this new parameter
                          # Pass the final ordered list of field labels
                          ordered_fields=final_ordered_fields, 
-                         all_fields_for_filter=final_ordered_fields,  # Add this missing parameter
+                         all_fields_for_filter=fields_for_filter,  # Add this missing parameter
                          projects=all_projects,
                          forms=filter_forms, # Use all forms for the filter dropdown
                          field_values=sorted(list(field_values)),
@@ -1591,18 +1649,38 @@ def export_dataset():
     # Group submissions by patient_id
     patient_data = {}
     all_data_fields_normalized = set()
+    project_form_ids = set() # Keep track of form IDs that belong to the selected project
+
+    # If project_id is specified, identify forms that belong to this project
+    if project_id:
+        project_forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
+        if project_forms_response.data:
+            project_form_ids = {form['id'] for form in project_forms_response.data}
 
     for submission in submissions:
         patient_id = submission['patient_id']
+        submission_form_id = submission.get('form_id')
+        
+        # Skip processing data fields if this submission is from a different project
+        # and we have a project filter active
+        should_process_fields = (not project_id) or (not project_form_ids) or (submission_form_id in project_form_ids)
+        
         if patient_id not in patient_data:
             patient_data[patient_id] = {
                 'patient_id': patient_id,
-                'submissions': []
+                'submissions': [],
+                'has_project_submissions': False  # Flag to track if patient has submissions in this project
             }
+        
+        # Only add submissions to the patient record if they're from the selected project or no project filter is active
         patient_data[patient_id]['submissions'].append(submission)
         
-        # Collect all unique field keys from actual data
-        if submission.get('data'):
+        # Mark if this submission belongs to the selected project
+        if should_process_fields:
+            patient_data[patient_id]['has_project_submissions'] = True
+        
+        # Collect all unique field keys from actual data, but only for forms in this project
+        if submission.get('data') and should_process_fields:
             for key in submission['data'].keys():
                 normalized_key = key.lower().strip().replace(' ', '_')
                 all_data_fields_normalized.add(normalized_key)
@@ -3551,3 +3629,115 @@ def reset_user_password(user_id):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False) # Set debug=False for production
+
+# Add new API endpoint to get form fields
+@app.route('/api/form/<form_id>/fields')
+@login_required
+def get_form_fields(form_id):
+    """Get all fields for a specific form for the dataset filter dropdown"""
+    try:
+        # Get form details to extract fields
+        form_response = supabase.table('forms').select('*').eq('id', form_id).execute()
+        
+        if not form_response.data:
+            return jsonify({'error': 'Form not found'}), 404
+        
+        form = form_response.data[0]
+        project_id = form.get('project_id')
+        
+        # Parse the fields JSON string into Python objects if needed
+        fields = []
+        if isinstance(form['fields'], str):
+            try:
+                parsed_fields = json.loads(form['fields'])
+                fields = [field.get('label') for field in parsed_fields if isinstance(field, dict) and 'label' in field]
+            except Exception as e:
+                print(f"Error parsing form fields in get_form_fields: {str(e)}")
+        elif isinstance(form['fields'], list):
+            fields = [field.get('label') for field in form['fields'] if isinstance(field, dict) and 'label' in field]
+        
+        # For consistency with dataset_view, also fetch fields from the same project
+        # that might not be directly in the form definition
+        if project_id:
+            # Get all forms from this project
+            project_forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
+            if project_forms_response.data:
+                project_form_ids = [form['id'] for form in project_forms_response.data]
+                
+                # Only add this part if this is not the only form in the project
+                if len(project_form_ids) > 1:
+                    print(f"Getting fields from other forms in project {project_id}")
+                    # Get fields from other forms in the same project
+                    for project_form_id in project_form_ids:
+                        if project_form_id != form_id:  # Skip the current form
+                            other_form_response = supabase.table('forms').select('fields').eq('id', project_form_id).execute()
+                            if other_form_response.data:
+                                other_form = other_form_response.data[0]
+                                other_fields_json = other_form.get('fields', '[]')
+                                try:
+                                    if isinstance(other_fields_json, str):
+                                        other_parsed_fields = json.loads(other_fields_json)
+                                    else:
+                                        other_parsed_fields = other_fields_json
+                                    
+                                    if isinstance(other_parsed_fields, list):
+                                        other_fields = [field.get('label') for field in other_parsed_fields 
+                                                     if isinstance(field, dict) and 'label' in field]
+                                        
+                                        # Add only fields that don't already exist
+                                        for field in other_fields:
+                                            if field not in fields:
+                                                fields.append(field)
+                                except Exception as e:
+                                    print(f"Error parsing fields from other form {project_form_id}: {e}")
+        
+        return jsonify({'fields': fields, 'project_id': project_id})
+        
+    except Exception as e:
+        print(f"Error getting form fields: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/form/<form_id>/field/<field_name>/values')
+@login_required
+def get_field_values(form_id, field_name):
+    """Get possible values for a specific field in a form for the dataset filter dropdown"""
+    try:
+        # URL decode the field name since it might contain spaces
+        field_name = urllib.parse.unquote(field_name)
+        
+        # First verify that the form exists and get its project_id
+        form_response = supabase.table('forms').select('project_id').eq('id', form_id).execute()
+        
+        if not form_response.data:
+            return jsonify({'error': 'Form not found'}), 404
+            
+        project_id = form_response.data[0]['project_id']
+        
+        # Get submissions for this form with this field
+        field_values = set()
+        
+        # Normalized field name for comparison
+        normalized_field = field_name.lower().strip().replace(' ', '_')
+        
+        # Fetch submissions for this form
+        submissions_response = supabase.table('form_submissions').select('data').eq('form_id', form_id).execute()
+        
+        if submissions_response.data:
+            for submission in submissions_response.data:
+                if submission.get('data'):
+                    # Look through normalized field names to find a match
+                    for key, value in submission['data'].items():
+                        if key.lower().strip().replace(' ', '_') == normalized_field:
+                            # Handle different value types
+                            if isinstance(value, list):
+                                # For multi-select fields like checkboxes
+                                for item in value:
+                                    field_values.add(str(item))
+                            else:
+                                field_values.add(str(value))
+        
+        return jsonify({'values': sorted(list(field_values)), 'project_id': project_id})
+    
+    except Exception as e:
+        print(f"Error getting field values: {str(e)}")
+        return jsonify({'error': str(e)}), 500

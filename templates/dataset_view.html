@@ -93,7 +93,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="fas fa-filter me-2"></i>Filter Dataset</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close"></button>
                 </div>
                 <form method="GET" action="{{ url_for('dataset_view') }}" id="filterForm">
                      <!-- Preserve search term -->
@@ -101,7 +101,7 @@
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="projectFilter" class="form-label">Programme</label>
-                            <select class="form-select" id="projectFilter" name="project_id">
+                            <select class="form-select" id="projectFilter" name="project_id" onchange="updateFormDropdown()">
                                 <option value="">All Programmes</option>
                                 {% for project in projects %}
                                 <option value="{{ project.id }}" {% if selected_project == project.id %}selected{% endif %}>
@@ -111,11 +111,22 @@
                             </select>
                         </div>
                         <div class="mb-3">
+                            <label for="formFilter" class="form-label">Form</label>
+                            <select class="form-select" id="formFilter" name="form_id" onchange="updateFieldDropdown()">
+                                <option value="">All Forms</option>
+                                {% for form in forms %}
+                                <option value="{{ form.id }}" data-project="{{ form.project_id }}" {% if selected_form == form.id %}selected{% endif %} class="form-option">
+                                    {{ form.title }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
                             <label for="fieldFilter" class="form-label">Form Field</label>
-                            <select class="form-select" id="fieldFilter" name="field_name">
+                            <select class="form-select" id="fieldFilter" name="field_name" onchange="updateFieldValues()">
                                 <option value="">-- Select Field to Filter By --</option>
                                 {% for field_label in all_fields_for_filter %}
-                                <option value="{{ field_label }}" {% if selected_field == field_label %}selected{% endif %}>
+                                <option value="{{ field_label }}" {% if selected_field == field_label %}selected{% endif %} class="field-option">
                                     {{ field_label }}
                                 </option>
                                 {% endfor %}
@@ -133,9 +144,9 @@
                         <div class="mb-3">
                             <label for="dateRange" class="form-label">Patient Creation Date Range</label>
                             <div class="input-group">
-                                <input type="date" class="form-control" name="start_date" value="{{ start_date }}">
+                                <input type="date" class="form-control" name="start_date" value="{{ start_date }}" title="Start date" placeholder="Start date">
                                 <span class="input-group-text">to</span>
-                                <input type="date" class="form-control" name="end_date" value="{{ end_date }}">
+                                <input type="date" class="form-control" name="end_date" value="{{ end_date }}" title="End date" placeholder="End date">
                             </div>
                         </div>
                     </div>
@@ -205,7 +216,7 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Patient Details (<span id="modalPatientId"></span>)</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close"></button>
             </div>
             <div class="modal-body" id="patientDetailBody">
                 <p class="text-center">Loading patient data...</p>
@@ -343,8 +354,179 @@
         return '';
     }
 
+    // Function to update the form dropdown based on project selection
+    function updateFormDropdown() {
+        const projectSelect = document.getElementById('projectFilter');
+        const formSelect = document.getElementById('formFilter');
+        const selectedProject = projectSelect.value;
+        
+        // Show all form options initially
+        const formOptions = formSelect.querySelectorAll('.form-option');
+        
+        // If no project is selected, show all forms
+        if (!selectedProject) {
+            formOptions.forEach(option => {
+                option.style.display = 'block';
+            });
+        } else {
+            // Filter forms by selected project
+            formOptions.forEach(option => {
+                if (option.getAttribute('data-project') === selectedProject) {
+                    option.style.display = 'block';
+                } else {
+                    option.style.display = 'none';
+                }
+            });
+        }
+        
+        // Reset form selection if current selection is not visible anymore
+        if (formSelect.selectedOptions[0] && formSelect.selectedOptions[0].style.display === 'none') {
+            formSelect.value = '';
+        }
+        
+        // After form selection is updated, update the field dropdown
+        updateFieldDropdown();
+    }
+    
+    // Function to update the field dropdown based on form selection
+    function updateFieldDropdown() {
+        const formSelect = document.getElementById('formFilter');
+        const fieldSelect = document.getElementById('fieldFilter');
+        const selectedForm = formSelect.value;
+        
+        // Clear current field options except the default option
+        const defaultOption = fieldSelect.querySelector('option[value=""]');
+        fieldSelect.innerHTML = '';
+        if (defaultOption) {
+            fieldSelect.appendChild(defaultOption);
+        }
+        
+        // If no form is selected, don't fetch fields
+        if (!selectedForm) {
+            // Reset field values as well
+            document.getElementById('valueFilter').value = '';
+            return;
+        }
+        
+        // Show loading indicator in the field dropdown
+        const loadingOption = document.createElement('option');
+        loadingOption.textContent = 'Loading fields...';
+        loadingOption.disabled = true;
+        fieldSelect.appendChild(loadingOption);
+        
+        // Fetch fields for the selected form
+        fetch(`/api/form/${selectedForm}/fields`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Remove loading option
+                fieldSelect.removeChild(loadingOption);
+                
+                if (data.error) {
+                    const errorOption = document.createElement('option');
+                    errorOption.textContent = `Error: ${data.error}`;
+                    errorOption.disabled = true;
+                    fieldSelect.appendChild(errorOption);
+                } else {
+                    // Add the fetched fields to the dropdown
+                    data.fields.forEach(field => {
+                        const option = document.createElement('option');
+                        option.value = field;
+                        option.textContent = field;
+                        option.className = 'field-option';
+                        fieldSelect.appendChild(option);
+                    });
+                    
+                    // If there's a previously selected field that still exists in the new options, select it again
+                    const currentSelectedField = "{{ selected_field }}";
+                    if (currentSelectedField && data.fields.includes(currentSelectedField)) {
+                        fieldSelect.value = currentSelectedField;
+                    }
+                }
+                
+                // After field dropdown is updated, clear the field value
+                document.getElementById('valueFilter').value = '';
+            })
+            .catch(error => {
+                console.error('Error fetching fields:', error);
+                
+                // Remove loading option
+                if (fieldSelect.contains(loadingOption)) {
+                    fieldSelect.removeChild(loadingOption);
+                }
+                
+                // Show error message
+                const errorOption = document.createElement('option');
+                errorOption.textContent = `Failed to load fields: ${error.message}`;
+                errorOption.disabled = true;
+                fieldSelect.appendChild(errorOption);
+            });
+    }
+    
+    // Function to update field values datalist based on selected field
+    function updateFieldValues() {
+        const formSelect = document.getElementById('formFilter');
+        const fieldSelect = document.getElementById('fieldFilter');
+        const valueInput = document.getElementById('valueFilter');
+        const valuesList = document.getElementById('fieldValuesList');
+        
+        const selectedForm = formSelect.value;
+        const selectedField = fieldSelect.value;
+        
+        // Clear current field value
+        valueInput.value = '';
+        
+        // Clear current datalist options
+        valuesList.innerHTML = '';
+        
+        // If either form or field is not selected, don't fetch values
+        if (!selectedForm || !selectedField) {
+            return;
+        }
+        
+        // Encode the field name for URL
+        const encodedField = encodeURIComponent(selectedField);
+        
+        // Fetch possible values for this field
+        fetch(`/api/form/${selectedForm}/field/${encodedField}/values`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    console.error('Error fetching field values:', data.error);
+                } else {
+                    // Add values to datalist
+                    data.values.forEach(value => {
+                        const option = document.createElement('option');
+                        option.value = value;
+                        valuesList.appendChild(option);
+                    });
+                    
+                    // If there's a previously selected value, restore it
+                    const currentSelectedValue = "{{ selected_value }}";
+                    if (currentSelectedValue && data.values.includes(currentSelectedValue)) {
+                        valueInput.value = currentSelectedValue;
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching field values:', error);
+            });
+    }
+
     // Chrome-friendly approach for fixed columns with horizontal scrolling
     document.addEventListener('DOMContentLoaded', function() {
+        // Initialize the cascade filtering
+        updateFormDropdown();
+        
         // Wait a moment for the table to fully render
         setTimeout(function() {
             setupHorizontalScrollWithFixedColumns();
