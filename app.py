@@ -1740,103 +1740,52 @@ def export_dataset():
     # Get filter parameters
     project_id = request.args.get('project_id')
     form_id = request.args.get('form_id')
+    field_name = request.args.get('field_name')
+    field_value = request.args.get('field_value')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    search_term = request.args.get('search', '').strip()
     
-    print(f"Export dataset called with project_id: {project_id}, form_id: {form_id}")
+    print(f"Export dataset called with project_id: {project_id}, form_id: {form_id}, search: {search_term}")
     
     # Log the export action with filter details
     log_details = f"Filters - Project: {project_id or 'All'}, Form: {form_id or 'All'}"
+    if field_name and field_value:
+        log_details += f", Field: {field_name}={field_value}"
     if start_date or end_date:
         log_details += f", Date range: {start_date or 'start'} to {end_date or 'end'}"
+    if search_term:
+        log_details += f", Search: '{search_term}'"
     log_activity('export', 'dataset', None, log_details)
     
-    # Get all submissions with proper project filtering
-    if project_id:
-        # First get all forms for this project
-        forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
-        if forms_response.data:
-            form_ids = [form['id'] for form in forms_response.data]
-            print(f"Found {len(form_ids)} forms for project {project_id}")
-            
-            # Add registration forms from ALL projects for cross-program data
-            all_registration_form_ids = []
-            print("Export: Looking for ALL registration forms across ALL projects for cross-program data")
-            
-            # Query all forms
-            all_forms_response = supabase.table('forms').select('id, title, project_id').execute()
-            
-            for form in all_forms_response.data:
-                form_id = form.get('id')
-                if form_id and get_form_is_first(form_id):
-                    # Include registration forms from all projects
-                    if form_id not in form_ids:
-                        all_registration_form_ids.append(form_id)
-                        print(f"Export: Including registration form: {form.get('title')} (ID: {form_id}) from project: {form.get('project_id')}")
-            
-            # Expand our form_ids to include registration forms from all projects
-            if all_registration_form_ids:
-                print(f"Export: Adding {len(all_registration_form_ids)} registration forms from other projects")
-                form_ids.extend(all_registration_form_ids)
-            
-            # Then query submissions for these forms
-            query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
-            query = query.in_('form_id', form_ids)
-            
-            if form_id:
-                query = query.eq('form_id', form_id)
-            if start_date:
-                query = query.gte('created_at', start_date)
-            if end_date:
-                query = query.lte('created_at', end_date)
-            
-            response = query.execute()
-            submissions = response.data
-            print(f"Found {len(submissions)} submissions for export")
-        else:
-            print(f"No forms found for project {project_id}")
-            submissions = []
-    else:
-        # Get all submissions
-        query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
-        
-        if form_id:
-            query = query.eq('form_id', form_id)
-        if start_date:
-            query = query.gte('created_at', start_date)
-        if end_date:
-            query = query.lte('created_at', end_date)
-        
-        response = query.execute()
-        submissions = response.data
+    # This section replicates the dataset_view function to ensure consistency
     
-    # Get all ordered forms to build field ordering
-    # Similar to dataset_view, build ordered_fields list based on form definitions
+    # 1. Fetch Ordered Forms relevant to the filters
     ordered_forms_data = []
     forms_query = supabase.table('forms').select('*')
-    if form_id: 
+    if form_id:
         forms_query = forms_query.eq('id', form_id)
-    elif project_id: 
+    elif project_id:
         forms_query = forms_query.eq('project_id', project_id).order('created_at', desc=False)
-    else: 
+    else:
         forms_query = forms_query.order('project_id', desc=False).order('created_at', desc=False)
     
     forms_response = forms_query.execute()
     if forms_response.data:
         ordered_forms_data = forms_response.data
 
-    # Build ordered_fields list based on form definitions - similar to dataset_view
+    # 2. Build ordered_fields list based on form definitions
     ordered_fields = []
     seen_normalized_fields = set()
     field_label_map = {}
-    registration_form_fields = set()  # Track registration form fields
+    registration_form_fields = set()
 
     for form in ordered_forms_data:
-        # Check if this is a registration form and log it
+        # Check if this is a registration form
         is_first = get_form_is_first(form.get('id'))
         if is_first:
             print(f"Export: Processing fields from registration form: {form.get('id')} - {form.get('title', 'Unknown')}")
-            
+        
         fields_json = form.get('fields', '[]')
         if isinstance(fields_json, str):
             try:
@@ -1853,22 +1802,18 @@ def export_dataset():
             for field in parsed_fields:
                 if isinstance(field, dict) and 'label' in field:
                     label = field['label']
-                    # Use same normalization as when accessing data later
                     normalized_label = label.lower().strip().replace(' ', '_') 
                     if normalized_label not in seen_normalized_fields:
                         ordered_fields.append(label)
                         seen_normalized_fields.add(normalized_label)
                         field_label_map[normalized_label] = label
-                        # Mark if this field is from a registration form
                         if is_first:
                             registration_form_fields.add(normalized_label)
                             print(f"Export: Added registration field: {label}")
     
-    # Also collect fields from all registration forms in the database, even from other projects
-    # This ensures we include registration data across programs in exports
+    # Also collect fields from all registration forms in the database
     if project_id:
         print("Export: Looking for registration forms in other projects")
-        # Get all form IDs that are first/registration forms in the system
         registration_form_ids = []
         all_forms_response = supabase.table('forms').select('id, title, project_id').execute()
         for form in all_forms_response.data:
@@ -1877,7 +1822,6 @@ def export_dataset():
                 registration_form_ids.append(form_id)
                 print(f"Export: Found external registration form: {form_id} in project {form.get('project_id')}")
         
-        # For each registration form, add its fields to our list if not already present
         for reg_form_id in registration_form_ids:
             reg_form_response = supabase.table('forms').select('fields').eq('id', reg_form_id).execute()
             if reg_form_response.data:
@@ -1903,82 +1847,188 @@ def export_dataset():
                 except Exception as e:
                     print(f"Export: Error processing registration form fields: {str(e)}")
     
-    # Group submissions by patient_id
+    # 3. Get all submissions based on filters
+    submissions = []
+    submission_form_ids = [f['id'] for f in ordered_forms_data]
+
+    # Include registration forms from ALL projects
+    all_registration_form_ids = []
+    if project_id:
+        print("Export: Including ALL registration forms across ALL projects")
+        all_forms_response = supabase.table('forms').select('id, title, project_id').execute()
+        
+        for form in all_forms_response.data:
+            form_id = form.get('id')
+            if form_id and get_form_is_first(form_id):
+                if form_id not in submission_form_ids:
+                    all_registration_form_ids.append(form_id)
+                    print(f"Export: Including registration form: {form.get('title')} (ID: {form_id})")
+        
+        if all_registration_form_ids:
+            print(f"Export: Adding {len(all_registration_form_ids)} registration forms from other projects")
+            submission_form_ids.extend(all_registration_form_ids)
+
+    # Query to get submissions
+    query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
+    
+    if submission_form_ids:
+        query = query.in_('form_id', submission_form_ids)
+    elif form_id:
+        query = query.eq('form_id', form_id)
+    elif project_id:
+        query = query.eq('forms.project_id', project_id)
+        
+    # Apply date filters if present
+    if start_date:
+        query = query.gte('created_at', start_date)
+    if end_date:
+        try:
+            end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            inclusive_end_date = (end_date_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+            query = query.lt('created_at', inclusive_end_date) 
+        except ValueError:
+             print(f"Invalid end date format: {end_date}")
+    
+    response = query.execute()
+    submissions = response.data
+    print(f"Export: Initial submissions fetched: {len(submissions)}")
+    
+    # Try direct query if no submissions found
+    if not submissions and (form_id or project_id):
+        print("Export: No submissions found with form filters. Trying direct query.")
+        try:
+            backup_query = supabase.table('form_submissions').select('*')
+            backup_response = backup_query.execute()
+            submissions = backup_response.data
+            print(f"Export: Direct query found {len(submissions)} submissions")
+        except Exception as e:
+            print(f"Error in backup query: {str(e)}")
+            submissions = []
+
+    # 4. Filter submissions based on search term (if any)
+    if search_term:
+        filtered_submissions = []
+        search_lower = search_term.lower()
+        for sub in submissions:
+            if search_lower in str(sub.get('patient_id', '')).lower():
+                filtered_submissions.append(sub)
+                continue 
+            
+            if sub.get('data'):
+                for value in sub['data'].values():
+                    if isinstance(value, list):
+                        if any(search_lower in str(item).lower() for item in value):
+                            filtered_submissions.append(sub)
+                            break 
+                    elif search_lower in str(value).lower():
+                        filtered_submissions.append(sub)
+                        break
+        submissions = filtered_submissions
+        print(f"Export: Found {len(submissions)} submissions after search for '{search_term}'")
+    
+    # 5. Group submissions by patient_id
     patient_data = {}
     all_data_fields_normalized = set()
-    project_form_ids = set() # Keep track of form IDs that belong to the selected project
+    project_form_ids = set()
+    registration_form_ids = set()
 
-    # If project_id is specified, identify forms that belong to this project
     if project_id:
         project_forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
         if project_forms_response.data:
             project_form_ids = {form['id'] for form in project_forms_response.data}
+            print(f"Export: Forms from project {project_id}: {project_form_ids}")
 
     for submission in submissions:
         patient_id = submission['patient_id']
         submission_form_id = submission.get('form_id')
         
-        # Skip processing data fields if this submission is from a different project
-        # and we have a project filter active
+        # Check if this is a registration form and track it
+        is_registration_form = get_form_is_first(submission_form_id)
+        if is_registration_form:
+            registration_form_ids.add(submission_form_id)
+        
         should_process_fields = (not project_id) or (not project_form_ids) or (submission_form_id in project_form_ids)
         
         if patient_id not in patient_data:
             patient_data[patient_id] = {
                 'patient_id': patient_id,
                 'submissions': [],
-                'has_project_submissions': False  # Flag to track if patient has submissions in this project
+                'has_project_submissions': False,
+                'has_non_registration_submissions': False
             }
         
-        # Only add submissions to the patient record if they're from the selected project or no project filter is active
         patient_data[patient_id]['submissions'].append(submission)
         
-        # Mark if this submission belongs to the selected project
         if should_process_fields:
             patient_data[patient_id]['has_project_submissions'] = True
+            
+            if not is_registration_form:
+                patient_data[patient_id]['has_non_registration_submissions'] = True
         
-        # Collect all unique field keys from actual data, but only for forms in this project
         if submission.get('data') and should_process_fields:
             for key in submission['data'].keys():
                 normalized_key = key.lower().strip().replace(' ', '_')
                 all_data_fields_normalized.add(normalized_key)
-                # Ensure field_label_map has original casing even for data-only fields
                 if normalized_key not in field_label_map:
                     field_label_map[normalized_key] = key
-
-    # Identify Extra Fields (present in data but not in form definitions)
-    extra_normalized_fields = all_data_fields_normalized - seen_normalized_fields
-    extra_field_labels = sorted([field_label_map[norm_key] for norm_key in extra_normalized_fields if norm_key in field_label_map])
-    
-    # Combine ordered fields with extra fields - matches dataset_view
-    final_ordered_fields = ordered_fields + extra_field_labels
-    
-    # If a project is selected, filter out patients who don't have any submissions in this project
+                    
+    # Filter out patients who only have registration form submissions
     if project_id and project_form_ids:
         filtered_patient_data = {}
         for patient_id, data in patient_data.items():
-            # Include patients who have submissions in this project OR have registration data anywhere
-            if data.get('has_project_submissions', False) or any(sub.get('form_id') for sub in data['submissions'] if get_form_is_first(sub.get('form_id'))):
+            if data.get('has_non_registration_submissions', False):
                 filtered_patient_data[patient_id] = data
-        print(f"Export: Filtered out {len(patient_data) - len(filtered_patient_data)} patients with no submissions in project {project_id}")
+            else:
+                print(f"Export: Filtered out patient {patient_id} because they only have registration form submissions")
+        
+        print(f"Export: Filtered out {len(patient_data) - len(filtered_patient_data)} patients with only registration form submissions")
         patient_data = filtered_patient_data
+
+    # 6. Apply field value filtering (if specified)
+    if field_name and field_value:
+        filtered_patient_data = {}
+        normalized_filter_field = field_name.lower().strip().replace(' ', '_')
+        filter_value_lower = str(field_value).lower().strip()
+
+        for patient_id, data in patient_data.items():
+            found_match = False
+            for submission in data['submissions']:
+                if submission.get('data'):
+                    if normalized_filter_field in submission['data']:
+                        value = submission['data'][normalized_filter_field]
+                        if isinstance(value, list):
+                             if any(filter_value_lower == str(item).lower().strip() for item in value):
+                                 found_match = True
+                                 break
+                        elif str(value).lower().strip() == filter_value_lower:
+                            found_match = True
+                            break
+            if found_match:
+                filtered_patient_data[patient_id] = data
+        patient_data = filtered_patient_data
+        print(f"Export: Found {len(patient_data)} patients after field filtering")
+
+    # 7. Identify Extra Fields
+    extra_normalized_fields = all_data_fields_normalized - seen_normalized_fields
+    extra_field_labels = sorted([field_label_map[norm_key] for norm_key in extra_normalized_fields if norm_key in field_label_map])
     
-    # Pre-process patient data to merge values
+    # 8. Combine ordered fields with extra fields
+    final_ordered_fields = ordered_fields + extra_field_labels
+    
+    # 9. Pre-process patient data to merge values
     for patient_id, data in patient_data.items():
         merged_data = {}
-        # Keep track of the latest submission date for each field
         last_updated = {} 
         
-        # Get all first/registration forms for this patient from any program
+        # Process registration data first
         registration_data = {}
         
-        # Find all first forms submitted by this patient
-        print(f"Export: Looking for registration forms for patient: {patient_id}")
+        print(f"Export: Processing registration data for patient: {patient_id}")
         for submission in data['submissions']:
             form_id = submission.get('form_id')
             if form_id and get_form_is_first(form_id) and submission.get('data'):
-                # Add registration form data with priority to newer submissions
                 form_title = submission.get('forms', {}).get('title', 'Unknown')
-                print(f"Export: Found registration form data from: {form_title} (ID: {form_id}) for patient {patient_id}")
+                print(f"Export: Found registration data from: {form_title} (ID: {form_id})")
                 submission_date = submission.get('created_at', '')
                 for key, value in submission['data'].items():
                     normalized_key = key.lower().strip().replace(' ', '_')
@@ -1988,55 +2038,62 @@ def export_dataset():
                             last_updated[normalized_key] = submission_date
                         print(f"  Export: Added registration field: {key}={value}")
 
-        # Sort submissions by date (newest first) to prioritize recent data
+        # Sort submissions by date (newest first)
         sorted_submissions = sorted(data['submissions'], key=lambda s: s.get('created_at', ''), reverse=True)
 
-        # First add registration data to merged_data to prioritize it
-        # This ensures registration data is preserved and appears first in the exported data
+        # Add registration data first
         for normalized_key, value in registration_data.items():
             merged_data[normalized_key] = value
             print(f"Export: Added registration data for patient {patient_id}: {normalized_key}={value}")
         
-        # Then add data from regular submissions in this project
+        # Then add data from other submissions
         for submission in sorted_submissions:
             if submission.get('data'):
                 submission_date = submission.get('created_at')
                 for key, value in submission['data'].items():
                     normalized_key = key.lower().strip().replace(' ', '_')
-                    # Only add/update if this submission is newer or the key hasn't been seen
-                    # But don't overwrite registration data
                     if normalized_key not in merged_data or (
-                            normalized_key not in registration_form_fields and  # Skip if it's a registration field
+                            normalized_key not in registration_form_fields and
                             submission_date and submission_date > last_updated.get(normalized_key, '')
                         ):
-                         merged_data[normalized_key] = value
-                         if submission_date:
-                              last_updated[normalized_key] = submission_date
+                        merged_data[normalized_key] = value
+                        if submission_date:
+                            last_updated[normalized_key] = submission_date
         
         data['merged_data'] = merged_data
-    
-    # Create DataFrame
-    data = []
-    for patient_id, data_dict in patient_data.items():
+
+    # 10. Convert patient_data dictionary to list for export
+    # This follows the exact same pattern as dataset_view
+    patient_data_list = []
+    for patient_id, data in patient_data.items():
+        if 'merged_data' not in data:
+            continue
+            
         # Start with patient ID
-        row = {'Patient ID': patient_id}
+        patient_row = {'patient_id': patient_id}
         
-        if 'merged_data' in data_dict:
-            # First add registration form fields
-            for field_label in final_ordered_fields:
-                normalized_key = field_label.lower().strip().replace(' ', '_')
-                if normalized_key in registration_form_fields and normalized_key in data_dict['merged_data']:
-                    row[field_label] = data_dict['merged_data'][normalized_key]
-            
-            # Then add all other fields
-            for field_label in final_ordered_fields:
-                normalized_key = field_label.lower().strip().replace(' ', '_')
-                if normalized_key not in registration_form_fields and normalized_key in data_dict['merged_data']:
-                    row[field_label] = data_dict['merged_data'][normalized_key]
-            
-        data.append(row)
+        # Add registration form fields first
+        for field in ordered_fields:
+            normalized_key = field.lower().strip().replace(' ', '_')
+            if normalized_key in registration_form_fields and normalized_key in data['merged_data']:
+                patient_row[field] = data['merged_data'][normalized_key]
+        
+        # Add all other fields
+        for field in ordered_fields:
+            normalized_key = field.lower().strip().replace(' ', '_')
+            if normalized_key not in registration_form_fields and normalized_key in data['merged_data']:
+                patient_row[field] = data['merged_data'][normalized_key]
+                
+        # Add any extra fields not in ordered_fields
+        for field in extra_field_labels:
+            normalized_key = field.lower().strip().replace(' ', '_')
+            if normalized_key in data['merged_data']:
+                patient_row[field] = data['merged_data'][normalized_key]
+        
+        patient_data_list.append(patient_row)
     
-    df = pd.DataFrame(data)
+    # Create DataFrame from the exact same structure used for the web view
+    df = pd.DataFrame(patient_data_list)
     
     # Create Excel file in memory
     output = BytesIO()
@@ -2046,22 +2103,28 @@ def export_dataset():
         # Auto-adjust columns' width
         worksheet = writer.sheets['Dataset']
         for i, col in enumerate(df.columns):
-            max_length = max(df[col].astype(str).apply(len).max(), len(col)) + 2
-            worksheet.set_column(i, i, max_length)
+            # Handle empty dataframes
+            if df.empty:
+                max_len = len(str(col)) + 2
+            else:
+                # Get the maximum length of the column contents
+                max_len = max(
+                    df[col].astype(str).apply(len).max(),
+                    len(str(col))
+                ) + 2
+            worksheet.set_column(i, i, max_len)
     
     output.seek(0)
     
     # Generate a filename based on the filters
     filename = 'dataset'
     if project_id:
-        # Get project name for filename
         project_response = supabase.table('projects').select('name').eq('id', project_id).execute()
         if project_response.data:
             project_name = project_response.data[0]['name']
             filename = f"{project_name}_dataset"
     
     if form_id:
-        # Get form name for filename
         form_response = supabase.table('forms').select('title').eq('id', form_id).execute()
         if form_response.data:
             form_title = form_response.data[0]['title']
