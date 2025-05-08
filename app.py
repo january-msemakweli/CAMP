@@ -3069,18 +3069,55 @@ def analytics():
                     if field1 not in df.columns:
                         stats = f"<div class='alert alert-warning'>Selected field '{field1}' does not exist in the dataset.</div>"
                     else:
-                        # Check if we have timestamp data
+                        # Check if we have timestamp data from created_at column
+                        has_time_data = False
                         if 'created_at' in df.columns:
                             # Convert to datetime
                             df['date'] = pd.to_datetime(df['created_at']).dt.date
+                            has_time_data = True
+                        # If no created_at, try to extract date from patient_id (format: DDMMYY-NNNN)
+                        elif 'patient_id' in df.columns:
+                            try:
+                                # Extract DDMMYY part from patient_id and convert to datetime
+                                df['extracted_date'] = df['patient_id'].str.extract(r'(\d{6})-', expand=False)
+                                # Convert to datetime format (add 20 or 19 as prefix for year based on current date)
+                                current_year = datetime.now().year
+                                
+                                def convert_to_date(date_str):
+                                    if pd.isna(date_str):
+                                        return None
+                                    try:
+                                        day = int(date_str[0:2])
+                                        month = int(date_str[2:4])
+                                        year_short = int(date_str[4:6])
+                                        # Determine century (19xx or 20xx)
+                                        year = year_short + 2000 if year_short <= (current_year - 2000) else year_short + 1900
+                                        return datetime(year, month, day).date()
+                                    except:
+                                        return None
+                                
+                                df['date'] = df['extracted_date'].apply(convert_to_date)
+                                # Drop rows with invalid dates
+                                df = df.dropna(subset=['date'])
+                                if len(df) > 0:
+                                    has_time_data = True
+                                    print(f"Successfully extracted dates from {len(df)} patient IDs")
+                            except Exception as e:
+                                print(f"Error extracting dates from patient_id: {str(e)}")
+                                has_time_data = False
                             
+                        # Proceed if we have date data
+                        if has_time_data:
                             # Analyze based on field type
                             field1_type = field_types.get(field1, 'unknown')
                             
                             if field1_type == 'numeric':
                                 # Group by date and calculate statistics
                                 time_data = df.groupby('date')[field1].agg(['mean', 'count', 'std', 'min', 'max']).reset_index()
-                                stats = time_data.to_html(classes='table table-striped table-hover', index=False)
+                                
+                                # Add data source note
+                                stats = f"<div class='alert alert-info mb-3'>{data_source_note}</div>"
+                                stats += time_data.to_html(classes='table table-striped table-hover', index=False)
                                 
                                 # Create line chart for mean values over time
                                 fig, ax = plt.subplots(figsize=(12, 6))
@@ -3142,10 +3179,11 @@ def analytics():
                                 })
                                 
                                 # Output the stacked data in a table
-                                stats = pivot_data.reset_index().to_html(classes='table table-striped table-hover')
+                                stats = f"<div class='alert alert-info mb-3'>{data_source_note}</div>"
+                                stats += pivot_data.reset_index().to_html(classes='table table-striped table-hover')
                         
                         else:
-                            stats = "<div class='alert alert-warning'>No time data available for time series analysis.</div>"
+                            stats = "<div class='alert alert-warning'>No time data available for time series analysis. Please ensure patient IDs follow the DDMMYY-NNNN format or submissions have creation dates.</div>"
 
                 # 5. Correlation Matrix
                 elif analysis_type == 'correlation':
