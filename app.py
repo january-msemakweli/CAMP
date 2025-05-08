@@ -2319,78 +2319,286 @@ def clean_field_name(name):
     return name
 
 def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None, end_date=None):
-    """Prepare dataset for visualization and analysis"""
-    # This is similar to the dataset_view logic but optimized for analytics
-    if project_id:
-        # First get all forms for this project
-        forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
-        if forms_response.data:
-            form_ids = [form['id'] for form in forms_response.data]
-            
-            # Then query submissions for these forms
-            query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
-            query = query.in_('form_id', form_ids)
-            
-            if form_id:
-                query = query.eq('form_id', form_id)
-            if start_date:
-                query = query.gte('created_at', start_date)
-            if end_date:
-                query = query.lte('created_at', end_date)
-            
-            response = query.execute()
-            submissions = response.data
+    """
+    Prepare dataset for analytics by directly using the same dataset export logic.
+    This ensures that analytics and exports will always show identical data.
+    """
+    # Return empty dataframe if no project is selected
+    if not project_id:
+        return pd.DataFrame()
+    
+    # This directly reuses the dataset_view logic to get the exact same data as shown in the view
+    # and exported to Excel
+    
+    # 1. Fetch Ordered Forms relevant to the filters
+    ordered_forms_data = []
+    forms_query = supabase.table('forms').select('*')
+    if form_id:
+        forms_query = forms_query.eq('id', form_id)
+    elif project_id:
+        forms_query = forms_query.eq('project_id', project_id).order('created_at', desc=False)
+    
+    forms_response = forms_query.execute()
+    if forms_response.data:
+        ordered_forms_data = forms_response.data
+
+    # 2. Build ordered_fields list based on form definitions
+    ordered_fields = []
+    seen_normalized_fields = set()
+    field_label_map = {}
+    registration_form_fields = set()
+
+    for form in ordered_forms_data:
+        # Check if this is a registration form
+        is_first = get_form_is_first(form.get('id'))
+        
+        fields_json = form.get('fields', '[]')
+        if isinstance(fields_json, str):
+            try:
+                parsed_fields = json.loads(fields_json)
+            except json.JSONDecodeError:
+                parsed_fields = []
+        elif isinstance(fields_json, list):
+            parsed_fields = fields_json
         else:
-            submissions = []
-    else:
-        # Get all submissions
-        query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
-        
-        if form_id:
-            query = query.eq('form_id', form_id)
-        if start_date:
-            query = query.gte('created_at', start_date)
-        if end_date:
-            query = query.lte('created_at', end_date)
-        
-        response = query.execute()
-        submissions = response.data
+            parsed_fields = []
+
+        if isinstance(parsed_fields, list):
+            for field in parsed_fields:
+                if isinstance(field, dict) and 'label' in field:
+                    label = field['label']
+                    normalized_label = label.lower().strip().replace(' ', '_') 
+                    if normalized_label not in seen_normalized_fields:
+                        ordered_fields.append(label)
+                        seen_normalized_fields.add(normalized_label)
+                        field_label_map[normalized_label] = label
+                        if is_first:
+                            registration_form_fields.add(normalized_label)
     
-    # Create a flat dataframe with all submissions
-    data = []
+    # Also collect fields from all registration forms in the database
+    if project_id:
+        registration_form_ids = []
+        all_forms_response = supabase.table('forms').select('id, title, project_id').execute()
+        for form in all_forms_response.data:
+            form_id = form.get('id')
+            if form_id and get_form_is_first(form_id) and form.get('project_id') != project_id:
+                registration_form_ids.append(form_id)
+        
+        for reg_form_id in registration_form_ids:
+            reg_form_response = supabase.table('forms').select('fields').eq('id', reg_form_id).execute()
+            if reg_form_response.data:
+                reg_form = reg_form_response.data[0]
+                reg_fields_json = reg_form.get('fields', '[]')
+                try:
+                    if isinstance(reg_fields_json, str):
+                        reg_parsed_fields = json.loads(reg_fields_json)
+                    else:
+                        reg_parsed_fields = reg_fields_json
+
+                    if isinstance(reg_parsed_fields, list):
+                        for field in reg_parsed_fields:
+                            if isinstance(field, dict) and 'label' in field:
+                                label = field['label']
+                                normalized_label = label.lower().strip().replace(' ', '_')
+                                if normalized_label not in seen_normalized_fields:
+                                    ordered_fields.append(label)
+                                    seen_normalized_fields.add(normalized_label)
+                                    field_label_map[normalized_label] = label
+                                    registration_form_fields.add(normalized_label)
+                except Exception as e:
+                    pass
+    
+    # 3. Get all submissions based on filters
+    submissions = []
+    submission_form_ids = [f['id'] for f in ordered_forms_data]
+
+    # Include registration forms from ALL projects
+    all_registration_form_ids = []
+    if project_id:
+        all_forms_response = supabase.table('forms').select('id, title, project_id').execute()
+        
+        for form in all_forms_response.data:
+            form_id = form.get('id')
+            if form_id and get_form_is_first(form_id):
+                if form_id not in submission_form_ids:
+                    all_registration_form_ids.append(form_id)
+        
+        if all_registration_form_ids:
+            submission_form_ids.extend(all_registration_form_ids)
+
+    # Query to get submissions
+    query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
+    
+    if submission_form_ids:
+        query = query.in_('form_id', submission_form_ids)
+    elif form_id:
+        query = query.eq('form_id', form_id)
+    elif project_id:
+        query = query.eq('forms.project_id', project_id)
+        
+    # Apply date filters if present
+    if start_date:
+        query = query.gte('created_at', start_date)
+    if end_date:
+        try:
+            end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            inclusive_end_date = (end_date_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+            query = query.lt('created_at', inclusive_end_date) 
+        except ValueError:
+            pass
+    
+    response = query.execute()
+    submissions = response.data
+
+    # 4. Process the submissions into a patient-based dataset
+    patient_data = {}
+    all_data_fields_normalized = set()
+    project_form_ids = set()
+    registration_form_ids = set()
+
+    if project_id:
+        project_forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
+        if project_forms_response.data:
+            project_form_ids = {form['id'] for form in project_forms_response.data}
+
     for submission in submissions:
-        row = {
-            'patient_id': submission['patient_id'],
-            'submission_id': submission['id'],
-            'created_at': utc_to_eat(submission['created_at']).strftime('%Y-%m-%d %H:%M:%S') if submission.get('created_at') else '',
-        }
+        patient_id = submission['patient_id']
+        submission_form_id = submission.get('form_id')
         
-        # Get form and project info
-        form = submission.get('forms', {})
-        if form:
-            form_title = form.get('title', 'Unknown Form')
-            project = form.get('projects', {})
-            project_name = project.get('name', 'Unknown Project') if project else 'Unknown Project'
-            
-            row['form_title'] = form_title
-            row['project_name'] = project_name
-            
-            # Add form data with proper context
-            if submission.get('data'):
-                for key, value in submission['data'].items():
-                    # Check if it's a multi-value field (like checkboxes)
-                    if isinstance(value, list):
-                        # Store as comma-separated string
-                        value = ', '.join(str(v) for v in value)
-                    
-                    # Store the field with project and form context
-                    field_key = f"{project_name} - {form_title} - {key}"
-                    row[field_key] = value
+        # Check if this is a registration form
+        is_registration_form = get_form_is_first(submission_form_id)
+        if is_registration_form:
+            registration_form_ids.add(submission_form_id)
         
-        data.append(row)
+        should_process_fields = (not project_id) or (not project_form_ids) or (submission_form_id in project_form_ids)
+        
+        if patient_id not in patient_data:
+            patient_data[patient_id] = {
+                'patient_id': patient_id,
+                'submissions': [],
+                'has_project_submissions': False,
+                'has_non_registration_submissions': False
+            }
+        
+        patient_data[patient_id]['submissions'].append(submission)
+        
+        if should_process_fields:
+            patient_data[patient_id]['has_project_submissions'] = True
+            
+            if not is_registration_form:
+                patient_data[patient_id]['has_non_registration_submissions'] = True
+        
+        if submission.get('data') and should_process_fields:
+            for key in submission['data'].keys():
+                normalized_key = key.lower().strip().replace(' ', '_')
+                all_data_fields_normalized.add(normalized_key)
+                if normalized_key not in field_label_map:
+                    field_label_map[normalized_key] = key
     
-    # Convert to dataframe
-    df = pd.DataFrame(data)
+    # 5. CRITICAL: Filter out patients who don't have non-registration submissions in this project
+    # This ensures analytics only shows patients who actually participated in the selected program
+    if project_id and project_form_ids:
+        filtered_patient_data = {}
+        for patient_id, data in patient_data.items():
+            if data.get('has_non_registration_submissions', False):
+                filtered_patient_data[patient_id] = data
+        
+        patient_data = filtered_patient_data
+
+    # Find extra fields in submissions that weren't in form definitions
+    extra_normalized_fields = all_data_fields_normalized - seen_normalized_fields
+    extra_field_labels = sorted([field_label_map[norm_key] for norm_key in extra_normalized_fields if norm_key in field_label_map])
+    
+    # Combine ordered fields with extra fields
+    final_ordered_fields = ordered_fields + extra_field_labels
+    
+    # Pre-process patient data to merge values
+    for patient_id, data in patient_data.items():
+        merged_data = {}
+        last_updated = {} 
+        
+        # Process registration data first
+        registration_data = {}
+        
+        for submission in data['submissions']:
+            form_id = submission.get('form_id')
+            if form_id and get_form_is_first(form_id) and submission.get('data'):
+                submission_date = submission.get('created_at', '')
+                for key, value in submission['data'].items():
+                    normalized_key = key.lower().strip().replace(' ', '_')
+                    if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
+                        registration_data[normalized_key] = value
+                        if submission_date:
+                            last_updated[normalized_key] = submission_date
+
+        # Sort submissions by date (newest first)
+        sorted_submissions = sorted(data['submissions'], key=lambda s: s.get('created_at', ''), reverse=True)
+
+        # Add registration data first
+        for normalized_key, value in registration_data.items():
+            merged_data[normalized_key] = value
+        
+        # Then add data from other submissions
+        for submission in sorted_submissions:
+            if submission.get('data'):
+                submission_date = submission.get('created_at')
+                for key, value in submission['data'].items():
+                    normalized_key = key.lower().strip().replace(' ', '_')
+                    if normalized_key not in merged_data or (
+                            normalized_key not in registration_form_fields and
+                            submission_date and submission_date > last_updated.get(normalized_key, '')
+                        ):
+                        merged_data[normalized_key] = value
+                        if submission_date:
+                            last_updated[normalized_key] = submission_date
+        
+        data['merged_data'] = merged_data
+
+    # Convert patient_data dictionary to list for DataFrame - exactly as in dataset_view
+    patient_data_list = []
+    for patient_id, data in patient_data.items():
+        if 'merged_data' not in data:
+            continue
+            
+        # Start with patient ID
+        patient_row = {'patient_id': patient_id}
+        
+        # Add registration form fields first
+        for field in ordered_fields:
+            normalized_key = field.lower().strip().replace(' ', '_')
+            if normalized_key in registration_form_fields and normalized_key in data['merged_data']:
+                patient_row[field] = data['merged_data'][normalized_key]
+        
+        # Add all other fields
+        for field in ordered_fields:
+            normalized_key = field.lower().strip().replace(' ', '_')
+            if normalized_key not in registration_form_fields and normalized_key in data['merged_data']:
+                patient_row[field] = data['merged_data'][normalized_key]
+                
+        # Add any extra fields not in ordered_fields
+        for field in extra_field_labels:
+            normalized_key = field.lower().strip().replace(' ', '_')
+            if normalized_key in data['merged_data']:
+                patient_row[field] = data['merged_data'][normalized_key]
+        
+        patient_data_list.append(patient_row)
+    
+    # Create DataFrame - this matches exactly what would be exported to Excel from dataset view
+    df = pd.DataFrame(patient_data_list)
+    
+    # Convert potentially numeric columns to numeric type for analytics
+    for column in df.columns:
+        if df[column].dtype == 'object':  # If it's a string/object type
+            # Try to convert to numeric, setting errors='coerce' will convert failures to NaN
+            numeric_series = pd.to_numeric(df[column], errors='coerce')
+            # If the conversion didn't result in all NaNs, consider it numeric
+            if not numeric_series.isna().all():
+                # Calculate what percentage of values converted successfully
+                success_rate = 1 - (numeric_series.isna().sum() / len(numeric_series))
+                # If more than 80% of values converted successfully, treat as numeric
+                if success_rate > 0.8:
+                    df[column] = numeric_series
+    
     return df
 
 def get_summary_statistics(data, field_name):
@@ -2473,31 +2681,43 @@ def analytics():
     stats = None
     title = None
     
-    # Only proceed with analysis if there are filter parameters
-    if project_id or form_id:
-        # Prepare dataset
+    # Only proceed with analysis if project_id is provided
+    if project_id:
+        # Get project name for the title
+        project_name = None
+        for project in all_projects:
+            if project['id'] == project_id:
+                project_name = project['name']
+                break
+        
+        # Get the dataset using the exact same logic as the dataset view
+        # This ensures consistency between analytics and the dataset view
         df = prepare_dataset_for_analysis(project_id, form_id, start_date, end_date)
         
         # If dataframe is empty, show message
         if df.empty:
-            flash('No data available for the selected filters.', 'warning')
+            flash('No data available for the selected program.', 'warning')
         else:
-            # Get all field names for dropdowns
-            excluded_cols = ['patient_id', 'submission_id', 'created_at', 'form_title', 'project_name']
-            all_fields = [col for col in df.columns if col not in excluded_cols]
+            # Add a note about the data source
+            data_source_note = f"Analysis of {len(df)} patients from program: {project_name}"
+            if form_id:
+                form_name = None
+                for form in forms:
+                    if form['id'] == form_id:
+                        form_name = form['title']
+                        break
+                if form_name:
+                    data_source_note += f", form: {form_name}"
+            if start_date or end_date:
+                date_range = f" from {start_date}" if start_date else " until"
+                if end_date:
+                    date_range += f" to {end_date}"
+                data_source_note += date_range
             
-            # Attempt to convert potentially numeric columns to numeric type
-            for field in all_fields:
-                if df[field].dtype == 'object':  # If it's a string/object type
-                    # Try to convert to numeric, setting errors='coerce' will convert failures to NaN
-                    numeric_series = pd.to_numeric(df[field], errors='coerce')
-                    # If the conversion didn't result in all NaNs, we can consider it numeric
-                    if not numeric_series.isna().all():
-                        # Calculate what percentage of values converted successfully
-                        success_rate = 1 - (numeric_series.isna().sum() / len(numeric_series))
-                        # If more than 80% of values converted successfully, treat as numeric
-                        if success_rate > 0.8:
-                            df[field] = numeric_series
+            # Get all field names from the dataset columns
+            # This approach works directly with the column names in the dataset
+            excluded_cols = ['patient_id', 'submission_id']
+            all_fields = [col for col in df.columns if col not in excluded_cols]
             
             # Determine field types for analysis
             for field in all_fields:
@@ -2515,180 +2735,179 @@ def analytics():
             
             # If analysis fields are specified, perform analysis
             if analysis_type:
-                # 1. Summary Statistics
+                # 1. Summary Statistics for a field
                 if analysis_type == 'summary_statistics' and field1:
-                    title = f'Summary Statistics for {clean_field_name(field1)}'
+                    title = f"Summary Statistics for {field1}"
                     
-                    # Try to convert the field to numeric regardless of its detected type
-                    # This handles cases where a numeric field might be stored as strings
-                    numeric_data = pd.to_numeric(df[field1], errors='coerce').dropna()
-                    
-                    if len(numeric_data) > 0:  # If we have any numeric values
-                        # Calculate key statistics
-                        key_stats = {
-                            'Count': len(numeric_data),
-                            'Missing Values': len(df) - len(numeric_data),
-                            'Mean': numeric_data.mean(),
-                            'Standard Deviation': numeric_data.std(),
-                            'Median': numeric_data.median(),
-                            'Minimum': numeric_data.min(),
-                            'Maximum': numeric_data.max(),
-                            'Range': numeric_data.max() - numeric_data.min(),
-                            '25th Percentile': numeric_data.quantile(0.25),
-                            '75th Percentile': numeric_data.quantile(0.75)
-                        }
-                        
-                        # Convert to DataFrame for display
-                        stats_df = pd.DataFrame(list(key_stats.items()), columns=['Statistic', 'Value'])
-                        
-                        # Format numbers for better display
-                        stats_df['Value'] = stats_df['Value'].apply(lambda x: f"{x:.4f}" if isinstance(x, float) else x)
-                        
-                        # Display statistics
-                        stats = stats_df.to_html(classes='table table-striped table-hover table-bordered', index=False)
-                        
-                        # Histogram with mean and median lines
-                        fig, ax = plt.subplots(figsize=(12, 6))
-                        sns.histplot(numeric_data, kde=True, ax=ax)
-                        
-                        # Add vertical lines for mean and median
-                        plt.axvline(numeric_data.mean(), color='red', linestyle='dashed', linewidth=1, label=f'Mean: {numeric_data.mean():.2f}')
-                        plt.axvline(numeric_data.median(), color='green', linestyle='dashed', linewidth=1, label=f'Median: {numeric_data.median():.2f}')
-                        
-                        # Add standard deviation range
-                        mean = numeric_data.mean()
-                        std = numeric_data.std()
-                        plt.axvline(mean + std, color='orange', linestyle='dotted', linewidth=1, label=f'Mean + SD: {mean + std:.2f}')
-                        plt.axvline(mean - std, color='orange', linestyle='dotted', linewidth=1, label=f'Mean - SD: {mean - std:.2f}')
-                        
-                        ax.set_title(f'Distribution of {clean_field_name(field1)}')
-                        ax.set_xlabel(clean_field_name(field1))
-                        ax.set_ylabel('Frequency')
-                        plt.legend()
-                        plt.tight_layout()
-                        plots.append({
-                            'title': 'Histogram with Mean and Median',
-                            'img': fig_to_base64(fig)
-                        })
-                        
-                        # Boxplot
-                        fig, ax = plt.subplots(figsize=(12, 6))
-                        sns.boxplot(x=numeric_data, ax=ax)
-                        ax.set_title(f'Boxplot of {clean_field_name(field1)}')
-                        ax.set_xlabel(clean_field_name(field1))
-                        plt.tight_layout()
-                        plots.append({
-                            'title': 'Boxplot',
-                            'img': fig_to_base64(fig)
-                        })
-                        
-                        # QQ Plot
-                        from scipy import stats as scipy_stats
-                        fig, ax = plt.subplots(figsize=(12, 6))
-                        scipy_stats.probplot(numeric_data, plot=ax)
-                        ax.set_title(f'Q-Q Plot of {clean_field_name(field1)} (Normality Check)')
-                        plt.tight_layout()
-                        plots.append({
-                            'title': 'Q-Q Plot',
-                            'img': fig_to_base64(fig)
-                        })
-                        
+                    # Check if the field exists in the dataset
+                    if field1 not in df.columns:
+                        stats = f"<div class='alert alert-warning'>Selected field '{field1}' does not exist in the dataset.</div>"
                     else:
-                        non_numeric_values = df[field1].dropna().head(5).tolist()
-                        example_values = ', '.join([f'"{str(v)}"' for v in non_numeric_values])
-                        stats = f"""<div class='alert alert-warning'>
-                            <p>Unable to perform numeric analysis on this field. The values don't appear to be numeric.</p>
-                            <p>Examples of values in this field: {example_values}</p>
-                            <p>Please ensure the field contains numeric data or select a different field.</p>
-                        </div>"""
+                        field1_type = field_types.get(field1, 'unknown')
+                        
+                        # For numeric fields, show numeric statistics
+                        if field1_type == 'numeric':
+                            # Convert to numeric, handling errors by converting them to NaN
+                            numeric_data = pd.to_numeric(df[field1], errors='coerce')
+                            # Drop NaN values for statistics
+                            numeric_data = numeric_data.dropna()
+                            
+                            if len(numeric_data) > 0:
+                                desc_stats = numeric_data.describe().to_frame().reset_index()
+                                desc_stats.columns = ['Statistic', 'Value']
+                                # Add missing data information
+                                missing_count = df[field1].isna().sum() + (len(df[field1]) - len(numeric_data))
+                                missing_row = pd.DataFrame({'Statistic': ['Missing Values'], 'Value': [missing_count]})
+                                desc_stats = pd.concat([desc_stats, missing_row], ignore_index=True)
+                                
+                                # Add data source note
+                                stats = f"<div class='alert alert-info mb-3'>{data_source_note}</div>"
+                                stats += desc_stats.to_html(classes='table table-striped table-hover', index=False)
+                                
+                                # Create a histogram for numeric data
+                                fig, ax = plt.subplots(figsize=(10, 6))
+                                sns.histplot(numeric_data, kde=True, ax=ax)
+                                ax.set_title(f'Distribution of {field1}')
+                                ax.set_xlabel(field1)
+                                ax.set_ylabel('Frequency')
+                                plt.tight_layout()
+                                plots.append({
+                                    'title': 'Distribution Histogram',
+                                    'img': fig_to_base64(fig)
+                                })
+                                
+                                # Create a boxplot for numeric data
+                                fig, ax = plt.subplots(figsize=(10, 6))
+                                sns.boxplot(x=numeric_data, ax=ax)
+                                ax.set_title(f'Boxplot of {field1}')
+                                ax.set_xlabel(field1)
+                                plt.tight_layout()
+                                plots.append({
+                                    'title': 'Boxplot',
+                                    'img': fig_to_base64(fig)
+                                })
+                            else:
+                                stats = "<div class='alert alert-warning'>No valid numeric data available for statistics.</div>"
+                        
+                        # For categorical fields, show frequency distribution
+                        elif field1_type == 'categorical':
+                            # Get value counts
+                            value_counts = df[field1].value_counts().reset_index()
+                            value_counts.columns = ['Value', 'Count']
+                            value_counts['Percentage'] = (value_counts['Count'] / value_counts['Count'].sum() * 100).round(2)
+                            
+                            # Add data source note
+                            stats = f"<div class='alert alert-info mb-3'>{data_source_note}</div>"
+                            stats += value_counts.to_html(classes='table table-striped table-hover', index=False)
+                            
+                            # Create a bar chart for categorical data
+                            fig, ax = plt.subplots(figsize=(12, 6))
+                            sns.barplot(x='Value', y='Count', data=value_counts, ax=ax)
+                            ax.set_title(f'Frequency Distribution of {field1}')
+                            plt.xticks(rotation=45, ha='right')
+                            plt.tight_layout()
+                            plots.append({
+                                'title': 'Frequency Distribution',
+                                'img': fig_to_base64(fig)
+                            })
+                            
+                            # Create a pie chart if fewer than 8 categories
+                            if len(value_counts) < 8:
+                                fig, ax = plt.subplots(figsize=(8, 8))
+                                ax.pie(value_counts['Count'], labels=value_counts['Value'], autopct='%1.1f%%')
+                                ax.set_title(f'Distribution of {field1}')
+                                plt.tight_layout()
+                                plots.append({
+                                    'title': 'Pie Chart',
+                                    'img': fig_to_base64(fig)
+                                })
+                        
+                        # For text fields, show basic stats
+                        else:
+                            # Count unique values
+                            unique_count = df[field1].nunique()
+                            # Count non-missing values
+                            non_missing = df[field1].count()
+                            # Get most common values
+                            most_common = df[field1].value_counts().head(10).reset_index()
+                            most_common.columns = ['Value', 'Count']
+                            
+                            stats = f"""
+                            <div class='alert alert-info mb-3'>{data_source_note}</div>
+                            <div class='alert alert-info'>
+                                <p>Field type: Text</p>
+                                <p>Unique values: {unique_count}</p>
+                                <p>Non-missing values: {non_missing}</p>
+                                <p>Missing values: {len(df) - non_missing}</p>
+                            </div>
+                            <h5>Most Common Values:</h5>
+                            {most_common.to_html(classes='table table-striped table-hover', index=False)}
+                            """
                 
                 # 2. Frequency Distribution
                 elif analysis_type == 'frequency' and field1:
-                    field1_label = field1.split(' - ')[-1] if ' - ' in field1 else field1
-                    title = f'Frequency Distribution of {field1_label}'
+                    title = f"Frequency Distribution for {field1}"
                     
-                    if field_types[field1] == 'categorical':
-                        # Count frequency and sort
-                        freq = df[field1].value_counts().reset_index()
-                        freq.columns = ['Value', 'Count']
-                        freq = freq.sort_values('Count', ascending=False)
+                    # Check if the field exists in the dataset
+                    if field1 not in df.columns:
+                        stats = f"<div class='alert alert-warning'>Selected field '{field1}' does not exist in the dataset.</div>"
+                    else:
+                        # Get value counts
+                        value_counts = df[field1].value_counts().reset_index()
+                        value_counts.columns = ['Value', 'Count']
+                        value_counts['Percentage'] = (value_counts['Count'] / value_counts['Count'].sum() * 100).round(2)
                         
-                        # Create table stats
-                        stats = freq.to_html(classes='table table-striped table-hover', index=False)
+                        # Get missing values count
+                        missing_count = df[field1].isna().sum()
                         
-                        # Bar chart
-                        fig, ax = plt.subplots(figsize=(10, 6))
-                        sns.barplot(x='Value', y='Count', data=freq, ax=ax)
-                        ax.set_title(title)
-                        ax.set_xlabel(field1_label)
-                        ax.set_ylabel('Frequency')
+                        # Add data source note
+                        stats = f"""
+                        <div class='alert alert-info mb-3'>{data_source_note}</div>
+                        <div class='alert alert-info'>
+                            <p>Total records: {len(df)}</p>
+                            <p>Unique values: {df[field1].nunique()}</p>
+                            <p>Missing values: {missing_count} ({(missing_count/len(df)*100).round(2)}%)</p>
+                        </div>
+                        {value_counts.to_html(classes='table table-striped table-hover', index=False)}
+                        """
+                        
+                        # If we have too many values, only show top N in visualization
+                        if len(value_counts) > 15:
+                            plot_data = value_counts.head(15)
+                            has_more = True
+                        else:
+                            plot_data = value_counts
+                            has_more = False
+                        
+                        # Create a bar chart
+                        fig, ax = plt.subplots(figsize=(12, 6))
+                        sns.barplot(x='Value', y='Count', data=plot_data, ax=ax)
+                        ax.set_title(f'Frequency Distribution of {field1}')
+                        if has_more:
+                            ax.set_title(f'Frequency Distribution of {field1} (Top 15 Values)')
                         plt.xticks(rotation=45, ha='right')
                         plt.tight_layout()
                         plots.append({
-                            'title': 'Bar Chart - Frequency Distribution',
+                            'title': 'Frequency Distribution',
                             'img': fig_to_base64(fig)
                         })
                         
-                        # Pie chart if fewer than 10 categories
-                        if len(freq) <= 10:
-                            fig, ax = plt.subplots(figsize=(10, 6))
-                            plt.pie(freq['Count'], labels=freq['Value'], autopct='%1.1f%%')
-                            plt.title(f'Pie Chart - {title}')
+                        # Create a pie chart if fewer than 8 categories
+                        if len(plot_data) < 8:
+                            fig, ax = plt.subplots(figsize=(8, 8))
+                            ax.pie(plot_data['Count'], labels=plot_data['Value'], autopct='%1.1f%%')
+                            ax.set_title(f'Distribution of {field1}')
+                            if has_more:
+                                ax.set_title(f'Distribution of {field1} (Top 7 Values)')
                             plt.tight_layout()
                             plots.append({
-                                'title': 'Pie Chart - Distribution',
+                                'title': 'Pie Chart',
                                 'img': fig_to_base64(fig)
                             })
-                    
-                    elif field_types[field1] == 'numeric':
-                        # Convert to numeric
-                        df[field1] = pd.to_numeric(df[field1], errors='coerce')
-                        
-                        # Get comprehensive summary statistics
-                        stats = get_summary_statistics(df, field1)
-                        
-                        # Histogram
-                        fig, ax = plt.subplots(figsize=(10, 6))
-                        sns.histplot(df[field1].dropna(), kde=True, ax=ax)
-                        ax.set_title(f'Histogram - {title}')
-                        ax.set_xlabel(field1_label)
-                        ax.set_ylabel('Frequency')
-                        plt.tight_layout()
-                        plots.append({
-                            'title': 'Histogram',
-                            'img': fig_to_base64(fig)
-                        })
-                        
-                        # Boxplot
-                        fig, ax = plt.subplots(figsize=(10, 6))
-                        sns.boxplot(x=df[field1].dropna(), ax=ax)
-                        ax.set_title(f'Boxplot - {title}')
-                        ax.set_xlabel(field1_label)
-                        plt.tight_layout()
-                        plots.append({
-                            'title': 'Boxplot',
-                            'img': fig_to_base64(fig)
-                        })
-                        
-                        # Use simpler statistics for frequency distribution
-                        desc_stats = df[field1].describe().reset_index()
-                        desc_stats.columns = ['Statistic', 'Value']
-                        stats = desc_stats.to_html(classes='table table-striped table-hover', index=False)
-                    
-                    else:  # Text data
-                        # Just show frequency
-                        freq = df[field1].value_counts().head(20).reset_index()
-                        freq.columns = ['Value', 'Count']
-                        stats = freq.to_html(classes='table table-striped table-hover', index=False)
-
-                # 3. Cross-tabulation
+                
+                # 3. Cross-tabulation between two fields
                 elif analysis_type == 'crosstab' and field1 and field2:
-                    title = f'Relationship between {clean_field_name(field1)} and {clean_field_name(field2)}'
-                    
-                    # Extract just the variable names (without project and form prefixes)
-                    field1_label = field1.split(' - ')[-1] if ' - ' in field1 else field1
-                    field2_label = field2.split(' - ')[-1] if ' - ' in field2 else field2
-                    title = f'Relationship between {field1_label} and {field2_label}'
+                    title = f"Cross Tabulation of {field1} and {field2}"
                     
                     # Check if both fields exist in the dataset
                     if field1 not in df.columns or field2 not in df.columns:
@@ -2708,8 +2927,8 @@ def analytics():
                             fig, ax = plt.subplots(figsize=(12, 8))
                             sns.heatmap(ct, annot=True, fmt='d', cmap='YlGnBu', ax=ax)
                             ax.set_title(f'Heatmap - {title}')
-                            ax.set_xlabel(field2_label)
-                            ax.set_ylabel(field1_label)
+                            ax.set_xlabel(field2)
+                            ax.set_ylabel(field1)
                             plt.tight_layout()
                             plots.append({
                                 'title': 'Heatmap - Cross-tabulation',
@@ -2721,239 +2940,212 @@ def analytics():
                             ct_pct = ct.div(ct.sum(axis=1), axis=0)
                             ct_pct.plot(kind='bar', stacked=True, ax=ax)
                             ax.set_title(f'Stacked Bar Chart - {title}')
-                            ax.set_xlabel(field1_label)
+                            ax.set_xlabel(field1)
                             ax.set_ylabel('Proportion')
-                            ax.legend(title=field2_label)
+                            ax.legend(title=field2)
                             plt.tight_layout()
                             plots.append({
                                 'title': 'Stacked Bar Chart',
                                 'img': fig_to_base64(fig)
                             })
+                            
+                            # Also show percentages
+                            ct_pct = ct.div(ct.sum(axis=1), axis=0) * 100
+                            ct_pct = ct_pct.round(2).astype(str) + '%'
+                            stats += "<h5>Percentages (Row-wise):</h5>"
+                            stats += ct_pct.to_html(classes='table table-striped table-hover')
                         
-                        # Categorical vs Numeric
-                        elif field1_type == 'categorical' and field2_type == 'numeric':
-                            # Convert to numeric if needed
-                            df[field2] = pd.to_numeric(df[field2], errors='coerce')
-                            
-                            # Boxplot by group
-                            fig, ax = plt.subplots(figsize=(12, 8))
-                            sns.boxplot(x=field1, y=field2, data=df, ax=ax)
-                            ax.set_title(f'Boxplot - {title}')
-                            ax.set_xlabel(field1_label)
-                            ax.set_ylabel(field2_label)
-                            plt.xticks(rotation=45, ha='right')
-                            plt.tight_layout()
-                            plots.append({
-                                'title': 'Boxplot by Group',
-                                'img': fig_to_base64(fig)
-                            })
-                            
-                            # Group statistics
-                            grouped_stats = df.groupby(field1)[field2].describe().reset_index()
-                            stats = grouped_stats.to_html(classes='table table-striped table-hover')
-                            
-                            # Bar chart with error bars
-                            fig, ax = plt.subplots(figsize=(12, 8))
-                            group_means = df.groupby(field1)[field2].mean().reset_index()
-                            group_std = df.groupby(field1)[field2].std().reset_index()[field2]
-                            sns.barplot(x=field1, y=field2, data=group_means, ax=ax, yerr=group_std)
-                            ax.set_title(f'Mean {field2_label} by {field1_label}')
-                            ax.set_xlabel(field1_label)
-                            ax.set_ylabel(f'Mean {field2_label}')
-                            plt.xticks(rotation=45, ha='right')
-                            plt.tight_layout()
-                            plots.append({
-                                'title': 'Mean Values by Group',
-                                'img': fig_to_base64(fig)
-                            })
-                        
-                        # Numeric vs Categorical (flip the variables)
+                        # Numeric vs categorical
                         elif field1_type == 'numeric' and field2_type == 'categorical':
-                            # Convert to numeric if needed
-                            df[field1] = pd.to_numeric(df[field1], errors='coerce')
+                            # Group numeric data by categories
+                            grouped = df.groupby(field2)[field1].agg(['mean', 'median', 'std', 'count']).round(2)
+                            stats = grouped.to_html(classes='table table-striped table-hover')
                             
-                            # Boxplot by group
+                            # Create a box plot
                             fig, ax = plt.subplots(figsize=(12, 8))
                             sns.boxplot(x=field2, y=field1, data=df, ax=ax)
                             ax.set_title(f'Boxplot - {title}')
-                            ax.set_xlabel(field2_label)
-                            ax.set_ylabel(field1_label)
+                            ax.set_xlabel(field2)
+                            ax.set_ylabel(field1)
                             plt.xticks(rotation=45, ha='right')
                             plt.tight_layout()
                             plots.append({
-                                'title': 'Boxplot by Group',
+                                'title': 'Boxplot',
                                 'img': fig_to_base64(fig)
                             })
                             
-                            # Group statistics
-                            grouped_stats = df.groupby(field2)[field1].describe().reset_index()
-                            stats = grouped_stats.to_html(classes='table table-striped table-hover')
+                            # Bar chart of means
+                            fig, ax = plt.subplots(figsize=(12, 8))
+                            sns.barplot(x=field2, y=field1, data=df, estimator=np.mean, ci=None, ax=ax)
+                            ax.set_title(f'Mean {field1} by {field2}')
+                            ax.set_xlabel(field2)
+                            ax.set_ylabel(f'Mean {field1}')
+                            plt.xticks(rotation=45, ha='right')
+                            plt.tight_layout()
+                            plots.append({
+                                'title': 'Mean Bar Chart',
+                                'img': fig_to_base64(fig)
+                            })
                         
-                        # Numeric vs Numeric
+                        # Categorical vs numeric (swap axes)
+                        elif field1_type == 'categorical' and field2_type == 'numeric':
+                            # Group numeric data by categories
+                            grouped = df.groupby(field1)[field2].agg(['mean', 'median', 'std', 'count']).round(2)
+                            stats = grouped.to_html(classes='table table-striped table-hover')
+                            
+                            # Create a box plot
+                            fig, ax = plt.subplots(figsize=(12, 8))
+                            sns.boxplot(x=field1, y=field2, data=df, ax=ax)
+                            ax.set_title(f'Boxplot - {title}')
+                            ax.set_xlabel(field1)
+                            ax.set_ylabel(field2)
+                            plt.xticks(rotation=45, ha='right')
+                            plt.tight_layout()
+                            plots.append({
+                                'title': 'Boxplot',
+                                'img': fig_to_base64(fig)
+                            })
+                            
+                            # Bar chart of means
+                            fig, ax = plt.subplots(figsize=(12, 8))
+                            sns.barplot(x=field1, y=field2, data=df, estimator=np.mean, ci=None, ax=ax)
+                            ax.set_title(f'Mean {field2} by {field1}')
+                            ax.set_xlabel(field1)
+                            ax.set_ylabel(f'Mean {field2}')
+                            plt.xticks(rotation=45, ha='right')
+                            plt.tight_layout()
+                            plots.append({
+                                'title': 'Mean Bar Chart',
+                                'img': fig_to_base64(fig)
+                            })
+                        
+                        # Numeric vs numeric
                         elif field1_type == 'numeric' and field2_type == 'numeric':
-                            # Convert to numeric
-                            df[field1] = pd.to_numeric(df[field1], errors='coerce')
-                            df[field2] = pd.to_numeric(df[field2], errors='coerce')
+                            # Calculate correlation
+                            correlation = df[[field1, field2]].corr().iloc[0, 1].round(3)
                             
-                            # Drop rows with missing values in either field
-                            valid_data = df.dropna(subset=[field1, field2])
+                            stats = f"""
+                            <div class='alert alert-info'>
+                                <p>Correlation coefficient: {correlation}</p>
+                                <p>Number of observations: {df[[field1, field2]].dropna().shape[0]}</p>
+                            </div>
+                            """
                             
-                            if len(valid_data) < 2:
-                                stats = "<div class='alert alert-warning'>Not enough valid data points for analysis.</div>"
-                            else:
-                                # Scatter plot
-                                fig, ax = plt.subplots(figsize=(10, 6))
-                                sns.scatterplot(x=field1, y=field2, data=valid_data, ax=ax)
-                                ax.set_title(f'Scatter Plot - {title}')
-                                ax.set_xlabel(field1_label)
-                                ax.set_ylabel(field2_label)
+                            # Create a scatter plot
+                            fig, ax = plt.subplots(figsize=(10, 8))
+                            sns.scatterplot(x=field1, y=field2, data=df, ax=ax)
+                            ax.set_title(f'Scatter Plot of {field1} vs {field2} (r = {correlation})')
+                            ax.set_xlabel(field1)
+                            ax.set_ylabel(field2)
+                            # Add regression line
+                            sns.regplot(x=field1, y=field2, data=df, scatter=False, ax=ax, color='red')
+                            plt.tight_layout()
+                            plots.append({
+                                'title': 'Scatter Plot',
+                                'img': fig_to_base64(fig)
+                            })
+                            
+                            # Create a hex bin plot for large datasets
+                            if len(df) > 500:
+                                fig, ax = plt.subplots(figsize=(10, 8))
+                                plt.hexbin(df[field1], df[field2], gridsize=20, cmap='Blues')
+                                plt.colorbar(label='Count')
+                                ax.set_title(f'Hexbin Plot of {field1} vs {field2} (r = {correlation})')
+                                ax.set_xlabel(field1)
+                                ax.set_ylabel(field2)
                                 plt.tight_layout()
                                 plots.append({
-                                    'title': 'Scatter Plot',
+                                    'title': 'Hexbin Plot (Better for Large Datasets)',
+                                    'img': fig_to_base64(fig)
+                                })
+                        else:
+                            stats = "<div class='alert alert-warning'>Fields must be either categorical or numeric for cross-tabulation.</div>"
+                
+                # 4. Time Series
+                elif analysis_type == 'timeseries' and field1:
+                    title = f"Time Series Analysis for {field1}"
+                    
+                    # Check if the field exists in the dataset
+                    if field1 not in df.columns:
+                        stats = f"<div class='alert alert-warning'>Selected field '{field1}' does not exist in the dataset.</div>"
+                    else:
+                        # Check if we have timestamp data
+                        if 'created_at' in df.columns:
+                            # Convert to datetime
+                            df['date'] = pd.to_datetime(df['created_at']).dt.date
+                            
+                            # Analyze based on field type
+                            field1_type = field_types.get(field1, 'unknown')
+                            
+                            if field1_type == 'numeric':
+                                # Group by date and calculate statistics
+                                time_data = df.groupby('date')[field1].agg(['mean', 'count', 'std', 'min', 'max']).reset_index()
+                                stats = time_data.to_html(classes='table table-striped table-hover', index=False)
+                                
+                                # Create line chart for mean values over time
+                                fig, ax = plt.subplots(figsize=(12, 6))
+                                sns.lineplot(x='date', y='mean', data=time_data, marker='o', ax=ax)
+                                ax.set_title(f'Average {field1} Over Time')
+                                ax.set_xlabel('Date')
+                                ax.set_ylabel(f'Average {field1}')
+                                plt.xticks(rotation=45)
+                                plt.tight_layout()
+                                plots.append({
+                                    'title': 'Time Series - Average Values',
                                     'img': fig_to_base64(fig)
                                 })
                                 
-                                # Calculate correlation and show simple statistics
-                                corr = valid_data[[field1, field2]].corr().iloc[0, 1]
-                                
-                                stats = f"""
-                                <table class="table table-striped table-hover">
-                                    <thead>
-                                        <tr>
-                                            <th>Statistic</th>
-                                            <th>Value</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td>Correlation</td>
-                                            <td>{corr:.4f}</td>
-                                        </tr>
-                                        <tr>
-                                            <td>Sample Size</td>
-                                            <td>{len(valid_data)}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                                """
-                                
-                                # Regression plot
-                                fig, ax = plt.subplots(figsize=(10, 6))
-                                sns.regplot(x=field1, y=field2, data=valid_data, ax=ax)
-                                ax.set_title(f'Regression Plot - {title}')
-                                ax.set_xlabel(field1_label)
-                                ax.set_ylabel(field2_label)
+                                # Create line chart for count of records over time
+                                fig, ax = plt.subplots(figsize=(12, 6))
+                                sns.lineplot(x='date', y='count', data=time_data, marker='o', ax=ax)
+                                ax.set_title(f'Number of Records Over Time')
+                                ax.set_xlabel('Date')
+                                ax.set_ylabel('Number of Records')
+                                plt.xticks(rotation=45)
                                 plt.tight_layout()
                                 plots.append({
-                                    'title': 'Regression Plot',
+                                    'title': 'Time Series - Record Counts',
                                     'img': fig_to_base64(fig)
                                 })
                                 
-                                # Joint plot (combines scatter and histograms)
-                                g = sns.jointplot(x=field1, y=field2, data=valid_data, kind="reg", height=8)
-                                g.fig.suptitle(f'Joint Plot - {title}', y=1.05)
-                                g.set_axis_labels(field1_label, field2_label)
+                            elif field1_type == 'categorical':
+                                # Create pivot table to show counts of each category over time
+                                pivot_data = df.pivot_table(
+                                    index='date',
+                                    columns=field1,
+                                    values='patient_id',
+                                    aggfunc='count',
+                                    fill_value=0
+                                ).reset_index()
+                                
+                                # Melt the pivot table for easier plotting
+                                melt_data = pd.melt(
+                                    pivot_data, 
+                                    id_vars=['date'], 
+                                    value_vars=[col for col in pivot_data.columns if col != 'date'],
+                                    var_name=field1,
+                                    value_name='count'
+                                )
+                                
+                                # Create line chart for each category
+                                fig, ax = plt.subplots(figsize=(12, 6))
+                                sns.lineplot(x='date', y='count', hue=field1, data=melt_data, marker='o', ax=ax)
+                                ax.set_title(f'Count of {field1} Categories Over Time')
+                                ax.set_xlabel('Date')
+                                ax.set_ylabel('Count')
+                                plt.xticks(rotation=45)
+                                plt.legend(title=field1)
+                                plt.tight_layout()
                                 plots.append({
-                                    'title': 'Joint Plot',
-                                    'img': fig_to_base64(g.fig)
+                                    'title': 'Time Series by Category',
+                                    'img': fig_to_base64(fig)
                                 })
+                                
+                                # Output the stacked data in a table
+                                stats = pivot_data.reset_index().to_html(classes='table table-striped table-hover')
                         
                         else:
-                            stats = "<div class='alert alert-warning'>Cannot perform cross-tabulation on these field types.</div>"
-                
-                # 4. Time Series Analysis
-                elif analysis_type == 'timeseries' and field1:
-                    field1_label = field1.split(' - ')[-1] if ' - ' in field1 else field1
-                    title = f'Time Series Analysis of {field1_label}'
-                    
-                    # Convert created_at to datetime
-                    if 'created_at' in df.columns:
-                        df['date'] = pd.to_datetime(df['created_at']).dt.date
-                        
-                        if field_types[field1] == 'numeric':
-                            # Convert to numeric if needed
-                            df[field1] = pd.to_numeric(df[field1], errors='coerce')
-                            
-                            # Group by date and calculate mean
-                            time_data = df.groupby('date')[field1].mean().reset_index()
-                            time_data = time_data.sort_values('date')
-                            
-                            # Line plot
-                            fig, ax = plt.subplots(figsize=(12, 6))
-                            sns.lineplot(x='date', y=field1, data=time_data, marker='o', ax=ax)
-                            ax.set_title(f'Time Series - Average {field1_label} Over Time')
-                            ax.set_xlabel('Date')
-                            ax.set_ylabel(f'Average {field1_label}')
-                            plt.xticks(rotation=45, ha='right')
-                            plt.tight_layout()
-                            plots.append({
-                                'title': 'Time Series Plot',
-                                'img': fig_to_base64(fig)
-                            })
-                            
-                            # Output detailed statistics
-                            stats_html = [
-                                f"<h5>Overall Summary Statistics for {field1_label}</h5>",
-                                get_summary_statistics(df, field1)
-                            ]
-                            
-                            # Group by date and get detailed stats
-                            daily_stats = []
-                            for date, group_df in df.groupby('date'):
-                                group_data = group_df[field1].describe().reset_index()
-                                group_data.columns = ['Statistic', 'Value']
-                                daily_stats.append(f"<h5>Statistics for {date}</h5>")
-                                daily_stats.append(group_data.to_html(classes='table table-striped table-hover', index=False))
-                            
-                            # Combine stats
-                            if daily_stats:
-                                stats_html.extend([
-                                    "<h4>Daily Statistics</h4>",
-                                    *daily_stats
-                                ])
-                            
-                            stats = "<div>" + "".join(stats_html) + "</div>"
-                            
-                        elif field_types[field1] == 'categorical':
-                            # Group by date and category, get counts
-                            time_data = df.groupby(['date', field1]).size().reset_index(name='count')
-                            
-                            # Pivot to get categories as columns
-                            pivot_data = time_data.pivot(index='date', columns=field1, values='count').fillna(0)
-                            
-                            # Stacked area plot
-                            fig, ax = plt.subplots(figsize=(12, 6))
-                            pivot_data.plot(kind='area', stacked=True, ax=ax)
-                            ax.set_title(f'Time Series - {field1_label} Distribution Over Time')
-                            ax.set_xlabel('Date')
-                            ax.set_ylabel('Count')
-                            plt.xticks(rotation=45, ha='right')
-                            plt.tight_layout()
-                            plots.append({
-                                'title': 'Stacked Area Plot',
-                                'img': fig_to_base64(fig)
-                            })
-                            
-                            # Line plot for each category
-                            fig, ax = plt.subplots(figsize=(12, 6))
-                            for category in pivot_data.columns:
-                                pivot_data[category].plot(ax=ax, marker='o', label=category)
-                            ax.set_title(f'Time Series - {field1_label} by Category Over Time')
-                            ax.set_xlabel('Date')
-                            ax.set_ylabel('Count')
-                            plt.legend(title=field1_label)
-                            plt.xticks(rotation=45, ha='right')
-                            plt.tight_layout()
-                            plots.append({
-                                'title': 'Time Series by Category',
-                                'img': fig_to_base64(fig)
-                            })
-                            
-                            # Output the stacked data in a table
-                            stats = pivot_data.reset_index().to_html(classes='table table-striped table-hover')
-                    
-                    else:
-                        stats = "<div class='alert alert-warning'>No time data available for time series analysis.</div>"
+                            stats = "<div class='alert alert-warning'>No time data available for time series analysis.</div>"
 
                 # 5. Correlation Matrix
                 elif analysis_type == 'correlation':
@@ -2964,22 +3156,9 @@ def analytics():
                         selected_numeric_fields = correlation_fields
                         title = f'Correlation Matrix Analysis for Selected Fields ({len(selected_numeric_fields)} fields)'
                     else:
-                        # First identify fields that are explicitly marked as numeric
-                        numeric_fields = [field for field in all_fields if field_types.get(field) == 'numeric']
-                        
-                        # Then try to convert other fields to numeric that aren't marked as numeric
-                        potential_numeric_fields = []
-                        for field in all_fields:
-                            if field not in numeric_fields and field != 'created_at' and field != 'patient_id' and field != 'id':
-                                # Try to convert to numeric and check if it works
-                                try:
-                                    pd.to_numeric(df[field], errors='raise')
-                                    potential_numeric_fields.append(field)
-                                except:
-                                    pass
-                        
-                        # Combine both lists
-                        selected_numeric_fields = numeric_fields + potential_numeric_fields
+                        # Find all numeric fields
+                        selected_numeric_fields = [field for field, type_val in field_types.items() if type_val == 'numeric']
+                        title = f'Correlation Matrix Analysis for All Numeric Fields ({len(selected_numeric_fields)} fields)'
                     
                     if len(selected_numeric_fields) < 2:
                         stats = "<div class='alert alert-warning'>Not enough numeric fields available for correlation analysis. Please ensure at least 2 numeric fields are present in the dataset.</div>"
@@ -3010,250 +3189,62 @@ def analytics():
                             cbar_kws={"shrink": .8}
                         )
                         
-                        # Extract just the variable names (without project and form prefixes)
-                        clean_labels = []
-                        for field in selected_numeric_fields:
-                            # Split by hyphen and get the last part which should be the variable name
-                            if ' - ' in field:
-                                parts = field.split(' - ')
-                                clean_labels.append(parts[-1])  # Get only the last part (variable name)
-                            else:
-                                clean_labels.append(field)
-                        
-                        # Use clean labels for visualization
-                        ax.set_xticklabels(clean_labels, rotation=45, ha='right')
-                        ax.set_yticklabels(clean_labels, rotation=0)
-                        
-                        plt.title('Correlation Matrix Heatmap')
+                        plt.title('Correlation Matrix')
                         plt.tight_layout()
                         plots.append({
                             'title': 'Correlation Matrix Heatmap',
                             'img': fig_to_base64(fig)
                         })
                         
-                        # Create a clean correlation matrix with variable names only for display
-                        clean_corr_matrix = corr_matrix.copy()
-                        clean_corr_matrix.index = clean_labels
-                        clean_corr_matrix.columns = clean_labels
+                        # Create a table for the full correlation matrix
+                        stats = corr_matrix.to_html(classes='table table-striped table-hover')
                         
-                        # Create an HTML table of the correlation matrix
-                        corr_html = clean_corr_matrix.to_html(classes='table table-striped table-hover table-bordered')
+                        # Add interpretation for strongest correlations
+                        strong_correlations = []
                         
-                        # Highlight strong correlations with color coding
-                        def highlight_correlations(corr_html):
-                            import re
-                            # Replace positive correlations
-                            for i in range(1, 10):
-                                val = i / 10
-                                corr_html = re.sub(
-                                    r'>0\.{}[0-9]<'.format(i),
-                                    ' style="background-color:rgba(0,100,0,0.{})">{}<'.format(i+1, '>0.{}[0-9]<'.format(i)),
-                                    corr_html
-                                )
-                            # Replace negative correlations
-                            for i in range(1, 10):
-                                val = i / 10
-                                corr_html = re.sub(
-                                    r'>-0\.{}[0-9]<'.format(i),
-                                    ' style="background-color:rgba(100,0,0,0.{})">{}<'.format(i+1, '>-0.{}[0-9]<'.format(i)),
-                                    corr_html
-                                )
-                            return corr_html
+                        # Extract upper triangle of correlation matrix (excluding diagonal)
+                        for i in range(len(corr_matrix.columns)):
+                            for j in range(i+1, len(corr_matrix.columns)):
+                                col1 = corr_matrix.columns[i]
+                                col2 = corr_matrix.columns[j]
+                                corr_val = corr_matrix.iloc[i, j]
+                                
+                                # Only include strong correlations (positive or negative)
+                                if abs(corr_val) >= 0.5:
+                                    strong_correlations.append({
+                                        'field1': col1,
+                                        'field2': col2,
+                                        'correlation': corr_val,
+                                        'abs_corr': abs(corr_val)
+                                    })
                         
-                        # Add correlation interpretation guide
-                        stats = f"""
-                        <div class="mb-4">
-                            <h5>Correlation Matrix</h5>
-                            <p>This matrix shows the Pearson correlation coefficient between pairs of numeric variables. 
-                               Values range from -1 (perfect negative correlation) to 1 (perfect positive correlation). 
-                               A value of 0 indicates no linear correlation.</p>
-                            <div class="table-responsive">
-                                {corr_html}
-                            </div>
-                        </div>
-                        <div class="mb-4">
-                            <h5>Interpretation Guide</h5>
-                            <ul>
-                                <li><strong>0.8 to 1.0 (or -0.8 to -1.0):</strong> Very strong positive (or negative) correlation</li>
-                                <li><strong>0.6 to 0.8 (or -0.6 to -0.8):</strong> Strong positive (or negative) correlation</li>
-                                <li><strong>0.4 to 0.6 (or -0.4 to -0.6):</strong> Moderate positive (or negative) correlation</li>
-                                <li><strong>0.2 to 0.4 (or -0.2 to -0.4):</strong> Weak positive (or negative) correlation</li>
-                                <li><strong>0.0 to 0.2 (or 0.0 to -0.2):</strong> Very weak or no correlation</li>
-                            </ul>
-                        </div>
-                        """
-                
-                # 6. Cohort Analysis
-                elif analysis_type == 'cohort' and field1:
-                    field1_label = field1.split(' - ')[-1] if ' - ' in field1 else field1
-                    title = f'Cohort Analysis by {field1_label}'
-                    
-                    if 'created_at' not in df.columns:
-                        stats = "<div class='alert alert-warning'>No time data available for cohort analysis.</div>"
-                    else:
-                        # Create cohorts based on the selected field
-                        if field_types[field1] == 'categorical':
-                            # Extract month from created_at
-                            df['cohort_month'] = pd.to_datetime(df['created_at']).dt.to_period('M')
-                            
-                            # Count submissions per cohort and month
-                            cohort_data = (
-                                df.groupby(['cohort_month', field1])
-                                .size()
-                                .reset_index(name='count')
-                            )
-                            
-                            # Create pivot table of cohorts
-                            cohort_pivot = cohort_data.pivot_table(
-                                index='cohort_month', 
-                                columns=field1, 
-                                values='count', 
-                                aggfunc='sum'
-                            ).fillna(0)
-                            
-                            # Visualization: Stacked bar chart of cohorts
-                            fig, ax = plt.subplots(figsize=(12, 8))
-                            cohort_pivot.plot(kind='bar', stacked=True, ax=ax)
-                            ax.set_title(f'Monthly Cohorts by {field1_label}')
-                            ax.set_xlabel('Month')
-                            ax.set_ylabel('Number of Submissions')
-                            plt.legend(title=field1_label)
-                            plt.xticks(rotation=45, ha='right')
-                            plt.tight_layout()
-                            plots.append({
-                                'title': 'Monthly Cohort Analysis',
-                                'img': fig_to_base64(fig)
-                            })
-                            
-                            # Calculate proportion of each cohort
-                            cohort_pct = cohort_pivot.div(cohort_pivot.sum(axis=1), axis=0).round(3) * 100
-                            
-                            # Visualize proportions
-                            fig, ax = plt.subplots(figsize=(12, 8))
-                            cohort_pct.plot(kind='bar', stacked=True, ax=ax)
-                            ax.set_title(f'Monthly Cohort Composition by {field1_label} (%)')
-                            ax.set_xlabel('Month')
-                            ax.set_ylabel('Percentage')
-                            plt.legend(title=field1_label)
-                            plt.xticks(rotation=45, ha='right')
-                            plt.tight_layout()
-                            plots.append({
-                                'title': 'Monthly Cohort Composition (%)',
-                                'img': fig_to_base64(fig)
-                            })
-                            
-                            # Add tables with cohort data
-                            stats = f"""
-                            <div class="mb-4">
-                                <h5>Cohort Size by Month</h5>
-                                <div class="table-responsive">
-                                    {cohort_pivot.to_html(classes='table table-striped table-hover table-bordered')}
-                                </div>
-                            </div>
-                            <div class="mb-4">
-                                <h5>Cohort Composition by Month (%)</h5>
-                                <div class="table-responsive">
-                                    {cohort_pct.to_html(classes='table table-striped table-hover table-bordered')}
-                                </div>
-                            </div>
-                            """
+                        # Sort by absolute correlation strength (descending)
+                        strong_correlations = sorted(strong_correlations, key=lambda x: x['abs_corr'], reverse=True)
                         
-                        elif field_types[field1] == 'numeric':
-                            # Convert to numeric
-                            df[field1] = pd.to_numeric(df[field1], errors='coerce')
+                        if strong_correlations:
+                            strong_corr_df = pd.DataFrame(strong_correlations)
+                            strong_corr_df = strong_corr_df[['field1', 'field2', 'correlation']]
                             
-                            # For numeric fields, create value range cohorts
-                            if pd.notna(df[field1]).any():
-                                # Create bins for the numeric field (5 equal-width bins)
-                                min_val = df[field1].min()
-                                max_val = df[field1].max()
-                                
-                                # Create 5 bins with nice round numbers
-                                bins = 5
-                                bin_width = (max_val - min_val) / bins
-                                
-                                # Create bin labels
-                                bin_edges = [min_val + i * bin_width for i in range(bins + 1)]
-                                bin_labels = [f'{bin_edges[i]:.1f} - {bin_edges[i+1]:.1f}' for i in range(bins)]
-                                
-                                # Create cohort groups
-                                df['value_cohort'] = pd.cut(
-                                    df[field1], 
-                                    bins=bins, 
-                                    labels=bin_labels
-                                )
-                                
-                                # Extract month
-                                df['cohort_month'] = pd.to_datetime(df['created_at']).dt.to_period('M')
-                                
-                                # Count by cohort and month
-                                numeric_cohort = (
-                                    df.groupby(['cohort_month', 'value_cohort'])
-                                    .size()
-                                    .reset_index(name='count')
-                                )
-                                
-                                # Create pivot table
-                                cohort_pivot = numeric_cohort.pivot_table(
-                                    index='cohort_month', 
-                                    columns='value_cohort', 
-                                    values='count', 
-                                    aggfunc='sum'
-                                ).fillna(0)
-                                
-                                # Visualization
-                                fig, ax = plt.subplots(figsize=(12, 8))
-                                cohort_pivot.plot(kind='bar', stacked=True, ax=ax)
-                                ax.set_title(f'Monthly Cohorts by {field1_label} Ranges')
-                                ax.set_xlabel('Month')
-                                ax.set_ylabel('Number of Submissions')
-                                plt.legend(title=f'{field1_label} Range')
-                                plt.xticks(rotation=45, ha='right')
-                                plt.tight_layout()
-                                plots.append({
-                                    'title': 'Monthly Cohort Analysis by Value Range',
-                                    'img': fig_to_base64(fig)
-                                })
-                                
-                                # Add cohort data table
-                                stats = f"""
-                                <div class="mb-4">
-                                    <h5>Cohort Size by Month and {field1_label} Range</h5>
-                                    <div class="table-responsive">
-                                        {cohort_pivot.to_html(classes='table table-striped table-hover table-bordered')}
-                                    </div>
-                                </div>
-                                """
-                            else:
-                                stats = "<div class='alert alert-warning'>No valid numeric data available for cohort analysis.</div>"
-                        else:
-                            stats = f"<div class='alert alert-warning'>The field '{field1_label}' is not suitable for cohort analysis. Please select a categorical or numeric field.</div>"
+                            stats += "<h5>Strongest Correlations:</h5>"
+                            stats += strong_corr_df.to_html(classes='table table-striped table-hover', index=False)
     
-    # Log the analytics view
-    log_activity('view', 'analytics', None, {
-        'project_id': project_id,
-        'form_id': form_id,
-        'analysis_type': analysis_type
-    })
-    
-    return render_template(
-        'analytics.html',
-        projects=all_projects,
-        forms=forms,
-        all_fields=all_fields,
-        field_types=field_types,
-        stats=stats,
-        plots=plots,
-        title=title,
-        selected_project=project_id,
-        selected_form=form_id,
-        selected_analysis=analysis_type,
-        selected_field1=field1,
-        selected_field2=field2,
-        start_date=start_date,
-        end_date=end_date,
-        correlation_fields=correlation_fields
-    )
+    # Render the template with all data
+    return render_template('analytics.html',
+                          title=title if title else 'Analytics',
+                          all_projects=all_projects,
+                          forms=forms,
+                          selected_project=project_id,
+                          selected_form=form_id,
+                          start_date=start_date,
+                          end_date=end_date,
+                          fields=all_fields,
+                          selected_analysis=analysis_type,
+                          selected_field1=field1,
+                          selected_field2=field2,
+                          field_types=field_types,
+                          plots=plots,
+                          stats=stats,
+                          correlation_fields=correlation_fields)
 
 @app.route('/export_analytics')
 @login_required
@@ -3274,15 +3265,23 @@ def export_analytics():
     export_format = request.args.get('format', 'excel')  # Default to excel
     
     # Get correlation fields (multiple selection)
-    # For backward compatibility, handle both single and multiple field selections
     correlation_fields = request.args.getlist('correlation_fields[]')
     
     # Log export action
     log_details = f"Export Analytics - Project: {project_id or 'All'}, Form: {form_id or 'All'}, Analysis: {analysis_type}"
     log_activity('generate', 'analytics_export', None, log_details)
     
-    # Prepare dataset
+    # Require project_id
+    if not project_id:
+        flash('Project ID is required for analytics export.', 'danger')
+        return redirect(url_for('analytics'))
+    
+    # Prepare dataset using the enhanced function that directly mirrors the dataset view
     df = prepare_dataset_for_analysis(project_id, form_id, start_date, end_date)
+    
+    if df.empty:
+        flash('No data available for the selected program.', 'warning')
+        return redirect(url_for('analytics', project_id=project_id))
     
     # Generate filename
     filename = 'analytics'
@@ -3301,50 +3300,20 @@ def export_analytics():
     if analysis_type:
         filename = f"{filename}_{analysis_type}"
     
-    if field1:
-        field1_name = field1.split(' - ')[-1] if ' - ' in field1 else field1
-        filename = f"{filename}_{field1_name}"
-    
-    if field2 and analysis_type == 'crosstab':
-        field2_name = field2.split(' - ')[-1] if ' - ' in field2 else field2
-        filename = f"{filename}_{field2_name}"
-    
-    # Remove special characters from filename
-    filename = re.sub(r'[^a-zA-Z0-9_]', '_', filename)
-    
-    # Export based on format
+    # For CSV format
     if export_format == 'csv':
         output = StringIO()
         
-        # Export different types of analysis
-        if analysis_type == 'correlation':
-            # If no correlation fields are selected, use all numeric fields
-            if not correlation_fields:
-                selected_numeric_fields = [field for field in df.columns if np.issubdtype(df[field].dtype, np.number)]
-            else:
-                selected_numeric_fields = correlation_fields
-            
-            if len(selected_numeric_fields) >= 2:
+        # The dataset is already filtered to include only patients who participated in the selected program
+        df.to_csv(output, index=False)
+        
+        # If we have a specific analysis type, include the specific analysis as well
+        if analysis_type == 'correlation' and correlation_fields:
+            if len(correlation_fields) >= 2:
                 # Convert fields to numeric before correlation
-                numeric_df = df[selected_numeric_fields].apply(pd.to_numeric, errors='coerce')
+                numeric_df = df[correlation_fields].apply(pd.to_numeric, errors='coerce')
                 corr_matrix = numeric_df.corr().round(3)
-                
-                # Extract just the variable names (without project and form prefixes)
-                clean_labels = []
-                for field in selected_numeric_fields:
-                    # Split by hyphen and get the last part which should be the variable name
-                    if ' - ' in field:
-                        parts = field.split(' - ')
-                        clean_labels.append(parts[-1])  # Get only the last part (variable name)
-                    else:
-                        clean_labels.append(field)
-                
-                # Create a clean correlation matrix with variable names only for display
-                clean_corr_matrix = corr_matrix.copy()
-                clean_corr_matrix.index = clean_labels
-                clean_corr_matrix.columns = clean_labels
-                
-                clean_corr_matrix.to_csv(output)
+                corr_matrix.to_csv(output)
         elif analysis_type == 'crosstab' and field1 and field2:
             # Export crosstab
             if field1 in df.columns and field2 in df.columns:
@@ -3356,9 +3325,6 @@ def export_analytics():
                 df['date'] = pd.to_datetime(df['created_at']).dt.date
                 time_data = df.groupby('date')[field1].agg(['mean', 'count', 'std', 'min', 'max']).reset_index()
                 time_data.to_csv(output, index=False)
-        else:
-            # Default: export the filtered dataset
-            df.to_csv(output, index=False)
         
         output.seek(0)
         return send_file(
@@ -3372,7 +3338,7 @@ def export_analytics():
         output = BytesIO()
         
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            # Write the main dataset
+            # Write the main dataset - already filtered to include only patients who participated in the selected program
             df.to_excel(writer, sheet_name='Data', index=False)
             
             # Get workbook and create a left-aligned format for headers
@@ -3387,37 +3353,26 @@ def export_analytics():
             
             # Add analysis-specific sheets
             if analysis_type == 'correlation':
-                # If no correlation fields are selected, use all numeric fields
-                if not correlation_fields:
-                    selected_numeric_fields = [field for field in df.columns if np.issubdtype(df[field].dtype, np.number)]
-                else:
+                # Use selected fields if provided, otherwise use all numeric fields
+                if correlation_fields and len(correlation_fields) >= 2:
                     selected_numeric_fields = correlation_fields
+                else:
+                    # Find all numeric fields
+                    selected_numeric_fields = []
+                    for column in df.columns:
+                        if np.issubdtype(df[column].dtype, np.number):
+                            selected_numeric_fields.append(column)
                 
                 if len(selected_numeric_fields) >= 2:
                     # Convert fields to numeric before correlation
                     numeric_df = df[selected_numeric_fields].apply(pd.to_numeric, errors='coerce')
                     corr_matrix = numeric_df.corr().round(3)
                     
-                    # Extract just the variable names (without project and form prefixes)
-                    clean_labels = []
-                    for field in selected_numeric_fields:
-                        # Split by hyphen and get the last part which should be the variable name
-                        if ' - ' in field:
-                            parts = field.split(' - ')
-                            clean_labels.append(parts[-1])  # Get only the last part (variable name)
-                        else:
-                            clean_labels.append(field)
-                    
-                    # Create a clean correlation matrix with variable names only for display
-                    clean_corr_matrix = corr_matrix.copy()
-                    clean_corr_matrix.index = clean_labels
-                    clean_corr_matrix.columns = clean_labels
-                    
-                    clean_corr_matrix.to_excel(writer, sheet_name='Correlation Matrix')
+                    corr_matrix.to_excel(writer, sheet_name='Correlation Matrix')
                     
                     # Apply header formatting
                     worksheet = writer.sheets['Correlation Matrix']
-                    for col_num, value in enumerate([''] + clean_labels):
+                    for col_num, value in enumerate([''] + list(corr_matrix.columns)):
                         worksheet.write(0, col_num, value, header_format)
                     
             elif analysis_type == 'crosstab' and field1 and field2:
@@ -3437,7 +3392,7 @@ def export_analytics():
                     if len(numeric_data) > 0:
                         stats = {
                             'Statistic': ['Count', 'Missing', 'Mean', 'Median', 'Std Dev', 'Min', 'Max', 
-                                        '25th Percentile', '75th Percentile'],
+                                       '25th Percentile', '75th Percentile'],
                             'Value': [
                                 len(numeric_data),
                                 len(df) - len(numeric_data),
@@ -3491,13 +3446,13 @@ def export_analytics():
     # Unsupported format
     flash('Unsupported export format', 'danger')
     return redirect(url_for('analytics', 
-                           project_id=project_id, 
-                           form_id=form_id,
-                           start_date=start_date,
-                           end_date=end_date,
-                           analysis_type=analysis_type,
-                           field1=field1,
-                           field2=field2))
+                         project_id=project_id, 
+                         form_id=form_id,
+                         start_date=start_date,
+                         end_date=end_date,
+                         analysis_type=analysis_type,
+                         field1=field1,
+                         field2=field2))
 
 @app.route('/admin/clear-activity-logs', methods=['POST'])
 @login_required
