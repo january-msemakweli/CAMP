@@ -2722,13 +2722,30 @@ def analytics():
             # Determine field types for analysis
             for field in all_fields:
                 if df[field].dtype == 'object':  # String/categorical
-                    # Count unique values to determine if it's categorical
-                    unique_count = df[field].nunique()
-                    if unique_count <= 15:  # Arbitrary threshold for categorical
-                        field_types[field] = 'categorical'
+                    # Try to convert to numeric, setting errors='coerce' will convert failures to NaN
+                    numeric_series = pd.to_numeric(df[field], errors='coerce')
+                    # If the conversion didn't result in all NaNs, consider it numeric
+                    if not numeric_series.isna().all():
+                        # Calculate what percentage of values converted successfully
+                        success_rate = 1 - (numeric_series.isna().sum() / len(numeric_series))
+                        # If more than 80% of values converted successfully, treat as numeric
+                        if success_rate > 0.8:
+                            field_types[field] = 'numeric'
+                        else:
+                            # Fall back to categorical vs text determination
+                            unique_count = df[field].nunique()
+                            if unique_count <= 15:  # Arbitrary threshold for categorical
+                                field_types[field] = 'categorical'
+                            else:
+                                field_types[field] = 'text'
                     else:
-                        field_types[field] = 'text'
-                elif np.issubdtype(df[field].dtype, np.number):  # Numeric
+                        # Count unique values to determine if it's categorical
+                        unique_count = df[field].nunique()
+                        if unique_count <= 15:  # Arbitrary threshold for categorical
+                            field_types[field] = 'categorical'
+                        else:
+                            field_types[field] = 'text'
+                elif np.issubdtype(df[field].dtype, np.number):  # Already numeric
                     field_types[field] = 'numeric'
                 else:
                     field_types[field] = 'unknown'
