@@ -58,7 +58,7 @@
                         {# Search Section (Always shown, but functionality might differ) #}
                         <div class="col">
                             <label for="searchPatientIdInput" class="form-label visually-hidden">Search Existing Patient ID</label>
-                            <input type="search" id="searchPatientIdInput" class="form-control" placeholder="Search Existing Patient ID...">
+                            <input type="search" id="searchPatientIdInput" class="form-control" placeholder="Search by Patient ID or Name...">
                             <div id="searchPatientIdResults" class="list-group mt-1 position-absolute w-100" style="z-index: 1000;"></div>
                         </div>
                     </div>
@@ -620,7 +620,19 @@ document.addEventListener('DOMContentLoaded', function() {
                             const item = document.createElement('button');
                             item.type = 'button';
                             item.className = 'list-group-item list-group-item-action';
-                            item.textContent = patient.patient_id;
+                            
+                            // Display patient ID and name if available
+                            if (patient.display_name) {
+                                // Create content with ID and name
+                                item.innerHTML = `<div class="d-flex justify-content-between align-items-center">
+                                    <strong>${patient.patient_id}</strong>
+                                    <span class="text-muted">${patient.display_name}</span>
+                                </div>`;
+                            } else {
+                                // Just show ID if no name available
+                                item.textContent = patient.patient_id;
+                            }
+                            
                             item.addEventListener('click', () => {
                                 const selectedPatientId = patient.patient_id; // Capture ID
                                 selectedValueSpan.textContent = selectedPatientId;

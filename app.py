@@ -1297,30 +1297,38 @@ def dataset_view():
 
     # 4. Filter submissions based on search term (if any)
     if search_term:
-        filtered_submissions = []
-        search_lower = search_term.lower()
-        for sub in submissions:
-            # Check patient_id first
-            if search_lower in str(sub.get('patient_id', '')).lower():
-                filtered_submissions.append(sub)
-                continue 
-            
-            # Check submission data values
-            if sub.get('data'):
-                for value in sub['data'].values():
-                    # Handle list values (e.g., from checkboxes)
-                    if isinstance(value, list):
-                        if any(search_lower in str(item).lower() for item in value):
-                            filtered_submissions.append(sub)
-                            break 
-                    # Handle single values
-                    elif search_lower in str(value).lower():
+        try:
+            filtered_submissions = []
+            search_lower = search_term.lower()
+            for sub in submissions:
+                # Check patient_id first
+                if search_lower in str(sub.get('patient_id', '')).lower():
+                    filtered_submissions.append(sub)
+                    continue 
+                
+                # Only search in data if it exists and is a dictionary
+                if sub.get('data') and isinstance(sub['data'], dict):
+                    match_found = False
+                    for value in sub['data'].values():
+                        if isinstance(value, list):
+                            if any(search_lower in str(item).lower() for item in value if item is not None):
+                                match_found = True
+                                break
+                        elif value is not None and search_lower in str(value).lower():
+                            match_found = True
+                            break
+                    
+                    if match_found:
                         filtered_submissions.append(sub)
-                        break # Found in this submission, move to next
-        submissions = filtered_submissions
-        print(f"Found {len(submissions)} submissions after search for '{search_term}'")
+            
+            submissions = filtered_submissions
+            print(f"Found {len(submissions)} submissions after search for '{search_term}'")
+        except Exception as e:
+            print(f"Error during search filtering: {str(e)}")
+            # If search fails, fall back to using all submissions before search
+            print(f"Search failed, using all submissions")
     
-    # 5. Group submissions by patient_id
+    # 5. Group submissions by patient_id to build dataset
     patient_data = {}
     all_data_fields_normalized = set() # Keep track of fields actually in data
     project_form_ids = set() # Keep track of form IDs that belong to the selected project
@@ -1925,24 +1933,35 @@ def export_dataset():
 
     # 4. Filter submissions based on search term (if any)
     if search_term:
-        filtered_submissions = []
-        search_lower = search_term.lower()
-        for sub in submissions:
-            if search_lower in str(sub.get('patient_id', '')).lower():
-                filtered_submissions.append(sub)
-                continue 
-            
-            if sub.get('data'):
-                for value in sub['data'].values():
-                    if isinstance(value, list):
-                        if any(search_lower in str(item).lower() for item in value):
-                            filtered_submissions.append(sub)
-                            break 
-                    elif search_lower in str(value).lower():
+        try:
+            filtered_submissions = []
+            search_lower = search_term.lower()
+            for sub in submissions:
+                if search_lower in str(sub.get('patient_id', '')).lower():
+                    filtered_submissions.append(sub)
+                    continue 
+                
+                # Only search in data if it exists and is a dictionary
+                if sub.get('data') and isinstance(sub['data'], dict):
+                    match_found = False
+                    for value in sub['data'].values():
+                        if isinstance(value, list):
+                            if any(search_lower in str(item).lower() for item in value if item is not None):
+                                match_found = True
+                                break
+                        elif value is not None and search_lower in str(value).lower():
+                            match_found = True
+                            break
+                    
+                    if match_found:
                         filtered_submissions.append(sub)
-                        break
-        submissions = filtered_submissions
-        print(f"Export: Found {len(submissions)} submissions after search for '{search_term}'")
+            
+            submissions = filtered_submissions
+            print(f"Export: Found {len(submissions)} submissions after search for '{search_term}'")
+        except Exception as e:
+            print(f"Export: Error during search filtering: {str(e)}")
+            # If search fails, fall back to using all submissions
+            print(f"Export: Search failed, using all {len(submissions)} submissions")
     
     # 5. Group submissions by patient_id
     patient_data = {}
@@ -3759,35 +3778,171 @@ def search_patient_id():
         query = request.args.get('q', '')
         if not query or len(query) < 2:  # Require at least 2 characters for search
             return jsonify([])
+        
+        results = []
+        seen_ids = set()  # To prevent duplicates
             
-        # Search patients table
+        # First search patients table by patient_id
         response = supabase.table('patients').select('patient_id, data').like('patient_id', f"%{query}%").limit(10).execute()
         
-        if not response.data:
-            # No direct matches, try using form submissions for backup
-            # This handles the case where old data might not be in the patients table
-            submissions_response = supabase.table('form_submissions').select('patient_id').like('patient_id', f"%{query}%").limit(10).execute()
-            
-            # Format the results as expected
-            results = []
-            seen_ids = set()  # To prevent duplicates
-            
-            for submission in submissions_response.data:
-                patient_id = submission['patient_id']
+        # Add patient_id matches to results
+        if response.data:
+            for patient in response.data:
+                patient_id = patient['patient_id']
                 if patient_id not in seen_ids:
-                    results.append({
-                        'patient_id': patient_id,
-                        'data': {}  # No associated data for these legacy records
-                    })
+                    results.append(patient)
                     seen_ids.add(patient_id)
+        
+        # Simplify name search - Supabase can't easily do complex JSON searches via API
+        # So we'll fetch records and filter in Python
+        if len(results) < 10:
+            try:
+                # Get additional patients (up to 50) not already in results
+                additional_patients = []
+                if seen_ids:
+                    additional_response = supabase.table('patients').select('patient_id, data').not_('patient_id', 'in', list(seen_ids)).limit(50).execute()
+                    additional_patients = additional_response.data
+                else:
+                    additional_response = supabase.table('patients').select('patient_id, data').limit(50).execute()
+                    additional_patients = additional_response.data
+                
+                # Common name field variations to check
+                name_fields = ["Name", "Full Name", "First Name", "Last Name", "Patient Name"]
+                query_lower = query.lower()
+                
+                # Manually search through JSON data for name matches
+                for patient in additional_patients:
+                    if len(results) >= 10:
+                        break
+                        
+                    patient_id = patient['patient_id']
+                    if patient_id in seen_ids:
+                        continue
+                        
+                    patient_data = patient.get('data', {})
+                    name_match = False
+                    
+                    # Check all forms in patient data
+                    if isinstance(patient_data, dict):
+                        for form_id, form_data in patient_data.items():
+                            if not isinstance(form_data, dict):
+                                continue
+                                
+                            # Check all fields in this form for name fields
+                            for field_name, field_value in form_data.items():
+                                if not field_value:
+                                    continue
+                                    
+                                # Check if this is a name field and contains our search term
+                                if field_name in name_fields and query_lower in str(field_value).lower():
+                                    name_match = True
+                                    patient['display_name'] = field_value
+                                    break
+                                    
+                            if name_match:
+                                break
+                                
+                    if name_match:
+                        results.append(patient)
+                        seen_ids.add(patient_id)
+                
+            except Exception as e:
+                print(f"Error during manual name search: {str(e)}")
+        
+        # If we still have fewer than 5 results, try searching form submissions as a fallback
+        if len(results) < 5:
+            try:
+                # Search in submissions by patient_id
+                submissions_response = supabase.table('form_submissions').select('patient_id, data').like('patient_id', f"%{query}%").limit(10).execute()
+                
+                # Process submission results
+                if submissions_response.data:
+                    for submission in submissions_response.data:
+                        patient_id = submission['patient_id']
+                        if patient_id not in seen_ids and len(results) < 10:
+                            results.append({
+                                'patient_id': patient_id,
+                                'data': submission.get('data', {})
+                            })
+                            seen_ids.add(patient_id)
+                
+                # Also manually check names in submissions
+                additional_submissions = supabase.table('form_submissions').select('patient_id, data').limit(20).execute()
+                
+                if additional_submissions.data:
+                    query_lower = query.lower()
+                    for submission in additional_submissions.data:
+                        if len(results) >= 10:
+                            break
+                            
+                        patient_id = submission['patient_id']
+                        if patient_id in seen_ids:
+                            continue
+                            
+                        # Check data for name fields
+                        submission_data = submission.get('data', {})
+                        name_match = False
+                        display_name = None
+                        
+                        if isinstance(submission_data, dict):
+                            for field_name, field_value in submission_data.items():
+                                if not field_value:
+                                    continue
+                                    
+                                if field_name in name_fields and query_lower in str(field_value).lower():
+                                    name_match = True
+                                    display_name = field_value
+                                    break
+                                    
+                        if name_match:
+                            result = {
+                                'patient_id': patient_id,
+                                'data': submission_data
+                            }
+                            if display_name:
+                                result['display_name'] = display_name
+                                
+                            results.append(result)
+                            seen_ids.add(patient_id)
+            except Exception as e:
+                print(f"Error searching form submissions: {str(e)}")
+        
+        # Extract and add display_name for any results that don't have it yet
+        name_fields = ["Name", "Full Name", "First Name", "Last Name", "Patient Name"]
+        for patient in results:
+            # Skip if display name is already set
+            if 'display_name' in patient:
+                continue
+                
+            # Try to find a name field in the patient data
+            patient_data = patient.get('data', {})
+            display_name = None
             
-            return jsonify(results)
+            # Search through all forms in patient data
+            if isinstance(patient_data, dict):
+                # First, search in all form data
+                for form_data in patient_data.values():
+                    if not isinstance(form_data, dict):
+                        continue
+                        
+                    # Check each form for name fields
+                    for field_name, field_value in form_data.items():
+                        if field_name in name_fields and field_value:
+                            display_name = field_value
+                            break
+                    
+                    if display_name:
+                        break
+            
+            # Add display name if found
+            if display_name:
+                patient['display_name'] = display_name
         
         # Return the results
-        return jsonify(response.data)
+        return jsonify(results)
     
     except Exception as e:
-        print(f"Error searching for patient ID: {str(e)}")
+        print(f"Error searching for patient: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/patient_preview/<patient_id>')
