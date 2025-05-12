@@ -684,6 +684,7 @@ def create_form(project_id):
         types = request.form.getlist('field_types[]')
         options_list = request.form.getlist('field_options[]')
         location_identifiers = request.form.getlist('location_field_identifier[]') # Read the identifiers
+        required_fields = request.form.getlist('field_required[]')  # Add this line to get required fields
         
         if not title:
             flash('Form title is required.', 'danger')
@@ -699,7 +700,8 @@ def create_form(project_id):
             field = {
                 'label': labels[i].strip(),
                 'type': types[i],
-                'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else []
+                'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
+                'required': str(i) in required_fields  # Add this line to mark field as required or not
             }
             # Check if this label corresponds to a location field identifier
             # This assumes location fields are added together and in order
@@ -930,16 +932,32 @@ def submit_form(form_id):
         flash('Patient ID is required', 'danger')
         return redirect(url_for('view_form', form_id=form_id))
     
-    # Collect form data
+    # Collect form data and validate required fields
     form_data = {}
+    validation_errors = []
+    
     for field in form['fields']:
         field_label = field['label']
+        field_value = None
+        
         if field['type'] in ['dropdown', 'radio']:
-            form_data[field_label] = request.form.get(field_label)
+            field_value = request.form.get(field_label)
         elif field['type'] == 'checkbox':
-            form_data[field_label] = request.form.getlist(field_label)
+            field_value = request.form.getlist(field_label)
         else:
-            form_data[field_label] = request.form.get(field_label)
+            field_value = request.form.get(field_label)
+        
+        # Validate required fields
+        if field.get('required', False) and (field_value is None or field_value == ''):
+            validation_errors.append(f"Field '{field_label}' is required")
+        
+        form_data[field_label] = field_value
+    
+    # If there are validation errors, flash them and redirect back to the form
+    if validation_errors:
+        for error in validation_errors:
+            flash(error, 'danger')
+        return redirect(url_for('view_form', form_id=form_id))
     
     # Create submission in form_submissions table
     new_submission = {
@@ -3614,7 +3632,7 @@ def edit_form(form_id):
         print(f"Error fetching project_id for form {form_id}: {str(e)}")
         flash('Error finding the associated project. Cannot edit form.', 'danger')
         # Redirect to admin dashboard if project_id is unknown
-        return redirect(url_for('admin_dashboard')) 
+        return redirect(url_for('admin_dashboard'))
 
     try:
         title = request.form.get('title')
@@ -3622,6 +3640,7 @@ def edit_form(form_id):
         types = request.form.getlist('field_types[]')
         options_list = request.form.getlist('field_options[]')
         location_identifiers = request.form.getlist('location_field_identifier[]') # Read the identifiers
+        required_fields = request.form.getlist('field_required[]')  # Add this line to get required fields
         
         # Basic validation
         if not title:
@@ -3638,7 +3657,8 @@ def edit_form(form_id):
             field = {
                 'label': labels[i].strip(),
                 'type': types[i],
-                'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else []
+                'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
+                'required': str(i) in required_fields  # Add this line to mark field as required or not
             }
             if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers):
                  field['location_field_identifier'] = location_identifiers[location_idx]

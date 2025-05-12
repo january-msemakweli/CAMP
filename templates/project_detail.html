@@ -182,6 +182,14 @@
                                      <label class="form-label">&nbsp;</label><br/>
                                     <button type="button" class="btn btn-sm btn-danger remove-field-btn" style="display: none;">X</button>
                                 </div>
+                                <div class="col-md-12 mt-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input required-checkbox" type="checkbox" value="" name="field_required[]">
+                                        <label class="form-check-label">
+                                            Required
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <button type="button" id="addFieldBtn" class="btn btn-sm btn-outline-success mt-2">
@@ -304,6 +312,14 @@ function addFieldRow(containerId, allowRemove) {
                  <label class="form-label">&nbsp;</label><br/>
                 <button type="button" class="btn btn-sm btn-danger remove-field-btn" style="display: none;">X</button>
             </div>
+            <div class="col-md-12 mt-2">
+                <div class="form-check">
+                    <input class="form-check-input required-checkbox" type="checkbox" value="" name="field_required[]">
+                    <label class="form-check-label">
+                        Required
+                    </label>
+                </div>
+            </div>
             </div>
         `;
     // Create element from template string
@@ -338,6 +354,18 @@ function addFieldRow(containerId, allowRemove) {
     if (removeBtn) {
         removeBtn.style.display = allowRemove ? 'inline-block' : 'none';
         removeBtn.addEventListener('click', () => newRow.remove());
+    }
+
+    // Set unique IDs for the checkbox and label
+    const rowCount = container.querySelectorAll('.form-field-row').length;
+    const requiredCheckbox = newRow.querySelector('.required-checkbox');
+    const requiredLabel = newRow.querySelector('.form-check-label');
+    
+    if (requiredCheckbox && requiredLabel) {
+        const checkboxId = `field-required-${rowCount}`;
+        requiredCheckbox.id = checkboxId;
+        requiredCheckbox.value = rowCount;
+        requiredLabel.setAttribute('for', checkboxId);
     }
 
     container.appendChild(newRow);
@@ -551,6 +579,72 @@ const editAddBtn = document.getElementById('editAddAddressFieldsBtn');
 if (editAddBtn) {
     editAddBtn.addEventListener('click', () => addStandardAddressFields('#editFormFieldsContainer', '#editAddAddressFieldsBtn'));
 }
+
+// Load edit form
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.classList.contains('edit-form-btn')) {
+        const formId = e.target.getAttribute('data-form-id');
+        const formTitle = e.target.getAttribute('data-form-title');
+        const formFields = JSON.parse(e.target.getAttribute('data-form-fields'));
+        
+        console.log('Loading form data for editing:', formId, formTitle, formFields);
+        
+        // Set form action and ID
+        const editForm = document.getElementById('editForm');
+        editForm.action = `/form/${formId}/edit`;
+        document.getElementById('editFormId').value = formId;
+        document.getElementById('editFormTitle').value = formTitle;
+        
+        // Clear existing fields
+        const fieldsContainer = document.getElementById('editFormFieldsContainer');
+        fieldsContainer.innerHTML = '';
+        
+        // Add fields from the form data
+        formFields.forEach((field, index) => {
+            addFieldRow('editFormFieldsContainer', true);
+            
+            // Get the newly added field row
+            const rows = fieldsContainer.querySelectorAll('.form-field-row');
+            const lastRow = rows[rows.length - 1];
+            
+            // Set the field values
+            lastRow.querySelector('input[name="field_labels[]"]').value = field.label;
+            const typeSelect = lastRow.querySelector('select[name="field_types[]"]');
+            typeSelect.value = field.type;
+            
+            // Set the required checkbox
+            const requiredCheckbox = lastRow.querySelector('input[name="field_required[]"]');
+            if (requiredCheckbox && field.required) {
+                requiredCheckbox.checked = true;
+            }
+            
+            // Handle options for dropdown, radio, checkbox
+            if (['dropdown', 'radio', 'checkbox'].includes(field.type)) {
+                const optionsContainer = lastRow.querySelector('.options-container');
+                const optionsInput = optionsContainer.querySelector('input[name="field_options[]"]');
+                
+                optionsContainer.style.display = 'block';
+                optionsInput.value = field.options.join(', ');
+                
+                // Handle location field identifiers
+                if (field.location_field_identifier) {
+                    const locationInput = optionsContainer.querySelector('input[name="location_field_identifier[]"]');
+                    locationInput.value = field.location_field_identifier;
+                }
+            }
+        });
+        
+        // Show all remove buttons in edit mode except for the first field if only one exists
+        const removeButtons = fieldsContainer.querySelectorAll('.remove-field-btn');
+        removeButtons.forEach((btn, idx) => {
+            btn.style.display = (removeButtons.length === 1 && idx === 0) ? 'none' : 'inline-block';
+        });
+        
+        // Show the edit form modal
+        const editFormModal = new bootstrap.Modal(document.getElementById('editFormModal'));
+        editFormModal.show();
+    }
+});
 
 </script>
 {% endblock %} 

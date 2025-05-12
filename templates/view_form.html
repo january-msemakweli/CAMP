@@ -1,6 +1,22 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+    /* Style for required fields with error */
+    .has-error .choices__inner {
+        border-color: #dc3545 !important;
+    }
+    
+    /* Style for invalid feedback message */
+    .invalid-feedback {
+        display: none;
+        width: 100%;
+        margin-top: 0.25rem;
+        font-size: 80%;
+        color: #dc3545;
+    }
+</style>
+
 <div class="row mb-4">
     <div class="col-12">
         <h2>{{ form.title }}</h2>
@@ -77,18 +93,21 @@
                                     name="{{ field.label }}" 
                                     {# Keep data-location-type for potential future use, but select by class #}
                                     data-location-type="{{ field.location_type }}" 
-                                    required 
+                                    {% if field.required %}required{% endif %}
                                     {% if field.location_type != 'region' %}disabled{% endif %}>
                                 {# Options will be populated by JS #}
                             </select>
                         {% elif field.type == 'text' %}
-                            <input type="text" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" required>
+                            <input type="text" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" {% if field.required %}required{% endif %}>
                         {% elif field.type == 'number' %}
-                            <input type="number" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" required>
+                            <input type="number" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" {% if field.required %}required{% endif %}>
                         {% elif field.type == 'date' %}
-                            <input type="date" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" required>
+                            <input type="date" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" {% if field.required %}required{% endif %}>
                         {% elif field.type == 'dropdown' %}
-                            <select class="form-select choices-select" id="field-{{ loop.index }}" name="{{ field.label }}" required>
+                            <select class="form-select choices-select" 
+                                   id="field-{{ loop.index }}" 
+                                   name="{{ field.label }}" 
+                                   {% if field.required %}required aria-required="true"{% endif %}>
                                 <option value="">Select an option</option>
                                 {% for option in field.options %}
                                 <option value="{{ option }}">{{ option }}</option>
@@ -97,7 +116,7 @@
                         {% elif field.type == 'radio' %}
                             {% for option in field.options %}
                             <div class="form-check">
-                                <input class="form-check-input" type="radio" name="{{ field.label }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}" required>
+                                <input class="form-check-input" type="radio" name="{{ field.label }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}" {% if field.required %}required{% endif %}>
                                 <label class="form-check-label" for="field-{{ loop.index }}-{{ loop.index0 }}">{{ option }}</label>
                             </div>
                             {% endfor %}
@@ -642,6 +661,42 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!patientIdInputHidden.value) {
             event.preventDefault();
             alert('No Patient ID is associated with this form. Please create or select one first.');
+            return;
+        }
+        
+        // Add validation for required fields, especially for dropdowns with Choices.js
+        const requiredFields = dataEntryForm.querySelectorAll('[required]');
+        let hasEmptyRequiredField = false;
+        
+        requiredFields.forEach(field => {
+            if (field.tagName === 'SELECT') {
+                // For dropdowns, check if a value is selected
+                if (!field.value) {
+                    hasEmptyRequiredField = true;
+                    // Get the Choices.js instance and highlight it
+                    if (field.choicesInstance) {
+                        field.choicesInstance.showDropdown();
+                        // Add visual indicator that field is required
+                        field.closest('.mb-3').classList.add('has-error');
+                        // Add error message
+                        let errorMsg = field.closest('.mb-3').querySelector('.invalid-feedback');
+                        if (!errorMsg) {
+                            errorMsg = document.createElement('div');
+                            errorMsg.className = 'invalid-feedback';
+                            errorMsg.style.display = 'block';
+                            errorMsg.textContent = 'This field is required';
+                            field.closest('.mb-3').appendChild(errorMsg);
+                        }
+                    }
+                }
+            } else if (!field.value) {
+                hasEmptyRequiredField = true;
+            }
+        });
+        
+        if (hasEmptyRequiredField) {
+            event.preventDefault();
+            alert('Please fill in all required fields before submitting.');
         }
     });
 
