@@ -2758,6 +2758,18 @@ def analytics():
             
             # Determine field types for analysis
             for field in all_fields:
+                # First check if this field contains lists (checkbox data)
+                contains_lists = False
+                try:
+                    # Check if any value in this field is a list
+                    contains_lists = df[field].apply(lambda x: isinstance(x, list)).any()
+                    if contains_lists:
+                        field_types[field] = 'checkbox'
+                        continue
+                except:
+                    # If we can't check (e.g., field is empty), assume it's not a list
+                    pass
+                
                 if df[field].dtype == 'object':  # String/categorical
                     # Try to convert to numeric, setting errors='coerce' will convert failures to NaN
                     numeric_series = pd.to_numeric(df[field], errors='coerce')
@@ -2770,18 +2782,34 @@ def analytics():
                             field_types[field] = 'numeric'
                         else:
                             # Fall back to categorical vs text determination
+                            try:
+                                unique_count = df[field].nunique()
+                                if unique_count <= 15:  # Arbitrary threshold for categorical
+                                    field_types[field] = 'categorical'
+                                else:
+                                    field_types[field] = 'text'
+                            except TypeError:
+                                # If we get a TypeError (unhashable type like list), convert to string first
+                                unique_count = df[field].astype(str).nunique()
+                                if unique_count <= 15:
+                                    field_types[field] = 'categorical'
+                                else:
+                                    field_types[field] = 'text'
+                    else:
+                        # Count unique values to determine if it's categorical
+                        try:
                             unique_count = df[field].nunique()
                             if unique_count <= 15:  # Arbitrary threshold for categorical
                                 field_types[field] = 'categorical'
                             else:
                                 field_types[field] = 'text'
-                    else:
-                        # Count unique values to determine if it's categorical
-                        unique_count = df[field].nunique()
-                        if unique_count <= 15:  # Arbitrary threshold for categorical
-                            field_types[field] = 'categorical'
-                        else:
-                            field_types[field] = 'text'
+                        except TypeError:
+                            # If we get a TypeError (unhashable type like list), convert to string first
+                            unique_count = df[field].astype(str).nunique()
+                            if unique_count <= 15:
+                                field_types[field] = 'categorical'
+                            else:
+                                field_types[field] = 'text'
                 elif np.issubdtype(df[field].dtype, np.number):  # Already numeric
                     field_types[field] = 'numeric'
                 else:
@@ -2799,8 +2827,88 @@ def analytics():
                     else:
                         field1_type = field_types.get(field1, 'unknown')
                         
+                        # For checkbox fields (containing lists), show special stats
+                        if field1_type == 'checkbox':
+                            # Flatten the lists and count unique options
+                            all_values = []
+                            selection_counts = []  # Track how many options each record selected
+                            
+                            for values in df[field1].dropna():
+                                if isinstance(values, list):
+                                    all_values.extend(values)
+                                    selection_counts.append(len(values))
+                                elif values:  # Handle non-list values if any
+                                    all_values.append(values)
+                                    selection_counts.append(1)
+                                else:
+                                    selection_counts.append(0)
+                            
+                            if all_values:
+                                # Count occurrences of each option
+                                unique_options = set(all_values)
+                                option_counts = {option: all_values.count(option) for option in unique_options}
+                                
+                                # Create a DataFrame for option counts
+                                option_df = pd.DataFrame({'Option': list(option_counts.keys()), 
+                                                         'Count': list(option_counts.values())})
+                                option_df['Percentage'] = (option_df['Count'] / len(df) * 100).round(2)
+                                option_df = option_df.sort_values('Count', ascending=False)
+                                
+                                # Get selection count statistics
+                                selection_stats = pd.Series(selection_counts).describe().to_dict()
+                                
+                                # Get missing/empty values count
+                                empty_count = df[field1].isna().sum() + df[field1].apply(lambda x: isinstance(x, list) and len(x) == 0).sum()
+                                
+                                stats = f"""
+                                <div class='alert alert-info mb-3'>{data_source_note}</div>
+                                <div class='alert alert-info'>
+                                    <p>Field type: Checkbox (Multiple Selection)</p>
+                                    <p>Total records: {len(df)}</p>
+                                    <p>Unique options: {len(unique_options)}</p>
+                                    <p>Empty selections: {empty_count} ({(empty_count/len(df)*100).round(2)}%)</p>
+                                    <p>Average selections per record: {round(selection_stats.get('mean', 0), 2)}</p>
+                                    <p>Maximum selections on one record: {int(selection_stats.get('max', 0))}</p>
+                                </div>
+                                <h5>Option Frequencies:</h5>
+                                {option_df.to_html(classes='table table-striped table-hover', index=False)}
+                                """
+                                
+                                # Create visualization
+                                if len(option_df) > 15:
+                                    plot_data = option_df.head(15)
+                                    title_suffix = " (Top 15 Options)"
+                                else:
+                                    plot_data = option_df
+                                    title_suffix = ""
+                                
+                                fig, ax = plt.subplots(figsize=(12, 6))
+                                sns.barplot(x='Option', y='Count', data=plot_data, ax=ax)
+                                ax.set_title(f'Selection Frequency{title_suffix}')
+                                plt.xticks(rotation=45, ha='right')
+                                plt.tight_layout()
+                                plots.append({
+                                    'title': 'Option Distribution',
+                                    'img': fig_to_base64(fig)
+                                })
+                                
+                                # Create distribution of selection counts
+                                selection_df = pd.DataFrame({'Selections': selection_counts})
+                                fig, ax = plt.subplots(figsize=(10, 6))
+                                sns.histplot(data=selection_df, x='Selections', discrete=True, ax=ax)
+                                ax.set_title('Distribution of Selection Counts')
+                                ax.set_xlabel('Number of Options Selected')
+                                ax.set_ylabel('Number of Records')
+                                plt.tight_layout()
+                                plots.append({
+                                    'title': 'Selection Count Distribution',
+                                    'img': fig_to_base64(fig)
+                                })
+                            else:
+                                stats = f"<div class='alert alert-warning'>No data available for this checkbox field.</div>"
+                        
                         # For numeric fields, show numeric statistics
-                        if field1_type == 'numeric':
+                        elif field1_type == 'numeric':
                             # Convert to numeric, handling errors by converting them to NaN
                             numeric_data = pd.to_numeric(df[field1], errors='coerce')
                             # Drop NaN values for statistics
@@ -2878,13 +2986,20 @@ def analytics():
                         
                         # For text fields, show basic stats
                         else:
-                            # Count unique values
-                            unique_count = df[field1].nunique()
-                            # Count non-missing values
-                            non_missing = df[field1].count()
-                            # Get most common values
-                            most_common = df[field1].value_counts().head(10).reset_index()
-                            most_common.columns = ['Value', 'Count']
+                            try:
+                                # Count unique values
+                                unique_count = df[field1].nunique()
+                                # Count non-missing values
+                                non_missing = df[field1].count()
+                                # Get most common values
+                                most_common = df[field1].value_counts().head(10).reset_index()
+                                most_common.columns = ['Value', 'Count']
+                            except TypeError:
+                                # Handle unhashable types (like lists) by converting to strings first
+                                unique_count = df[field1].astype(str).nunique()
+                                non_missing = df[field1].count()
+                                most_common = df[field1].astype(str).value_counts().head(10).reset_index()
+                                most_common.columns = ['Value', 'Count']
                             
                             stats = f"""
                             <div class='alert alert-info mb-3'>{data_source_note}</div>
@@ -2906,56 +3021,106 @@ def analytics():
                     if field1 not in df.columns:
                         stats = f"<div class='alert alert-warning'>Selected field '{field1}' does not exist in the dataset.</div>"
                     else:
-                        # Get value counts
-                        value_counts = df[field1].value_counts().reset_index()
-                        value_counts.columns = ['Value', 'Count']
-                        value_counts['Percentage'] = (value_counts['Count'] / value_counts['Count'].sum() * 100).round(2)
+                        field1_type = field_types.get(field1, 'unknown')
                         
-                        # Get missing values count
-                        missing_count = df[field1].isna().sum()
-                        
-                        # Add data source note
-                        stats = f"""
-                        <div class='alert alert-info mb-3'>{data_source_note}</div>
-                        <div class='alert alert-info'>
-                            <p>Total records: {len(df)}</p>
-                            <p>Unique values: {df[field1].nunique()}</p>
-                            <p>Missing values: {missing_count} ({(missing_count/len(df)*100).round(2)}%)</p>
-                        </div>
-                        {value_counts.to_html(classes='table table-striped table-hover', index=False)}
-                        """
-                        
-                        # If we have too many values, only show top N in visualization
-                        if len(value_counts) > 15:
-                            plot_data = value_counts.head(15)
-                            has_more = True
+                        # Special handling for checkbox fields (containing lists)
+                        if field1_type == 'checkbox':
+                            # Flatten the lists and count occurrences of each option
+                            all_values = []
+                            for values in df[field1].dropna():
+                                if isinstance(values, list):
+                                    all_values.extend(values)
+                                elif values:  # Handle non-list values if any
+                                    all_values.append(values)
+                            
+                            if all_values:
+                                # Count occurrences of each option
+                                value_counts = pd.Series(all_values).value_counts().reset_index()
+                                value_counts.columns = ['Value', 'Count']
+                                value_counts['Percentage'] = (value_counts['Count'] / len(df) * 100).round(2)
+                                
+                                # Get missing/empty values count
+                                empty_count = df[field1].isna().sum() + df[field1].apply(lambda x: isinstance(x, list) and len(x) == 0).sum()
+                                
+                                stats = f"""
+                                <div class='alert alert-info mb-3'>{data_source_note}</div>
+                                <div class='alert alert-info'>
+                                    <p>Field type: Checkbox (Multiple Selection)</p>
+                                    <p>Total records: {len(df)}</p>
+                                    <p>Unique options: {len(value_counts)}</p>
+                                    <p>Empty selections: {empty_count} ({(empty_count/len(df)*100).round(2)}%)</p>
+                                    <p>Note: Percentages are based on total records, not total selections</p>
+                                </div>
+                                {value_counts.to_html(classes='table table-striped table-hover', index=False)}
+                                """
+                                
+                                # If we have too many values, only show top N in visualization
+                                if len(value_counts) > 15:
+                                    plot_data = value_counts.head(15)
+                                    has_more = True
+                                else:
+                                    plot_data = value_counts
+                                    has_more = False
+                                
+                                # Create a bar chart
+                                fig, ax = plt.subplots(figsize=(12, 6))
+                                sns.barplot(x='Value', y='Count', data=plot_data, ax=ax)
+                                ax.set_title(f'Selected Options in {field1}')
+                                if has_more:
+                                    ax.set_title(f'Selected Options in {field1} (Top 15 Values)')
+                                plt.xticks(rotation=45, ha='right')
+                                plt.tight_layout()
+                                plots.append({
+                                    'title': 'Option Distribution',
+                                    'img': fig_to_base64(fig)
+                                })
+                            else:
+                                stats = f"<div class='alert alert-warning'>No data available for this checkbox field.</div>"
                         else:
-                            plot_data = value_counts
-                            has_more = False
-                        
-                        # Create a bar chart
-                        fig, ax = plt.subplots(figsize=(12, 6))
-                        sns.barplot(x='Value', y='Count', data=plot_data, ax=ax)
-                        ax.set_title(f'Frequency Distribution of {field1}')
-                        if has_more:
-                            ax.set_title(f'Frequency Distribution of {field1} (Top 15 Values)')
-                        plt.xticks(rotation=45, ha='right')
-                        plt.tight_layout()
-                        plots.append({
-                            'title': 'Frequency Distribution',
-                            'img': fig_to_base64(fig)
-                        })
-                        
-                        # Create a pie chart if fewer than 8 categories
-                        if len(plot_data) < 8:
-                            fig, ax = plt.subplots(figsize=(8, 8))
-                            ax.pie(plot_data['Count'], labels=plot_data['Value'], autopct='%1.1f%%')
-                            ax.set_title(f'Distribution of {field1}')
+                            # Standard handling for non-checkbox fields
+                            # Get value counts
+                            try:
+                                value_counts = df[field1].value_counts().reset_index()
+                                value_counts.columns = ['Value', 'Count']
+                                value_counts['Percentage'] = (value_counts['Count'] / value_counts['Count'].sum() * 100).round(2)
+                            except TypeError:
+                                # Handle unhashable types (like lists) by converting to strings first
+                                value_counts = df[field1].astype(str).value_counts().reset_index()
+                                value_counts.columns = ['Value', 'Count']
+                                value_counts['Percentage'] = (value_counts['Count'] / value_counts['Count'].sum() * 100).round(2)
+                            
+                            # Get missing values count
+                            missing_count = df[field1].isna().sum()
+                            
+                            # Add data source note
+                            stats = f"""
+                            <div class='alert alert-info mb-3'>{data_source_note}</div>
+                            <div class='alert alert-info'>
+                                <p>Total records: {len(df)}</p>
+                                <p>Unique values: {df[field1].astype(str).nunique()}</p>
+                                <p>Missing values: {missing_count} ({(missing_count/len(df)*100).round(2)}%)</p>
+                            </div>
+                            {value_counts.to_html(classes='table table-striped table-hover', index=False)}
+                            """
+                            
+                            # If we have too many values, only show top N in visualization
+                            if len(value_counts) > 15:
+                                plot_data = value_counts.head(15)
+                                has_more = True
+                            else:
+                                plot_data = value_counts
+                                has_more = False
+                            
+                            # Create a bar chart
+                            fig, ax = plt.subplots(figsize=(12, 6))
+                            sns.barplot(x='Value', y='Count', data=plot_data, ax=ax)
+                            ax.set_title(f'Frequency Distribution of {field1}')
                             if has_more:
-                                ax.set_title(f'Distribution of {field1} (Top 7 Values)')
+                                ax.set_title(f'Frequency Distribution of {field1} (Top 15 Values)')
+                            plt.xticks(rotation=45, ha='right')
                             plt.tight_layout()
                             plots.append({
-                                'title': 'Pie Chart',
+                                'title': 'Frequency Distribution',
                                 'img': fig_to_base64(fig)
                             })
                 
@@ -2971,44 +3136,59 @@ def analytics():
                         field1_type = field_types.get(field1, 'unknown')
                         field2_type = field_types.get(field2, 'unknown')
                         
+                        # Special handling if either field is a checkbox field
+                        if field1_type == 'checkbox' or field2_type == 'checkbox':
+                            stats = "<div class='alert alert-warning'>Cross-tabulation with checkbox fields (multiple selection) is not directly supported. Please export the data for more advanced analysis.</div>"
                         # Cross-tab for categorical vs categorical
-                        if field1_type == 'categorical' and field2_type == 'categorical':
-                            # Create cross-tabulation
-                            ct = pd.crosstab(df[field1], df[field2])
-                            stats = ct.to_html(classes='table table-striped table-hover')
-                            
-                            # Heatmap
-                            fig, ax = plt.subplots(figsize=(12, 8))
-                            sns.heatmap(ct, annot=True, fmt='d', cmap='YlGnBu', ax=ax)
-                            ax.set_title(f'Heatmap - {title}')
-                            ax.set_xlabel(field2)
-                            ax.set_ylabel(field1)
-                            plt.tight_layout()
-                            plots.append({
-                                'title': 'Heatmap - Cross-tabulation',
-                                'img': fig_to_base64(fig)
-                            })
-                            
-                            # Stacked bar chart
-                            fig, ax = plt.subplots(figsize=(12, 8))
-                            ct_pct = ct.div(ct.sum(axis=1), axis=0)
-                            ct_pct.plot(kind='bar', stacked=True, ax=ax)
-                            ax.set_title(f'Stacked Bar Chart - {title}')
-                            ax.set_xlabel(field1)
-                            ax.set_ylabel('Proportion')
-                            ax.legend(title=field2)
-                            plt.tight_layout()
-                            plots.append({
-                                'title': 'Stacked Bar Chart',
-                                'img': fig_to_base64(fig)
-                            })
-                            
-                            # Also show percentages
-                            ct_pct = ct.div(ct.sum(axis=1), axis=0) * 100
-                            ct_pct = ct_pct.round(2).astype(str) + '%'
-                            stats += "<h5>Percentages (Row-wise):</h5>"
-                            stats += ct_pct.to_html(classes='table table-striped table-hover')
-                        
+                        elif field1_type == 'categorical' and field2_type == 'categorical':
+                            try:
+                                # Create cross-tabulation
+                                ct = pd.crosstab(df[field1], df[field2])
+                                stats = ct.to_html(classes='table table-striped table-hover')
+                                
+                                # Heatmap
+                                fig, ax = plt.subplots(figsize=(12, 8))
+                                sns.heatmap(ct, annot=True, fmt='d', cmap='YlGnBu', ax=ax)
+                                ax.set_title(f'Heatmap - {title}')
+                                ax.set_xlabel(field2)
+                                ax.set_ylabel(field1)
+                                plt.tight_layout()
+                                plots.append({
+                                    'title': 'Heatmap - Cross-tabulation',
+                                    'img': fig_to_base64(fig)
+                                })
+                                
+                                # Stacked bar chart
+                                fig, ax = plt.subplots(figsize=(12, 8))
+                                ct_pct = ct.div(ct.sum(axis=1), axis=0)
+                                ct_pct.plot(kind='bar', stacked=True, ax=ax)
+                                ax.set_title(f'Stacked Bar Chart - {title}')
+                                ax.set_xlabel(field1)
+                                ax.set_ylabel('Proportion')
+                                ax.legend(title=field2)
+                                plt.tight_layout()
+                                plots.append({
+                                    'title': 'Stacked Bar Chart',
+                                    'img': fig_to_base64(fig)
+                                })
+                                
+                                # Also show percentages
+                                ct_pct = ct.div(ct.sum(axis=1), axis=0) * 100
+                                ct_pct = ct_pct.round(2).astype(str) + '%'
+                                stats += "<h5>Percentages (Row-wise):</h5>"
+                                stats += ct_pct.to_html(classes='table table-striped table-hover')
+                            except TypeError:
+                                # Handle unhashable types (like lists)
+                                stats = "<div class='alert alert-warning'>Cannot create cross-tabulation because one or both fields contain unhashable values (like lists or objects). Try using string conversion or a different analysis.</div>"
+                                
+                                # Try creating the cross-tab with string conversion
+                                try:
+                                    ct = pd.crosstab(df[field1].astype(str), df[field2].astype(str))
+                                    stats += "<h5>Cross-tabulation with string conversion:</h5>"
+                                    stats += ct.to_html(classes='table table-striped table-hover')
+                                except:
+                                    # If even that fails, just leave the error message
+                                    pass
                         # Numeric vs categorical
                         elif field1_type == 'numeric' and field2_type == 'categorical':
                             # Group numeric data by categories
@@ -3409,8 +3589,18 @@ def export_analytics():
         elif analysis_type == 'crosstab' and field1 and field2:
             # Export crosstab
             if field1 in df.columns and field2 in df.columns:
-                ct = pd.crosstab(df[field1], df[field2])
-                ct.to_csv(output)
+                try:
+                    ct = pd.crosstab(df[field1], df[field2])
+                    ct.to_csv(output)
+                except TypeError:
+                    # Handle unhashable types like lists
+                    try:
+                        ct = pd.crosstab(df[field1].astype(str), df[field2].astype(str))
+                        output.write("Note: Values were converted to strings for cross-tabulation due to unhashable types\n\n")
+                        ct.to_csv(output)
+                    except Exception as e:
+                        output.write(f"Error creating cross-tabulation: {str(e)}\n")
+                        df[[field1, field2]].to_csv(output, index=False)
         elif analysis_type == 'timeseries' and field1:
             # Export time series data
             if 'created_at' in df.columns and field1 in df.columns:
@@ -3469,14 +3659,38 @@ def export_analytics():
                     
             elif analysis_type == 'crosstab' and field1 and field2:
                 if field1 in df.columns and field2 in df.columns:
-                    ct = pd.crosstab(df[field1], df[field2])
-                    ct.to_excel(writer, sheet_name='Cross Tabulation')
-                    
-                    # Apply header formatting
-                    worksheet = writer.sheets['Cross Tabulation']
-                    for col_num, value in enumerate([''] + list(ct.columns)):
-                        worksheet.write(0, col_num, value, header_format)
-                    
+                    try:
+                        ct = pd.crosstab(df[field1], df[field2])
+                        ct.to_excel(writer, sheet_name='Cross Tabulation')
+                        
+                        # Apply header formatting
+                        worksheet = writer.sheets['Cross Tabulation']
+                        for col_num, value in enumerate([''] + list(ct.columns)):
+                            worksheet.write(0, col_num, value, header_format)
+                    except TypeError:
+                        # Handle unhashable types like lists
+                        try:
+                            # Convert to strings
+                            ct = pd.crosstab(df[field1].astype(str), df[field2].astype(str))
+                            
+                            # Add a note about the conversion
+                            notes_df = pd.DataFrame([["Note: Values were converted to strings for cross-tabulation due to unhashable types (like lists)"]], 
+                                                  columns=["Cross Tabulation"])
+                            notes_df.to_excel(writer, sheet_name='Cross Tabulation', index=False)
+                            
+                            # Write the crosstab starting a few rows down
+                            ct.to_excel(writer, sheet_name='Cross Tabulation', startrow=3)
+                            
+                            # Apply header formatting
+                            worksheet = writer.sheets['Cross Tabulation']
+                            for col_num, value in enumerate([''] + list(ct.columns)):
+                                worksheet.write(3, col_num, value, header_format)
+                        except Exception as e:
+                            # If all else fails, just output the raw data columns
+                            notes_df = pd.DataFrame([["Error creating cross-tabulation due to unhashable types. Raw data shown below."]], 
+                                                  columns=["Cross Tabulation Error"])
+                            notes_df.to_excel(writer, sheet_name='Cross Tabulation', index=False)
+                            df[[field1, field2]].to_excel(writer, sheet_name='Cross Tabulation', startrow=3)
             elif analysis_type == 'summary_statistics' and field1:
                 if field1 in df.columns:
                     # Create a summary sheet
