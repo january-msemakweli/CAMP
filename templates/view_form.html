@@ -15,7 +15,61 @@
         font-size: 80%;
         color: #dc3545;
     }
+    
+    /* Portal approach for dropdown */
+    #searchResultsPortal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 0;
+        overflow: visible;
+        z-index: 100000;
+        pointer-events: none;
+    }
+    
+    #searchPatientIdResults {
+        position: absolute;
+        max-height: 300px;
+        overflow-y: auto;
+        background-color: white;
+        border-radius: 0.25rem;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        border: 1px solid rgba(0,0,0,0.2);
+        min-width: 250px;
+        display: none;
+        pointer-events: auto;
+    }
+    
+    #searchPatientIdResults.visible {
+        display: block;
+    }
+    
+    #searchPatientIdResults .list-group-item {
+        padding: 8px 12px;
+        cursor: pointer;
+    }
+    
+    #searchPatientIdResults .list-group-item:hover {
+        background-color: #f0f7ff;
+    }
+    
+    /* Ensure the parent container extends outside the card */
+    .search-container {
+        position: relative; /* Establish positioning context */
+        z-index: 9999; /* High z-index for the container */
+    }
+    
+    /* Make the container position relative to anchor the absolute dropdown */
+    .position-relative {
+        position: relative;
+    }
 </style>
+
+<!-- Portal for search results that break out of any container -->
+<div id="searchResultsPortal">
+    <div id="searchPatientIdResults" class="list-group mt-1"></div>
+</div>
 
 <div class="row mb-4">
     <div class="col-12">
@@ -56,10 +110,9 @@
                         {% endif %}
                         
                         {# Search Section (Always shown, but functionality might differ) #}
-                        <div class="col">
+                        <div class="col search-container">
                             <label for="searchPatientIdInput" class="form-label visually-hidden">Search Existing Patient ID</label>
                             <input type="search" id="searchPatientIdInput" class="form-control" placeholder="Search by Patient ID or Name...">
-                            <div id="searchPatientIdResults" class="list-group mt-1 position-absolute w-100" style="z-index: 1000;"></div>
                         </div>
                     </div>
                     <div id="selectedPatientIdDisplay" class="mt-3" style="display: none;">
@@ -586,16 +639,24 @@ document.addEventListener('DOMContentLoaded', function() {
     searchInput.addEventListener('input', function() {
         clearTimeout(searchTimeout);
         const query = this.value.trim();
-        searchResultsContainer.innerHTML = ''; // Clear previous results
-        selectedDisplay.style.display = 'none'; // Hide selected display on new search
-        useIdBtn.disabled = true;
-        if(createBtn) createBtn.disabled = false; // Re-enable create button
-
+        
         if (query.length < 2) { // Only search if query is at least 2 chars
+            searchResultsContainer.innerHTML = '';
+            searchResultsContainer.classList.remove('visible');
             return;
         }
 
+        // Position the dropdown below the search input
+        positionDropdown();
+
+        // Show the loading state immediately
         searchResultsContainer.innerHTML = '<div class="list-group-item">Searching...</div>';
+        searchResultsContainer.classList.add('visible');
+        
+        // Hide selected display on new search
+        selectedDisplay.style.display = 'none';
+        useIdBtn.disabled = true;
+        if(createBtn) createBtn.disabled = false; // Re-enable create button
 
         searchTimeout = setTimeout(() => {
             fetch(`/api/search_patient_id?q=${encodeURIComponent(query)}`)
@@ -611,11 +672,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .then(data => {
                     searchResultsContainer.innerHTML = ''; // Clear "Searching..."
+                    
                     if (data.error) {
                         searchResultsContainer.innerHTML = `<div class="list-group-item text-danger">Error: ${data.error}</div>`;
                     } else if (data.length === 0) {
                         searchResultsContainer.innerHTML = '<div class="list-group-item">No matching patient IDs found.</div>';
                     } else {
+                        // Create all elements before adding to the DOM
+                        const fragment = document.createDocumentFragment();
+                        
                         data.forEach(patient => {
                             const item = document.createElement('button');
                             item.type = 'button';
@@ -638,14 +703,22 @@ document.addEventListener('DOMContentLoaded', function() {
                                 selectedValueSpan.textContent = selectedPatientId;
                                 selectedDisplay.style.display = 'flex';
                                 useIdBtn.disabled = false;
+                                searchResultsContainer.classList.remove('visible');
                                 searchResultsContainer.innerHTML = ''; // Clear results after selection
                                 if(createBtn) createBtn.disabled = true; // Disable create if search result selected
                                 searchInput.value = selectedPatientId; // Optional: fill search box
                                 // --- Call displayPatientPreview --- 
                                 displayPatientPreview(selectedPatientId);
                             });
-                            searchResultsContainer.appendChild(item);
+                            
+                            fragment.appendChild(item);
                         });
+                        
+                        // Add all elements at once
+                        searchResultsContainer.appendChild(fragment);
+                        
+                        // Update position after content is added
+                        positionDropdown();
                     }
                 })
                 .catch(error => {
@@ -653,6 +726,43 @@ document.addEventListener('DOMContentLoaded', function() {
                     searchResultsContainer.innerHTML = '<div class="list-group-item text-danger">Search failed.</div>';
                 });
         }, 300); // Debounce time: 300ms
+    });
+    
+    // Function to position the dropdown below the search input
+    function positionDropdown() {
+        const inputRect = searchInput.getBoundingClientRect();
+        searchResultsContainer.style.top = `${inputRect.bottom}px`;
+        searchResultsContainer.style.left = `${inputRect.left}px`;
+        searchResultsContainer.style.width = `${inputRect.width}px`;
+    }
+    
+    // Reposition dropdown on scroll or resize
+    window.addEventListener('resize', function() {
+        if (searchResultsContainer.classList.contains('visible')) {
+            positionDropdown();
+        }
+    });
+    
+    // Use passive event listener for better performance
+    window.addEventListener('scroll', function() {
+        if (searchResultsContainer.classList.contains('visible')) {
+            positionDropdown();
+        }
+    }, { passive: true });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
+        if (!searchInput.contains(event.target) && !searchResultsContainer.contains(event.target)) {
+            searchResultsContainer.classList.remove('visible');
+        }
+    });
+    
+    // Show dropdown when focusing on search input if it has content
+    searchInput.addEventListener('focus', function() {
+        if (this.value.trim().length >= 2 && searchResultsContainer.innerHTML.trim() !== '') {
+            positionDropdown();
+            searchResultsContainer.classList.add('visible');
+        }
     });
 
     // Event Listener for "Use ID" Button

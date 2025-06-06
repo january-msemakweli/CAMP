@@ -3996,8 +3996,8 @@ def search_patient_id():
         results = []
         seen_ids = set()  # To prevent duplicates
             
-        # First search patients table by patient_id
-        response = supabase.table('patients').select('patient_id, data').like('patient_id', f"%{query}%").limit(10).execute()
+        # First search patients table by patient_id, order by created_at desc for newest first
+        response = supabase.table('patients').select('patient_id, data, created_at').like('patient_id', f"%{query}%").order('created_at', desc=True).limit(10).execute()
         
         # Add patient_id matches to results
         if response.data:
@@ -4011,13 +4011,13 @@ def search_patient_id():
         # So we'll fetch records and filter in Python
         if len(results) < 10:
             try:
-                # Get additional patients (up to 50) not already in results
+                # Get additional patients (up to 50) not already in results, newest first
                 additional_patients = []
                 if seen_ids:
-                    additional_response = supabase.table('patients').select('patient_id, data').not_('patient_id', 'in', list(seen_ids)).limit(50).execute()
+                    additional_response = supabase.table('patients').select('patient_id, data, created_at').not_('patient_id', 'in', list(seen_ids)).order('created_at', desc=True).limit(50).execute()
                     additional_patients = additional_response.data
                 else:
-                    additional_response = supabase.table('patients').select('patient_id, data').limit(50).execute()
+                    additional_response = supabase.table('patients').select('patient_id, data, created_at').order('created_at', desc=True).limit(50).execute()
                     additional_patients = additional_response.data
                 
                 # Common name field variations to check
@@ -4066,8 +4066,8 @@ def search_patient_id():
         # If we still have fewer than 5 results, try searching form submissions as a fallback
         if len(results) < 5:
             try:
-                # Search in submissions by patient_id
-                submissions_response = supabase.table('form_submissions').select('patient_id, data').like('patient_id', f"%{query}%").limit(10).execute()
+                # Search in submissions by patient_id, order by newest first
+                submissions_response = supabase.table('form_submissions').select('patient_id, data, created_at').like('patient_id', f"%{query}%").order('created_at', desc=True).limit(10).execute()
                 
                 # Process submission results
                 if submissions_response.data:
@@ -4076,12 +4076,13 @@ def search_patient_id():
                         if patient_id not in seen_ids and len(results) < 10:
                             results.append({
                                 'patient_id': patient_id,
-                                'data': submission.get('data', {})
+                                'data': submission.get('data', {}),
+                                'created_at': submission.get('created_at')
                             })
                             seen_ids.add(patient_id)
                 
-                # Also manually check names in submissions
-                additional_submissions = supabase.table('form_submissions').select('patient_id, data').limit(20).execute()
+                # Also manually check names in submissions, order by newest first
+                additional_submissions = supabase.table('form_submissions').select('patient_id, data, created_at').order('created_at', desc=True).limit(20).execute()
                 
                 if additional_submissions.data:
                     query_lower = query.lower()
@@ -4111,7 +4112,8 @@ def search_patient_id():
                         if name_match:
                             result = {
                                 'patient_id': patient_id,
-                                'data': submission_data
+                                'data': submission_data,
+                                'created_at': submission.get('created_at')
                             }
                             if display_name:
                                 result['display_name'] = display_name
