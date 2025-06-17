@@ -1,32 +1,76 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+    /* Mobile-specific styles */
+    @media (max-width: 767px) {
+        .container-fluid {
+            padding: 0.75rem !important;
+        }
+        
+        .page-header {
+            padding: 1rem !important;
+        }
+        
+        .card-body {
+            padding: 0.75rem !important;
+        }
+        
+        /* Make buttons more touch-friendly */
+        .btn {
+            min-height: 38px;
+        }
+
+        /* Fix for modal on small screens */
+        .modal-dialog {
+            margin: 0.5rem;
+        }
+        
+        /* Improve table scrolling on mobile */
+        .table-responsive {
+            margin-bottom: 0;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        /* Show horizontal scrolling indicator */
+        .table-responsive:after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 40px;
+            height: 100%;
+            background: linear-gradient(to right, rgba(255,255,255,0), rgba(0,0,0,0.05));
+            pointer-events: none;
+        }
+    }
+</style>
 <div class="container-fluid p-4">
     <!-- Page Header -->
-    <div class="page-header mb-4">
+    <div class="page-header mb-3 mb-md-4">
         <div class="row align-items-center">
-            <div class="col">
-                <h2 class="mb-1"><i class="fas fa-database me-2"></i>Dataset View</h2>
+            <div class="col-12 col-md">
+                <h2 class="mb-1 fs-3 fs-md-2"><i class="fas fa-database me-2"></i>Dataset View</h2>
                 {% if selected_project_name %}
-                    <p class="text-muted mb-0">Viewing data for programme: <strong>{{ selected_project_name }}</strong></p>
+                    <p class="text-muted mb-2 mb-md-0 small text-md-normal">Viewing data for programme: <strong>{{ selected_project_name }}</strong></p>
                 {% elif selected_project %} {# Fallback if name fetch failed but ID exists #}
-                     <p class="text-muted mb-0">Viewing data for programme ID: <strong>{{ selected_project }}</strong> (Name fetch error)</p>
+                     <p class="text-muted mb-2 mb-md-0 small text-md-normal">Viewing data for programme ID: <strong>{{ selected_project }}</strong> (Name fetch error)</p>
                 {% else %}
-                    <p class="text-muted mb-0">Viewing data for all programmes.</p>
+                    <p class="text-muted mb-2 mb-md-0 small text-md-normal">Viewing data for all programmes.</p>
                 {% endif %}
             </div>
-            <div class="col-auto">
-                <div class="action-buttons">
-                    <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#filterModal">
-                        <i class="fas fa-filter me-2"></i>Filter Data
+            <div class="col-12 col-md-auto mt-2 mt-md-0">
+                <div class="d-flex flex-wrap gap-2 justify-content-center justify-content-md-end">
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#filterModal">
+                        <i class="fas fa-filter me-2"></i><span class="d-none d-sm-inline">Filter Data</span>
                     </button>
                     {% if current_user.is_admin %}
                     <a href="{{ url_for('export_dataset', project_id=selected_project) }}" class="btn btn-success">
-                        <i class="fas fa-file-excel me-2"></i>Export Dataset
+                        <i class="fas fa-file-excel me-2"></i><span class="d-none d-sm-inline">Export Dataset</span>
                     </a>
                     {% else %}
                     <button type="button" class="btn btn-secondary" disabled title="Admin privileges required">
-                        <i class="fas fa-lock me-2"></i>Export Disabled (Admin Only)
+                        <i class="fas fa-lock me-2"></i><span class="d-none d-sm-inline">Export Disabled</span><span class="d-sm-none">Export</span>
                     </button>
                     {% endif %}
                 </div>
@@ -35,39 +79,39 @@
     </div>
 
     <!-- Stats Overview -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="stat-card text-center p-3">
-                <i class="fas fa-users fa-2x mb-2"></i>
-                <h3 class="mb-1">{{ patient_data_list|length }}</h3>
-                <p class="mb-0">Total Patients</p>
+    <div class="row mb-4 g-2 g-md-3">
+        <div class="col-6 col-md-3">
+            <div class="stat-card text-center p-2 p-md-3">
+                <i class="fas fa-users fa-2x mb-1 mb-md-2"></i>
+                <h3 class="mb-1 fs-5 fs-md-3">{{ patient_data_list|length }}</h3>
+                <p class="mb-0 small text-md-normal">Total Patients</p>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="stat-card text-center p-3">
-                <i class="fas fa-file-medical fa-2x mb-2"></i>
-                <h3 class="mb-1">{{ ordered_fields|length }}</h3>
-                <p class="mb-0">Data Fields</p>
+        <div class="col-6 col-md-3">
+            <div class="stat-card text-center p-2 p-md-3">
+                <i class="fas fa-file-medical fa-2x mb-1 mb-md-2"></i>
+                <h3 class="mb-1 fs-5 fs-md-3">{{ ordered_fields|length }}</h3>
+                <p class="mb-0 small text-md-normal">Data Fields</p>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="stat-card text-center p-3">
-                <i class="fas fa-calendar-alt fa-2x mb-2"></i>
-                <h3 class="mb-1">{{ start_date if start_date else 'All' }}</h3>
-                <p class="mb-0">Start Date</p>
+        <div class="col-6 col-md-3">
+            <div class="stat-card text-center p-2 p-md-3">
+                <i class="fas fa-calendar-alt fa-2x mb-1 mb-md-2"></i>
+                <h3 class="mb-1 fs-5 fs-md-3">{{ start_date if start_date else 'All' }}</h3>
+                <p class="mb-0 small text-md-normal">Start Date</p>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="stat-card text-center p-3">
-                <i class="fas fa-calendar-check fa-2x mb-2"></i>
-                <h3 class="mb-1">{{ end_date if end_date else 'All' }}</h3>
-                <p class="mb-0">End Date</p>
+        <div class="col-6 col-md-3">
+            <div class="stat-card text-center p-2 p-md-3">
+                <i class="fas fa-calendar-check fa-2x mb-1 mb-md-2"></i>
+                <h3 class="mb-1 fs-5 fs-md-3">{{ end_date if end_date else 'All' }}</h3>
+                <p class="mb-0 small text-md-normal">End Date</p>
             </div>
         </div>
     </div>
 
     <!-- Search Form -->
-    <div class="mb-4">
+    <div class="mb-3 mb-md-4">
         <form method="GET" action="{{ url_for('dataset_view') }}" id="searchForm">
             <!-- Hidden fields to preserve existing filters -->
             <input type="hidden" name="project_id" value="{{ selected_project or '' }}">
@@ -78,10 +122,10 @@
             <input type="hidden" name="end_date" value="{{ end_date or '' }}">
 
             <div class="input-group">
-                <input type="search" class="form-control" placeholder="Search patient ID or any data value..."
+                <input type="search" class="form-control" placeholder="Search patient ID or data..."
                        name="search" value="{{ search_term or '' }}" aria-label="Search dataset">
                 <button class="btn btn-outline-primary" type="submit">
-                    <i class="fas fa-search"></i> Search
+                    <i class="fas fa-search"></i><span class="d-none d-md-inline ms-1">Search</span>
                 </button>
             </div>
         </form>
@@ -190,7 +234,7 @@
                             {% endfor %}
                             <td>
                                 <button type="button" class="btn btn-sm btn-info" onclick="viewPatientData('{{ patient_row.patient_id }}')">
-                                    <i class="fas fa-eye me-1"></i>Details
+                                    <i class="fas fa-eye me-1"></i><span class="d-none d-md-inline">Details</span>
                                 </button>
                             </td>
                         </tr>
@@ -768,5 +812,32 @@
             container.style.pointerEvents = 'auto';
         });
     }
+    
+    // Mobile-specific adjustments
+    function adjustForMobile() {
+        if (window.innerWidth < 768) {
+            // Improve touch targets on mobile
+            document.querySelectorAll('.btn-sm').forEach(btn => {
+                btn.style.padding = '0.375rem 0.5rem';
+                btn.style.fontSize = '0.875rem';
+            });
+            
+            // Make sure fixed column is properly shown on mobile
+            const fixedColLeft = document.querySelector('.fixed-col-left');
+            if (fixedColLeft) {
+                fixedColLeft.style.boxShadow = '2px 0 8px -2px rgba(0,0,0,0.2)';
+            }
+            
+            // Ensure our table container has proper padding on mobile
+            const tableContainer = document.querySelector('.table-responsive');
+            if (tableContainer) {
+                tableContainer.style.padding = '0';
+            }
+        }
+    }
+    
+    // Run on page load and resize
+    window.addEventListener('DOMContentLoaded', adjustForMobile);
+    window.addEventListener('resize', adjustForMobile);
 </script>
 {% endblock %}
