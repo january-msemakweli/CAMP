@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}">
     <title>{% block title %}MoAfyaCamps{% endblock %}</title>
     <!-- Bootstrap 5 CSS -->
@@ -720,6 +720,28 @@
             margin-left: auto;
             margin-right: auto;
         }
+        
+        .cta-buttons {
+            display: flex;
+            justify-content: center;
+        }
+        
+        @media (max-width: 768px) {
+            .cta-buttons {
+                flex-direction: column;
+                align-items: center;
+                width: 100%;
+                max-width: 280px;
+                margin: 0 auto;
+            }
+        }
+        
+        @media (min-width: 769px) {
+            .cta-buttons {
+                flex-direction: row;
+                justify-content: center;
+            }
+        }
 
         .btn-light {
             background: white;
@@ -879,14 +901,31 @@
                 display: flex;
                 flex-direction: column;
                 align-items: center;
-                gap: 15px;
-                margin-bottom: 10px;
+                width: 100%;
+                max-width: 280px;
+                margin: 0 auto 20px;
             }
             
-            .hero-buttons .btn {
-                margin: 0;
-                width: 80%;
-                max-width: 250px;
+            /* Mobile buttons styling */
+            .hero-buttons-mobile,
+            .cta-buttons-mobile {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                width: 100%;
+                max-width: 280px;
+                margin: 0 auto 20px;
+            }
+            
+            /* Desktop buttons styling */
+            .hero-buttons {
+                display: flex;
+                justify-content: flex-start;
+            }
+            
+            .cta-buttons {
+                display: flex;
+                justify-content: center;
             }
             
             /* Adjust foundation card for mobile */
@@ -1029,7 +1068,7 @@
                     {% for category, message in messages %}
                         <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
                             {{ message }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" title="Close"></button>
                         </div>
                     {% endfor %}
                 {% endif %}
@@ -1047,16 +1086,22 @@
                                 <h2 class="hero-tagline mb-3">Efficient Health Camp Management</h2>
                                 <p class="hero-subtitle">A centralized platform for healthcare data collection and management in field settings.</p>
                                 
-                                <div class="hero-buttons">
-                                    <!-- Mobile version - visible only on small screens -->
-                                    <a href="{{ url_for('register') }}" class="btn btn-light btn-lg me-3 d-block d-md-none">
-                                        <i class="fas fa-user-plus me-2"></i>Get Started
-                                    </a>
-                                    <!-- Desktop version - hidden on small screens -->
-                                    <a href="{{ url_for('documentation') }}" class="btn btn-light btn-lg me-3 d-none d-md-inline-block">
+                                <div class="hero-buttons d-none d-md-flex">
+                                    <!-- Desktop buttons only -->
+                                    <a href="{{ url_for('documentation') }}" class="btn btn-light btn-lg me-3">
                                         <i class="fas fa-book me-2"></i>Get Started
                                     </a>
                                     <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">
+                                        <i class="fas fa-sign-in-alt me-2"></i>Sign In
+                                    </a>
+                                </div>
+                                
+                                <!-- Mobile buttons (separate container) -->
+                                <div class="hero-buttons-mobile d-md-none">
+                                    <a href="{{ url_for('register') }}" class="btn btn-light btn-lg w-100 mb-3">
+                                        <i class="fas fa-user-plus me-2"></i>Get Started
+                                    </a>
+                                    <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg w-100">
                                         <i class="fas fa-sign-in-alt me-2"></i>Sign In
                                     </a>
                                 </div>
@@ -1188,16 +1233,22 @@
                     <div class="cta-content">
                         <h2 class="cta-title">Ready to Get Started?</h2>
                         <p class="cta-subtitle">Join MoAfyaCamps today and transform how you manage health camps</p>
-                        <div class="cta-buttons">
-                            <!-- Mobile version - visible only on small screens -->
-                            <a href="{{ url_for('register') }}" class="btn btn-light btn-lg me-3 d-block d-md-none">
-                                <i class="fas fa-user-plus me-2"></i>Register Now
-                            </a>
-                            <!-- Desktop version - hidden on small screens -->
-                            <a href="{{ url_for('documentation') }}" class="btn btn-light btn-lg me-3 d-none d-md-inline-block">
+                        <div class="cta-buttons d-none d-md-flex">
+                            <!-- Desktop buttons only -->
+                            <a href="{{ url_for('documentation') }}" class="btn btn-light btn-lg me-3">
                                 <i class="fas fa-book me-2"></i>Register Now
                             </a>
                             <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg">
+                                <i class="fas fa-sign-in-alt me-2"></i>Login
+                            </a>
+                        </div>
+                        
+                        <!-- Mobile buttons (separate container) -->
+                        <div class="cta-buttons-mobile d-md-none">
+                            <a href="{{ url_for('register') }}" class="btn btn-light btn-lg w-100 mb-3">
+                                <i class="fas fa-user-plus me-2"></i>Register Now
+                            </a>
+                            <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg w-100">
                                 <i class="fas fa-sign-in-alt me-2"></i>Login
                             </a>
                         </div>

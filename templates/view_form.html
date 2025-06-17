@@ -60,6 +60,20 @@
         z-index: 9999; /* High z-index for the container */
     }
     
+    /* Mobile styling for buttons */
+    @media (max-width: 767.98px) {
+        #usePatientIdBtn .fas,
+        #clearPatientIdBtn .fas {
+            margin-right: 0 !important;
+        }
+        
+        #usePatientIdBtn,
+        #clearPatientIdBtn {
+            padding: 0.25rem 0.5rem;
+            min-width: 38px;
+        }
+    }
+    
     /* Make the container position relative to anchor the absolute dropdown */
     .position-relative {
         position: relative;
@@ -116,12 +130,12 @@
                         </div>
                     </div>
                     <div id="selectedPatientIdDisplay" class="mt-3" style="display: none;">
-                        <span class="badge bg-primary fs-6 me-2">Selected ID: <strong id="selectedPatientIdValue"></strong></span>
+                        <span class="badge bg-primary fs-6 me-2">Selected: <strong id="selectedPatientIdValue"></strong></span>
                         <button type="button" id="usePatientIdBtn" class="btn btn-sm btn-primary" disabled>
-                            <i class="fas fa-check me-1"></i> Use This ID for Form
+                            <i class="fas fa-check me-1"></i><span class="d-none d-md-inline">Use This ID for Form</span>
                         </button>
                         <button type="button" id="clearPatientIdBtn" class="btn btn-sm btn-outline-secondary ms-1">
-                             <i class="fas fa-times"></i> Clear
+                             <i class="fas fa-times"></i><span class="d-none d-md-inline">Clear</span>
                         </button>
                     </div>
                 </div>
