@@ -783,9 +783,16 @@ def view_form(form_id):
     # Get all forms for this project ordered by creation date
     all_forms_response = supabase.table('forms').select('id').eq('project_id', form['project_id']).order('created_at').execute()
     is_first_form = False
+    
+    # Calculate form_index for the waitlist feature
+    form_indices = {}
     if all_forms_response.data and len(all_forms_response.data) > 0:
         # Check if current form is the first one created
         is_first_form = all_forms_response.data[0]['id'] == form_id
+        # Map form IDs to their positions in the sequence
+        form_indices = {f['id']: idx for idx, f in enumerate(all_forms_response.data)}
+        # Add form_index to form object
+        form['form_index'] = form_indices.get(form_id, 0)
     
     # Get form submissions (limited to 5 most recent)
     submissions_response = supabase.table('form_submissions').select('*').eq('form_id', form_id).order('created_at', desc=True).limit(5).execute()
@@ -4507,6 +4514,109 @@ def get_field_values(form_id, field_name):
     
     except Exception as e:
         print(f"Error getting field values: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/form_waitlist/<form_id>', methods=['GET'])
+@login_required
+def form_waitlist(form_id):
+    """API endpoint to get the waitlist for a specific form.
+    
+    This endpoint returns patients who:
+    1. Have not yet completed the current form
+    2. For forms beyond the first, have completed the previous form
+    
+    Returns:
+        JSON: List of patient records with eligibility status
+    """
+    try:
+        print(f"Fetching waitlist for form: {form_id}")
+        
+        # Get form details
+        form_response = supabase.table('forms').select('*').eq('id', form_id).execute()
+        if not form_response.data:
+            return jsonify({'error': 'Form not found'}), 404
+            
+        form = form_response.data[0]
+        
+        # Get the project
+        project_response = supabase.table('projects').select('*').eq('id', form['project_id']).execute()
+        if not project_response.data:
+            return jsonify({'error': 'Project not found'}), 404
+            
+        project = project_response.data[0]
+            
+        # Get all forms in this project to determine order
+        all_forms_response = supabase.table('forms').select('*').eq('project_id', project['id']).order('created_at').execute()
+        project_forms = all_forms_response.data
+        
+        # Map form IDs to their positions in the sequence
+        form_indices = {f['id']: idx for idx, f in enumerate(project_forms)}
+        current_form_index = form_indices.get(form_id, 0)
+        
+        # Get all patients
+        patients_response = supabase.table('patients').select('*').execute()
+        patients = patients_response.data
+        
+        # Get all submissions for tracking completed forms
+        submissions_response = supabase.table('form_submissions').select('form_id, patient_id').execute()
+        submissions = submissions_response.data
+        
+        # Create a set of (patient_id, form_id) tuples for quick lookup
+        completed_forms = set([(sub['patient_id'], sub['form_id']) for sub in submissions])
+        
+        result = []
+        
+        for patient in patients:
+            patient_id = patient['patient_id']
+            
+            # Skip patients who already have completed this form
+            if (patient_id, form_id) in completed_forms:
+                continue
+            
+            # For forms beyond the first, check if the patient completed the previous form
+            is_eligible = True
+            patient_display_name = None
+            last_completed_form = None
+            
+            if current_form_index > 0 and project_forms:
+                # Find the previous form
+                prev_form_id = project_forms[current_form_index - 1]['id'] if current_form_index - 1 < len(project_forms) else None
+                
+                if prev_form_id and not (patient_id, prev_form_id) in completed_forms:
+                    is_eligible = False
+                
+                # Find the last completed form for this patient
+                patient_completed_forms = [(idx, f['id']) for f in project_forms 
+                                          for idx in [form_indices.get(f['id'])]
+                                          if (patient_id, f['id']) in completed_forms]
+                
+                if patient_completed_forms:
+                    last_idx, last_form_id = max(patient_completed_forms, key=lambda x: x[0])
+                    last_completed_form = next((f['title'] for f in project_forms if f['id'] == last_form_id), None)
+            
+            # Try to get patient name from data
+            if patient.get('data'):
+                for form_data in patient['data'].values():
+                    if isinstance(form_data, dict):
+                        # Look for common name fields
+                        for field in ['Full Name', 'Name', 'Patient Name', 'First Name']:
+                            if field in form_data and form_data[field]:
+                                patient_display_name = form_data[field]
+                                break
+                    if patient_display_name:
+                        break
+            
+            result.append({
+                'patient_id': patient_id,
+                'display_name': patient_display_name,
+                'last_form_completed': last_completed_form,
+                'is_eligible': is_eligible
+            })
+        
+        return jsonify({'patients': result})
+    except Exception as e:
+        print(f"Error in form_waitlist: {str(e)}")
+        traceback.print_exc()  # Print the full error traceback
         return jsonify({'error': str(e)}), 500
 
 # Correctly indented start of the main execution block
