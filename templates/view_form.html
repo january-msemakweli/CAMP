@@ -16,16 +16,12 @@
         color: #dc3545;
     }
     
-    /* Portal approach for dropdown */
+    /* Modified dropdown approach - contained within parent */
     #searchResultsPortal {
-        position: fixed;
-        top: 0;
-        left: 0;
+        position: relative;
         width: 100%;
-        height: 0;
-        overflow: visible;
-        z-index: 100000;
         pointer-events: none;
+        z-index: 1000; /* Higher z-index to ensure visibility */
     }
     
     #searchPatientIdResults {
@@ -39,6 +35,7 @@
         min-width: 250px;
         display: none;
         pointer-events: auto;
+        z-index: 1000; /* Higher z-index to ensure visibility */
     }
     
     #searchPatientIdResults.visible {
@@ -54,10 +51,16 @@
         background-color: #f0f7ff;
     }
     
-    /* Ensure the parent container extends outside the card */
+    /* Ensure search container can expand beyond its parent if needed */
     .search-container {
-        position: relative; /* Establish positioning context */
-        z-index: 9999; /* High z-index for the container */
+        position: relative;
+        z-index: 1000; /* Higher z-index to ensure visibility */
+    }
+    
+    /* Make sure the patient ID section doesn't clip its children */
+    #patientIdSection {
+        overflow: visible;
+        position: relative;
     }
     
     /* Mobile styling for buttons */
@@ -73,18 +76,9 @@
             min-width: 38px;
         }
     }
-    
-    /* Make the container position relative to anchor the absolute dropdown */
-    .position-relative {
-        position: relative;
-    }
 </style>
 
-<!-- Portal for search results that break out of any container -->
-<div id="searchResultsPortal">
-    <div id="searchPatientIdResults" class="list-group mt-1"></div>
-</div>
-
+<!-- Search results container moved into the search container -->
 <div class="row mb-4">
     <div class="col-12">
         <h2>{{ form.title }}</h2>
@@ -99,11 +93,11 @@
 <div class="row">
     {# Form Column #}
     <div class="col-md-7 mb-4">
-        <div class="card">
+        <div class="card" style="overflow: visible;">
             <div class="card-header">
                 <h5 class="mb-0">Data Entry</h5>
             </div>
-            <div class="card-body">
+            <div class="card-body" style="overflow: visible;">
                 {# Patient ID Workflow UI remains here #}
                 <div id="patientIdSection" class="mb-4 p-3 border rounded bg-light">
                     <h6 class="mb-3">Patient Identification</h6>
@@ -127,6 +121,10 @@
                         <div class="col search-container">
                             <label for="searchPatientIdInput" class="form-label visually-hidden">Search Existing Patient ID</label>
                             <input type="search" id="searchPatientIdInput" class="form-control" placeholder="Search by Patient ID or Name...">
+                            <!-- Search results container moved here -->
+                            <div id="searchResultsPortal">
+                                <div id="searchPatientIdResults" class="list-group mt-1"></div>
+                            </div>
                         </div>
                     </div>
                     <div id="selectedPatientIdDisplay" class="mt-3" style="display: none;">
@@ -781,10 +779,35 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Function to position the dropdown below the search input
     function positionDropdown() {
-        const inputRect = searchInput.getBoundingClientRect();
-        searchResultsContainer.style.top = `${inputRect.bottom}px`;
-        searchResultsContainer.style.left = `${inputRect.left}px`;
-        searchResultsContainer.style.width = `${inputRect.width}px`;
+        // With the new structure, we don't need complex positioning as the dropdown
+        // is already inside the search container with correct relative/absolute positioning
+        searchResultsContainer.style.width = `${searchInput.offsetWidth}px`;
+        
+        // Make sure the dropdown has enough space to display
+        const maxHeight = 300; // Maximum height for dropdown
+        searchResultsContainer.style.maxHeight = `${maxHeight}px`;
+        
+        // Clear any left/top positioning that might have been set previously
+        searchResultsContainer.style.left = '';
+        searchResultsContainer.style.top = '';
+        
+        // Ensure the parent card doesn't clip the dropdown
+        const patientIdSection = document.getElementById('patientIdSection');
+        if (patientIdSection) {
+            patientIdSection.style.overflow = 'visible';
+        }
+        
+        // Also ensure the parent card has overflow visible
+        const cardBody = patientIdSection ? patientIdSection.closest('.card-body') : null;
+        if (cardBody) {
+            cardBody.style.overflow = 'visible';
+        }
+        
+        // And the card itself
+        const card = cardBody ? cardBody.closest('.card') : null;
+        if (card) {
+            card.style.overflow = 'visible';
+        }
     }
     
     // Reposition dropdown on scroll or resize
@@ -794,13 +817,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Use passive event listener for better performance
-    window.addEventListener('scroll', function() {
-        if (searchResultsContainer.classList.contains('visible')) {
-            positionDropdown();
-        }
-    }, { passive: true });
-    
+    // No need to reposition on scroll since the dropdown is contained within the parent
+    // This helps performance by removing the scroll event listener
+
     // Close dropdown when clicking outside
     document.addEventListener('click', function(event) {
         if (!searchInput.contains(event.target) && !searchResultsContainer.contains(event.target)) {
