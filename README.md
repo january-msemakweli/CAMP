@@ -183,47 +183,38 @@ def form_waitlist(form_id):
 3. It provides extra information such as the patient's name (if available) and the last form they completed.
 4. The front-end implementation in view_form.html will display this data in a table and allow users to select patients from the waitlist.
 
-### Required Modifications:
-- Ensure the Form model has a `form_index` field to determine the sequence of forms within a project.
-- Update the form creation process to assign the correct form_index value.
-- If the form_index is not available, you may need to modify the query to determine form order based on creation date or other criteria.
+### Admin-Controlled Waitlist Feature
 
-### Additional Considerations:
-- You might want to add additional filters for the waitlist, such as filtering by location or other criteria.
-- Consider adding pagination if the waitlist becomes very large.
-- You could extend this feature to show when the patient completed previous forms.
+The recent update allows administrators to control which forms display the patient waitlist. By default, all waitlists are hidden except to administrators. 
 
-### Update to view_form Route
+#### Enabling the Feature:
 
-You also need to update the existing `view_form` route in app.py to include the form_index information:
+1. **Update Database Schema**:
+   - Run the SQL migration script to add the `show_waitlist` column to the forms table:
+   ```bash
+   psql -U <username> -d <database> -f add_show_waitlist.sql
+   ```
+   - Alternatively, use the Python script:
+   ```bash
+   python add_show_waitlist.py
+   ```
 
-```python
-@app.route('/view_form/<form_id>')
-@login_required
-def view_form(form_id):
-    # Existing code to fetch the form
-    form = db.session.query(Form).filter_by(id=form_id).first()
-    if not form:
-        flash('Form not found.', 'danger')
-        return redirect(url_for('index'))
-    
-    # Get the project
-    project = db.session.query(Project).filter_by(id=form.project_id).first()
-    
-    # Get all forms in this project to determine form index
-    project_forms = db.session.query(Form).filter_by(project_id=project.id).order_by(Form.form_index).all()
-    form_indices = {f.id: idx for idx, f in enumerate(project_forms)}
-    form.form_index = form_indices.get(form_id, 0)  # Add form_index to form object
-    
-    # Is this the first form in the project?
-    is_first_form = form.form_index == 0
-    
-    # Rest of your existing view_form function
-    # ...
-    
-    return render_template('view_form.html', 
-                          form=form, 
-                          project=project, 
-                          is_first_form=is_first_form,
-                          # Rest of your template variables
-                          ) 
+2. **Admin Controls**:
+   - Administrators will see all waitlists with a "Show Waitlist"/"Hide Waitlist" toggle button
+   - When a waitlist is enabled for a form, all users with access to that form will see the waitlist
+   - When disabled, only administrators can see the waitlist
+   
+3. **User Experience**:
+   - Users will only see waitlists for forms where an administrator has enabled it
+   - The waitlist shows which patients are pending form completion, with priority given to those who have completed previous forms
+
+#### Technical Details:
+
+- Added `show_waitlist` column to forms table (boolean, default false)
+- Added toggle API endpoint at `/api/form/<form_id>/toggle_waitlist`
+- Modified view_form.html to conditionally display the waitlist based on the form setting
+- Added admin controls for toggling waitlist visibility
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

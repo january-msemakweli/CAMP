@@ -831,13 +831,17 @@ def view_form(form_id):
     # Log form view
     log_activity('view', 'form', form_id, f"Form: {form['title']}")
     
+    # Get waitlist visibility setting (default to False if not set)
+    show_waitlist = form.get('show_waitlist', False)
+    
     return render_template('view_form.html', 
                           form=form, 
                           project=project, 
                           submissions=submissions, 
                           users=project_users,  # Now only showing users with project access
                           user_permissions=user_permissions,
-                          is_first_form=is_first_form)
+                          is_first_form=is_first_form,
+                          show_waitlist=show_waitlist)
 
 @app.route('/form/<form_id>/grant_access', methods=['POST'])
 @login_required
@@ -4616,6 +4620,53 @@ def form_waitlist(form_id):
         return jsonify({'patients': result})
     except Exception as e:
         print(f"Error in form_waitlist: {str(e)}")
+        traceback.print_exc()  # Print the full error traceback
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/form/<form_id>/toggle_waitlist', methods=['POST'])
+@login_required
+def toggle_form_waitlist(form_id):
+    """API endpoint to toggle the visibility of the waitlist for a specific form.
+    
+    This endpoint allows admins to control which forms display the waitlist.
+    
+    Returns:
+        JSON: Updated waitlist visibility status
+    """
+    # Only admins can toggle waitlist visibility
+    if not current_user.is_admin:
+        return jsonify({'error': 'Admin privileges required'}), 403
+        
+    try:
+        # Get the form details
+        form_response = supabase.table('forms').select('*').eq('id', form_id).execute()
+        if not form_response.data:
+            return jsonify({'error': 'Form not found'}), 404
+            
+        form = form_response.data[0]
+        
+        # Toggle the show_waitlist field (if it doesn't exist, default to False and then toggle)
+        current_status = form.get('show_waitlist', False)
+        new_status = not current_status
+        
+        # Update the form in the database
+        update_response = supabase.table('forms').update({'show_waitlist': new_status}).eq('id', form_id).execute()
+        
+        if not update_response.data:
+            return jsonify({'error': 'Failed to update form'}), 500
+            
+        # Log the action
+        action_type = "enabled" if new_status else "disabled"
+        log_activity('update', 'form', form_id, f"Waitlist {action_type} for form: {form.get('title', 'Unknown')}")
+        
+        return jsonify({
+            'success': True,
+            'show_waitlist': new_status,
+            'message': f"Waitlist has been {'enabled' if new_status else 'disabled'} for this form"
+        })
+        
+    except Exception as e:
+        print(f"Error toggling waitlist visibility: {str(e)}")
         traceback.print_exc()  # Print the full error traceback
         return jsonify({'error': str(e)}), 500
 

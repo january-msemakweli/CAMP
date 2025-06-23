@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS public.forms (
     title TEXT NOT NULL,
     fields JSONB NOT NULL,
     is_archived BOOLEAN DEFAULT FALSE, -- Added for soft deletes
+    show_waitlist BOOLEAN DEFAULT FALSE, -- Controls waitlist visibility for this form
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

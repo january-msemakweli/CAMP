@@ -273,15 +273,35 @@
 
 </div> {# End of row #}
 
-{# Waitlist Section #}
+{# Waitlist Section - Only shown if enabled by admin #}
+{% if show_waitlist or current_user.is_admin %}
 <div class="row mt-4 mb-5">
     <div class="col-12">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>Patient Waitlist</h5>
-                <button id="refreshWaitlistBtn" class="btn btn-sm btn-outline-secondary">
-                    <i class="fas fa-sync-alt"></i> Refresh
-                </button>
+                <div>
+                    <button id="refreshWaitlistBtn" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    
+                    {% if current_user.is_admin %}
+                    <!-- Admin control for waitlist visibility -->
+                    <button id="toggleWaitlistBtn" class="btn btn-sm {{ 'btn-danger' if show_waitlist else 'btn-success' }} ms-2" 
+                            data-form-id="{{ form.id }}" 
+                            data-current-status="{{ show_waitlist }}">
+                        <i class="fas {{ 'fa-eye-slash' if show_waitlist else 'fa-eye' }} me-1"></i>
+                        {{ 'Hide Waitlist' if show_waitlist else 'Show Waitlist' }}
+                    </button>
+                    
+                    {% if not show_waitlist %}
+                    <div class="alert alert-info mt-2 mb-0 py-2 small">
+                        <i class="fas fa-info-circle me-1"></i>
+                        This waitlist is only visible to admins. Click "Show Waitlist" to make it visible to all users with form access.
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
             </div>
             <div class="card-body">
                 <div id="waitlistContainer">
@@ -293,6 +313,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 {% endblock %}
 
@@ -306,6 +327,124 @@
 <script src="{{ url_for('static', filename='js/locations.js') }}"></script> 
 
 <script>
+// Global function to fetch and display patient preview
+// This needs to be in global scope so it can be called from any script section
+function displayPatientPreview(patientId) {
+    const previewBody = document.getElementById('patientPreviewBody');
+    if (!previewBody) return;
+
+    // Don't hide/show the card, just update the body
+    // previewCard.style.display = 'block'; 
+    previewBody.innerHTML = '<p class="text-center text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading preview...</p>';
+
+    fetch(`/api/patient_preview/${patientId}`)
+        .then(response => {
+            if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error('Patient data not found. Database tables may not be set up correctly.');
+                } else {
+                    // Try to get error message from JSON body if possible
+                    return response.json().then(errData => { 
+                        throw new Error(errData.error || `HTTP error ${response.status}`); 
+                    }).catch(() => {
+                        // Fallback if response body isn't JSON or error field missing
+                        throw new Error(`HTTP error ${response.status}`);
+                    });
+                }
+            }
+            return response.json();
+        })
+        .then(data => {
+            // Process the response structure: { patient_record: {...}, form_details: {form_id: {title: ..., field_order: [...]}} }
+            if (!data || !data.patient_record) {
+                console.error('Invalid data received from API:', data);
+                previewBody.innerHTML = '<p class="text-danger">Error: Could not load patient details from API.</p>';
+                return;
+            }
+            
+            const patient = data.patient_record;
+            const formDetailsMap = data.form_details || {}; // Use provided details or default to empty object
+            
+            // Helper function to escape HTML special characters
+            function escapeHtml(unsafe) {
+                if (unsafe === null || typeof unsafe === 'undefined') return '';
+                return String(unsafe)
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+             }
+
+            // Build basic patient info
+            let content = '<dl class="row">' + 
+                          `<dt class="col-sm-3">Patient ID</dt><dd class="col-sm-9">${escapeHtml(patient.patient_id)}</dd>` + 
+                          `<dt class="col-sm-3">Created</dt><dd class="col-sm-9">${patient.created_at_eat ? new Date(patient.created_at_eat).toLocaleString('en-GB') : 'N/A'}</dd>` + // Added locale for clarity
+                          '</dl>';
+
+            // Build accordion for form data
+            const patientFormData = patient.data;
+            if (patientFormData && typeof patientFormData === 'object' && Object.keys(patientFormData).length > 0) {
+                content += '<h6>Previous Form Data:</h6>';
+                content += '<div class="accordion accordion-flush" id="patientDataAccordion">'; // Added accordion-flush for less border
+                
+                for (const [formId, formData] of Object.entries(patientFormData)) {
+                     const formDetails = formDetailsMap[formId]; // Get details for this form
+                     const formTitle = formDetails ? formDetails.title : `Form ID: ${formId}`; 
+                     const fieldOrder = formDetails ? formDetails.field_order : null; // Get the ordered labels
+                     
+                     let safeFormTitle = escapeHtml(formTitle);
+                     let safeFormId = escapeHtml(formId);
+
+                     content += `
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="heading-${safeFormId}">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${safeFormId}" aria-expanded="false" aria-controls="collapse-${safeFormId}">
+                                ${safeFormTitle} <span class="text-muted ms-2 small">(${safeFormId.substring(0,8)}...)</span>
+                            </button>
+                            </h2>
+                            <div id="collapse-${safeFormId}" class="accordion-collapse collapse" aria-labelledby="heading-${safeFormId}">
+                            <div class="accordion-body">
+                                <dl class="row">`;
+                                
+                    if (typeof formData === 'object' && formData !== null) {
+                        // --- Use fieldOrder if available --- 
+                        if (fieldOrder && Array.isArray(fieldOrder) && fieldOrder.length > 0) {
+                            console.log(`Using field order for form ${formId}:`, fieldOrder);
+                            for (const fieldLabel of fieldOrder) {
+                                // Check if the label actually exists in the submitted data
+                                if (formData.hasOwnProperty(fieldLabel)) {
+                                    const fieldValue = formData[fieldLabel];
+                                    const displayValue = escapeHtml(Array.isArray(fieldValue) ? fieldValue.join(', ') : fieldValue);
+                                    content += `<dt class="col-sm-5">${escapeHtml(fieldLabel)}</dt><dd class="col-sm-7 text-break">${displayValue || '<em>(empty)</em>'}</dd>`;
+                                }
+                            }
+                        } else {
+                            // --- Fallback to iterating data object if no order --- 
+                            console.warn(`No field order found for form ${formId}, using default object iteration.`);
+                            for (const [fieldLabel, fieldValue] of Object.entries(formData)) {
+                                const displayValue = escapeHtml(Array.isArray(fieldValue) ? fieldValue.join(', ') : fieldValue);
+                                content += `<dt class="col-sm-5">${escapeHtml(fieldLabel)}</dt><dd class="col-sm-7 text-break">${displayValue || '<em>(empty)</em>'}</dd>`;
+                            }
+                        }
+                        // ------------------------------------
+                    } else {
+                         content += `<dd class="col-12"><em>Invalid/non-object data format for this form entry.</em></dd>`;
+                    }
+                    content += '</dl></div></div></div>'; // Close dl, accordion-body, accordion-collapse, accordion-item
+                }
+                content += '</div>'; // End accordion
+            } else {
+                content += '<p><em>No previous form data recorded for this patient.</em></p>';
+            }
+            previewBody.innerHTML = content;
+        })
+        .catch(error => {
+            console.error('Error fetching patient preview:', error);
+            previewBody.innerHTML = `<p class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>Could not load patient preview: ${error.message}</p>`;
+        });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM Content Loaded. Initializing scripts...'); // Log start
 
@@ -469,126 +608,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const previewCard = document.getElementById('patientPreviewCard');
     const previewBody = document.getElementById('patientPreviewBody');
     const defaultPreviewMessage = '<p class="text-center text-muted">Search and select a patient ID to view details.</p>';
-
-    // Function to fetch and display patient preview
-    function displayPatientPreview(patientId) {
-        if (!previewBody) return;
-
-        // Don't hide/show the card, just update the body
-        // previewCard.style.display = 'block'; 
-        previewBody.innerHTML = '<p class="text-center text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading preview...</p>';
-
-        fetch(`/api/patient_preview/${patientId}`)
-            .then(response => {
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        throw new Error('Patient data not found. Database tables may not be set up correctly.');
-                    } else {
-                        // Try to get error message from JSON body if possible
-                        return response.json().then(errData => { 
-                            throw new Error(errData.error || `HTTP error ${response.status}`); 
-                        }).catch(() => {
-                            // Fallback if response body isn't JSON or error field missing
-                            throw new Error(`HTTP error ${response.status}`);
-                        });
-                    }
-                }
-                return response.json();
-            })
-            .then(data => {
-                // Process the response structure: { patient_record: {...}, form_details: {form_id: {title: ..., field_order: [...]}} }
-                if (!data || !data.patient_record) {
-                    console.error('Invalid data received from API:', data);
-                    previewBody.innerHTML = '<p class="text-danger">Error: Could not load patient details from API.</p>';
-                    return;
-                }
-                
-                const patient = data.patient_record;
-                const formDetailsMap = data.form_details || {}; // Use provided details or default to empty object
-                
-                // Helper function to escape HTML special characters
-                function escapeHtml(unsafe) {
-                    if (unsafe === null || typeof unsafe === 'undefined') return '';
-                    return String(unsafe)
-                         .replace(/&/g, "&amp;")
-                         .replace(/</g, "&lt;")
-                         .replace(/>/g, "&gt;")
-                         .replace(/"/g, "&quot;")
-                         .replace(/'/g, "&#039;");
-                 }
-
-                // Build basic patient info
-                let content = '<dl class="row">' + 
-                              `<dt class="col-sm-3">Patient ID</dt><dd class="col-sm-9">${escapeHtml(patient.patient_id)}</dd>` + 
-                              `<dt class="col-sm-3">Created</dt><dd class="col-sm-9">${patient.created_at_eat ? new Date(patient.created_at_eat).toLocaleString('en-GB') : 'N/A'}</dd>` + // Added locale for clarity
-                              '</dl>';
-
-                // Build accordion for form data
-                const patientFormData = patient.data;
-                if (patientFormData && typeof patientFormData === 'object' && Object.keys(patientFormData).length > 0) {
-                    content += '<h6>Previous Form Data:</h6>';
-                    content += '<div class="accordion accordion-flush" id="patientDataAccordion">'; // Added accordion-flush for less border
-                    
-                    for (const [formId, formData] of Object.entries(patientFormData)) {
-                         const formDetails = formDetailsMap[formId]; // Get details for this form
-                         const formTitle = formDetails ? formDetails.title : `Form ID: ${formId}`; 
-                         const fieldOrder = formDetails ? formDetails.field_order : null; // Get the ordered labels
-                         
-                         let safeFormTitle = escapeHtml(formTitle);
-                         let safeFormId = escapeHtml(formId);
-
-                         content += `
-                            <div class="accordion-item">
-                                <h2 class="accordion-header" id="heading-${safeFormId}">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${safeFormId}" aria-expanded="false" aria-controls="collapse-${safeFormId}">
-                                    ${safeFormTitle} <span class="text-muted ms-2 small">(${safeFormId.substring(0,8)}...)</span>
-                                </button>
-                                </h2>
-                                <div id="collapse-${safeFormId}" class="accordion-collapse collapse" aria-labelledby="heading-${safeFormId}">
-                                <div class="accordion-body">
-                                    <dl class="row">`;
-                                    
-                        if (typeof formData === 'object' && formData !== null) {
-                            // --- Use fieldOrder if available --- 
-                            if (fieldOrder && Array.isArray(fieldOrder) && fieldOrder.length > 0) {
-                                console.log(`Using field order for form ${formId}:`, fieldOrder);
-                                for (const fieldLabel of fieldOrder) {
-                                    // Check if the label actually exists in the submitted data
-                                    if (formData.hasOwnProperty(fieldLabel)) {
-                                        const fieldValue = formData[fieldLabel];
-                                        const displayValue = escapeHtml(Array.isArray(fieldValue) ? fieldValue.join(', ') : fieldValue);
-                                        content += `<dt class="col-sm-5">${escapeHtml(fieldLabel)}</dt><dd class="col-sm-7 text-break">${displayValue || '<em>(empty)</em>'}</dd>`;
-                                    }
-                                }
-                                // Optional: Display fields present in data but not in fieldOrder?
-                                // for (const [fieldLabel, fieldValue] of Object.entries(formData)) {
-                                //     if (!fieldOrder.includes(fieldLabel)) { ... } 
-                                // }
-                            } else {
-                                // --- Fallback to iterating data object if no order --- 
-                                console.warn(`No field order found for form ${formId}, using default object iteration.`);
-                                for (const [fieldLabel, fieldValue] of Object.entries(formData)) {
-                                    const displayValue = escapeHtml(Array.isArray(fieldValue) ? fieldValue.join(', ') : fieldValue);
-                                    content += `<dt class="col-sm-5">${escapeHtml(fieldLabel)}</dt><dd class="col-sm-7 text-break">${displayValue || '<em>(empty)</em>'}</dd>`;
-                                }
-                            }
-                            // ------------------------------------
-                        } else {
-                             content += `<dd class="col-12"><em>Invalid/non-object data format for this form entry.</em></dd>`;
-                        }
-                        content += '</dl></div></div></div>'; // Close dl, accordion-body, accordion-collapse, accordion-item
-                    }
-                    content += '</div>'; // End accordion
-                } else {
-                    content += '<p><em>No previous form data recorded for this patient.</em></p>';
-                }
-                previewBody.innerHTML = content;
-            })
-            .catch(error => {
-                console.error('Error fetching patient preview:', error);
-                previewBody.innerHTML = `<p class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>Could not load patient preview: ${error.message}</p>`;
-            });
-    }
 
     // Function to show the form once an ID is selected and confirmed
     function activateForm(patientId) {
@@ -1007,6 +1026,76 @@ document.addEventListener('DOMContentLoaded', function() {
     // Refresh button event listener
     if (refreshWaitlistBtn) {
         refreshWaitlistBtn.addEventListener('click', loadWaitlist);
+    }
+    
+    // Toggle waitlist visibility (admin only)
+    const toggleWaitlistBtn = document.getElementById('toggleWaitlistBtn');
+    if (toggleWaitlistBtn) {
+        toggleWaitlistBtn.addEventListener('click', function() {
+            const formId = this.getAttribute('data-form-id');
+            if (!formId) return;
+            
+            // Disable button and show loading state
+            this.disabled = true;
+            const originalHTML = this.innerHTML;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Updating...';
+            
+            // Send request to toggle waitlist visibility
+            fetch(`/api/form/${formId}/toggle_waitlist`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    // Show feedback
+                    const toast = document.createElement('div');
+                    toast.className = 'position-fixed bottom-0 end-0 p-3';
+                    toast.style.zIndex = '5000';
+                    toast.innerHTML = `
+                        <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                            <div class="toast-header bg-success text-white">
+                                <strong class="me-auto">Success</strong>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                            </div>
+                            <div class="toast-body">
+                                ${data.message}
+                            </div>
+                        </div>
+                    `;
+                    document.body.appendChild(toast);
+                    
+                    // Auto remove toast after 3 seconds
+                    setTimeout(() => {
+                        toast.remove();
+                    }, 3000);
+                    
+                    // Refresh page to reflect changes
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    alert('Operation failed: ' + (data.error || 'Unknown error'));
+                    // Reset button state
+                    this.disabled = false;
+                    this.innerHTML = originalHTML;
+                }
+            })
+            .catch(error => {
+                console.error('Error toggling waitlist visibility:', error);
+                alert('Error: ' + error.message);
+                // Reset button state
+                this.disabled = false;
+                this.innerHTML = originalHTML;
+            });
+        });
     }
 });
 
