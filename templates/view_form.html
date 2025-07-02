@@ -63,6 +63,74 @@
         position: relative;
     }
     
+    /* Enhanced UI for checkbox and radio selections */
+    .custom-option-card {
+        cursor: pointer;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.5rem;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+    }
+    
+    .custom-option-card:hover {
+        border-color: #adb5bd;
+        background-color: #f8f9fa;
+    }
+    
+    .custom-option-card input[type="radio"],
+    .custom-option-card input[type="checkbox"] {
+        margin-right: 10px;
+    }
+    
+    .custom-option-card.selected {
+        border-color: #0d6efd;
+        background-color: #e7f1ff;
+    }
+    
+    /* Hide default input styles */
+    .custom-option-card input[type="radio"],
+    .custom-option-card input[type="checkbox"] {
+        position: absolute;
+        opacity: 0;
+        cursor: pointer;
+        height: 0;
+        width: 0;
+    }
+    
+    /* Custom checkbox/radio indicator */
+    .custom-option-card .checkmark {
+        height: 20px;
+        width: 20px;
+        min-width: 20px;
+        background-color: #fff;
+        border: 1px solid #ced4da;
+        border-radius: 3px;
+        margin-right: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .custom-option-card input[type="radio"] + .checkmark {
+        border-radius: 50%;
+    }
+    
+    .custom-option-card.selected .checkmark {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+    }
+    
+    .custom-option-card.selected .checkmark:after {
+        content: '\2713';
+        display: block;
+        color: white;
+        font-size: 14px;
+        line-height: 1;
+    }
+    
     /* Mobile styling for buttons */
     @media (max-width: 767.98px) {
         #usePatientIdBtn .fas,
@@ -179,19 +247,25 @@
                                 {% endfor %}
                             </select>
                         {% elif field.type == 'radio' %}
-                            {% for option in field.options %}
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="{{ field.label }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}" {% if field.required %}required{% endif %}>
-                                <label class="form-check-label" for="field-{{ loop.index }}-{{ loop.index0 }}">{{ option }}</label>
+                            <div class="custom-options-group">
+                                {% for option in field.options %}
+                                <label class="custom-option-card" for="field-{{ loop.index }}-{{ loop.index0 }}">
+                                    <input class="form-check-input" type="radio" name="{{ field.label }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}" {% if field.required %}required{% endif %}>
+                                    <span class="checkmark"></span>
+                                    <span>{{ option }}</span>
+                                </label>
+                                {% endfor %}
                             </div>
-                            {% endfor %}
                         {% elif field.type == 'checkbox' %}
-                            {% for option in field.options %}
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" name="{{ field.label }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}">
-                                <label class="form-check-label" for="field-{{ loop.index }}-{{ loop.index0 }}">{{ option }}</label>
+                            <div class="custom-options-group">
+                                {% for option in field.options %}
+                                <label class="custom-option-card" for="field-{{ loop.index }}-{{ loop.index0 }}">
+                                    <input class="form-check-input" type="checkbox" name="{{ field.label }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}">
+                                    <span class="checkmark"></span>
+                                    <span>{{ option }}</span>
+                                </label>
+                                {% endfor %}
                             </div>
-                            {% endfor %}
                         {% endif %}
                     </div>
                     {% endfor %}
@@ -461,6 +535,63 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     console.log('Choices.js initialization complete.'); // Log after init
+
+    // --- Initialize Custom Card Style Checkboxes and Radio Buttons ---
+    const customOptionCards = document.querySelectorAll('.custom-option-card');
+    
+    customOptionCards.forEach(card => {
+        const input = card.querySelector('input');
+        
+        // Set initial selected state
+        if (input.checked) {
+            card.classList.add('selected');
+        }
+        
+        // Add click event to the card
+        card.addEventListener('click', function(e) {
+            // If clicked on the input itself, let the default behavior happen
+            if (e.target === input) return;
+            
+            // Prevent default to handle our own logic
+            e.preventDefault();
+            
+            if (input.type === 'radio') {
+                // Deselect all other cards in the same group
+                document.querySelectorAll(`input[name="${input.name}"]`).forEach(radio => {
+                    radio.closest('.custom-option-card').classList.remove('selected');
+                });
+                // Select this card
+                card.classList.add('selected');
+                input.checked = true;
+            } else if (input.type === 'checkbox') {
+                // Toggle selected state
+                card.classList.toggle('selected');
+                input.checked = !input.checked;
+            }
+            
+            // Trigger change event
+            const changeEvent = new Event('change', { bubbles: true });
+            input.dispatchEvent(changeEvent);
+        });
+        
+        // Listen for direct input changes as well
+        input.addEventListener('change', function() {
+            if (this.checked) {
+                card.classList.add('selected');
+                
+                // For radio buttons, deselect others
+                if (this.type === 'radio') {
+                    document.querySelectorAll(`input[name="${this.name}"]`).forEach(radio => {
+                        if (radio !== this) {
+                            radio.closest('.custom-option-card').classList.remove('selected');
+                        }
+                    });
+                }
+            } else {
+                card.classList.remove('selected');
+            }
+        });
+    });
 
     // --- Find Location Dropdowns by NAME (after init) ---
     let regionDropdown = null;
