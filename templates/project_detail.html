@@ -87,10 +87,10 @@
                     <h6 class="mb-3">Grant Access</h6>
                     <form method="POST" action="{{ url_for('grant_project_access', project_id=project.id) }}" class="mb-4">
                         <div class="input-group">
-                            <select class="form-select" name="user_id" required>
+                            <select class="form-select" name="user_id" required aria-label="Select user to grant access">
                                 <option value="">Select User to Grant Access</option>
                                 {% for user in users %}
-                                    {% if user.is_approved and user.id != current_user.id %}
+                                    {% if user.is_approved and user.id != current_user.id and user.id not in project_access|map(attribute='user_id')|list %}
                                         <option value="{{ user.id }}">{{ user.username }}</option>
                                     {% endif %}
                                 {% else %}
@@ -100,6 +100,13 @@
                             <button type="submit" class="btn btn-success">
                                 <i class="fas fa-plus me-1"></i> Grant
                             </button>
+                        </div>
+                        <div class="form-text">
+                            {% if users|selectattr('is_approved')|selectattr('id', 'ne', current_user.id)|list|length > 0 and project_access|map(attribute='user_id')|list|length > 0 %}
+                                Only showing users who don't already have access.
+                            {% elif users|selectattr('is_approved')|selectattr('id', 'ne', current_user.id)|list|length == 0 %}
+                                No eligible users available.
+                            {% endif %}
                         </div>
                     </form>
 
