@@ -255,6 +255,15 @@
                                     <span>{{ option }}</span>
                                 </label>
                                 {% endfor %}
+                                {% if field.allow_other %}
+                                <!-- Other (specify) option -->
+                                <label class="custom-option-card" for="field-{{ loop.index }}-other">
+                                    <input class="form-check-input other-radio" type="radio" name="{{ field.label }}" id="field-{{ loop.index }}-other" value="__other__">
+                                    <span class="checkmark"></span>
+                                    <span>Other (specify)</span>
+                                    <input type="text" class="form-control ms-2 other-input" style="display:none; max-width:200px;" placeholder="Please specify" name="{{ field.label }}_other">
+                                </label>
+                                {% endif %}
                             </div>
                         {% elif field.type == 'checkbox' %}
                             <div class="custom-options-group">
@@ -265,6 +274,15 @@
                                     <span>{{ option }}</span>
                                 </label>
                                 {% endfor %}
+                                {% if field.allow_other %}
+                                <!-- Other (specify) option -->
+                                <label class="custom-option-card" for="field-{{ loop.index }}-other">
+                                    <input class="form-check-input other-checkbox" type="checkbox" name="{{ field.label }}" id="field-{{ loop.index }}-other" value="__other__">
+                                    <span class="checkmark"></span>
+                                    <span>Other (specify)</span>
+                                    <input type="text" class="form-control ms-2 other-input" style="display:none; max-width:200px;" placeholder="Please specify" name="{{ field.label }}_other">
+                                </label>
+                                {% endif %}
                             </div>
                         {% endif %}
                     </div>
@@ -1120,6 +1138,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Prevent clicking the text input from toggling the radio/checkbox
+    document.querySelectorAll('.custom-option-card .other-input').forEach(function(input) {
+        input.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+        input.addEventListener('mousedown', function(e) {
+            e.stopPropagation();
+        });
+    });
+
 }); // End of the second DOMContentLoaded listener (Patient ID workflow)
 
 // --- Waitlist Functionality ---
@@ -1341,6 +1369,84 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Reset button state
                 this.disabled = false;
                 this.innerHTML = originalHTML;
+            });
+        });
+    }
+});
+
+// Add JS to handle Other (specify) logic for radio and checkbox fields
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle radio Other (specify)
+    document.querySelectorAll('.custom-options-group').forEach(function(group) {
+        const otherRadio = group.querySelector('.other-radio');
+        const otherInput = group.querySelector('.other-radio ~ .other-input');
+        if (otherRadio && otherInput) {
+            otherRadio.addEventListener('change', function() {
+                if (this.checked) {
+                    otherInput.style.display = '';
+                    otherInput.required = true;
+                } else {
+                    otherInput.style.display = 'none';
+                    otherInput.required = false;
+                    otherInput.value = '';
+                }
+            });
+            // Hide input if another radio is selected
+            group.querySelectorAll('input[type="radio"]').forEach(function(radio) {
+                if (radio !== otherRadio) {
+                    radio.addEventListener('change', function() {
+                        if (this.checked) {
+                            otherInput.style.display = 'none';
+                            otherInput.required = false;
+                            otherInput.value = '';
+                        }
+                    });
+                }
+            });
+        }
+        // Handle checkbox Other (specify)
+        const otherCheckbox = group.querySelector('.other-checkbox');
+        const otherCheckboxInput = group.querySelector('.other-checkbox ~ .other-input');
+        if (otherCheckbox && otherCheckboxInput) {
+            otherCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    otherCheckboxInput.style.display = '';
+                    otherCheckboxInput.required = true;
+                } else {
+                    otherCheckboxInput.style.display = 'none';
+                    otherCheckboxInput.required = false;
+                    otherCheckboxInput.value = '';
+                }
+            });
+        }
+    });
+
+    // On form submit, replace __other__ with the text value
+    const dataEntryForm = document.getElementById('dataEntryForm');
+    if (dataEntryForm) {
+        dataEntryForm.addEventListener('submit', function(e) {
+            // For each radio group
+            dataEntryForm.querySelectorAll('.custom-options-group').forEach(function(group) {
+                // Radio
+                const otherRadio = group.querySelector('.other-radio');
+                const otherInput = group.querySelector('.other-radio ~ .other-input');
+                if (otherRadio && otherInput && otherRadio.checked && otherInput.value) {
+                    // Set the value of the selected radio to the text
+                    otherRadio.value = otherInput.value;
+                } else if (otherRadio) {
+                    otherRadio.value = '__other__'; // Reset in case
+                }
+                // Checkbox
+                const otherCheckbox = group.querySelector('.other-checkbox');
+                const otherCheckboxInput = group.querySelector('.other-checkbox ~ .other-input');
+                if (otherCheckbox && otherCheckboxInput && otherCheckbox.checked && otherCheckboxInput.value) {
+                    // Before submit, add a hidden input with the same name and value
+                    const hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.name = otherCheckbox.name;
+                    hidden.value = otherCheckboxInput.value;
+                    dataEntryForm.appendChild(hidden);
+                }
             });
         });
     }

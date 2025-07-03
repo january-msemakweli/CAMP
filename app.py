@@ -677,52 +677,40 @@ def create_form(project_id):
     if not current_user.is_admin:
         flash('Admin access required.', 'danger')
         return redirect(url_for('index'))
-    
     try:
         title = request.form.get('title')
         labels = request.form.getlist('field_labels[]')
         types = request.form.getlist('field_types[]')
         options_list = request.form.getlist('field_options[]')
-        location_identifiers = request.form.getlist('location_field_identifier[]') # Read the identifiers
-        required_fields = request.form.getlist('field_required[]')  # Add this line to get required fields
-        
+        location_identifiers = request.form.getlist('location_field_identifier[]')
+        required_fields = request.form.getlist('field_required[]')
+        allow_other_fields = request.form.getlist('allow_other[]')
         if not title:
             flash('Form title is required.', 'danger')
             return redirect(url_for('project_detail', project_id=project_id))
         if not labels:
             flash('At least one field is required.', 'danger')
             return redirect(url_for('project_detail', project_id=project_id))
-        
         fields = []
-        # Track location identifiers used to map them correctly
-        location_idx = 0 
+        location_idx = 0
         for i in range(len(labels)):
             field = {
                 'label': labels[i].strip(),
                 'type': types[i],
                 'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
-                'required': str(i) in required_fields  # Add this line to mark field as required or not
+                'required': str(i) in required_fields
             }
-            # Check if this label corresponds to a location field identifier
-            # This assumes location fields are added together and in order
-            # A more robust approach might involve matching based on label, but this works with current JS
-            if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers): 
-                 field['location_field_identifier'] = location_identifiers[location_idx]
-                 # Ensure type is dropdown for location fields, even if JS fails
-                 field['type'] = 'dropdown' 
-                 field['options'] = [] # Options are dynamic
-                 location_idx += 1
+            if types[i] in ['radio', 'checkbox']:
+                field['allow_other'] = str(i) in allow_other_fields
+            if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers):
+                field['location_field_identifier'] = location_identifiers[location_idx]
+                field['type'] = 'dropdown'
+                field['options'] = []
+                location_idx += 1
             else:
-                 field['location_field_identifier'] = None
-
+                field['location_field_identifier'] = None
             fields.append(field)
-            
-        # Print fields before serialization
-        print(f"Fields before JSON serialization: {fields}")
         serialized_fields = json.dumps(fields)
-        print(f"Serialized fields: {serialized_fields}")
-        
-        # Create form record
         form_id = str(uuid.uuid4())
         form_data = {
             'id': form_id,
@@ -730,21 +718,15 @@ def create_form(project_id):
             'title': title,
             'fields': serialized_fields
         }
-        
-        print(f"Form data to be inserted: {form_data}")
         response = supabase.table('forms').insert(form_data).execute()
-        print(f"Insert response: {response.data}")
-        
         if response.data:
             log_activity('create', 'form', form_id, f"Form title: {title}")
             flash('Form created successfully.', 'success')
         else:
-            print(f"Failed to create form. Response: {response}")
             flash('Failed to create form.', 'danger')
     except Exception as e:
         print(f"Error creating form: {str(e)}")
         flash(f'An error occurred: {str(e)}', 'danger')
-    
     return redirect(url_for('project_detail', project_id=project_id))
 
 @app.route('/form/<form_id>')
@@ -3883,70 +3865,52 @@ def edit_form(form_id):
         labels = request.form.getlist('field_labels[]')
         types = request.form.getlist('field_types[]')
         options_list = request.form.getlist('field_options[]')
-        location_identifiers = request.form.getlist('location_field_identifier[]') # Read the identifiers
-        required_fields = request.form.getlist('field_required[]')  # Add this line to get required fields
-        
-        # Basic validation
+        location_identifiers = request.form.getlist('location_field_identifier[]')
+        required_fields = request.form.getlist('field_required[]')
+        allow_other_fields = request.form.getlist('allow_other[]')
         if not title:
             flash('Form title is required.', 'danger')
             return redirect(url_for('project_detail', project_id=project_id))
         if not labels:
             flash('At least one field is required.', 'danger')
             return redirect(url_for('project_detail', project_id=project_id))
-        
-        # Process fields into JSON (same logic as create_form)
         fields = []
-        location_idx = 0 
+        location_idx = 0
         for i in range(len(labels)):
             field = {
                 'label': labels[i].strip(),
                 'type': types[i],
                 'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
-                'required': str(i) in required_fields  # Add this line to mark field as required or not
+                'required': str(i) in required_fields
             }
+            if types[i] in ['radio', 'checkbox']:
+                field['allow_other'] = str(i) in allow_other_fields
             if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers):
-                 field['location_field_identifier'] = location_identifiers[location_idx]
-                 field['type'] = 'dropdown' 
-                 field['options'] = []
-                 location_idx += 1
+                field['location_field_identifier'] = location_identifiers[location_idx]
+                field['type'] = 'dropdown'
+                field['options'] = []
+                location_idx += 1
             else:
-                 field['location_field_identifier'] = None
+                field['location_field_identifier'] = None
             fields.append(field)
-            
         serialized_fields = json.dumps(fields)
-        print(f"Updating form {form_id} with fields: {serialized_fields}")
-        
-        # Update form record in database
         update_data = {
             'title': title,
             'fields': serialized_fields
-            # Optionally update a modified_at timestamp here if you add one
         }
-        
         response = supabase.table('forms').update(update_data).eq('id', form_id).execute()
-        
-        # Check if update was successful (response structure might vary, adjust if needed)
-        if response.data: # Check if data is returned on successful update
+        if response.data:
             log_activity('update', 'form', form_id, f"Updated form title: {title}")
             flash('Form updated successfully.', 'success')
         else:
-            # Supabase update might return empty data on success, 
-            # or have specific error info. Check client documentation.
-            # Assuming empty data on success for now, but log potential issues.
-            print(f"Form update response for {form_id}: {response}") # Log response for debugging
-            # Check for specific error conditions if the Supabase client provides them
             if hasattr(response, 'error') and response.error:
-                 flash(f'Failed to update form: {response.error.message}', 'danger')
+                flash(f'Failed to update form: {response.error.message}', 'danger')
             else:
-                # Assume success if no explicit error, log activity
                 log_activity('update', 'form', form_id, f"Updated form title: {title}")
                 flash('Form updated successfully (no data returned). ', 'success')
-                
     except Exception as e:
         print(f"Error updating form {form_id}: {str(e)}")
         flash(f'An error occurred while updating the form: {str(e)}', 'danger')
-    
-    # Redirect back to the project detail page
     return redirect(url_for('project_detail', project_id=project_id))
 
 @app.route('/api/create_patient_id', methods=['POST'])

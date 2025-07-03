@@ -152,13 +152,13 @@
         <div class="modal-content">
             <div class="modal-header">
                     <h5 class="modal-title">Create New Form for {{ project.name }}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close"></button>
             </div>
                 <form method="POST" action="{{ url_for('create_form', project_id=project.id) }}" id="createForm">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="formTitle" class="form-label">Form Title</label>
-                        <input type="text" class="form-control" id="formTitle" name="title" required>
+                        <input type="text" class="form-control" id="formTitle" name="title" required placeholder="Form title">
                     </div>
                         <hr>
                         <h6>Form Fields</h6>
@@ -167,11 +167,11 @@
                             <div class="row form-field-row mb-3 align-items-center">
                                 <div class="col-md-4">
                                     <label class="form-label">Field Label</label>
-                                    <input type="text" class="form-control form-control-sm" name="field_labels[]" required>
+                                    <input type="text" class="form-control form-control-sm" name="field_labels[]" required placeholder="Field label" title="Field label">
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label">Field Type</label>
-                                    <select class="form-select form-select-sm field-type" name="field_types[]">
+                                    <select class="form-select form-select-sm field-type" name="field_types[]" title="Field type">
                                         <option value="text">Text</option>
                                         <option value="number">Number</option>
                                         <option value="date">Date</option>
@@ -182,7 +182,7 @@
                                 </div>
                                 <div class="col-md-4 options-container" style="display: none;">
                                     <label class="form-label">Options (comma-separated)</label>
-                                    <input type="text" class="form-control form-control-sm" name="field_options[]">
+                                    <input type="text" class="form-control form-control-sm" name="field_options[]" placeholder="Comma-separated options" title="Options">
                                     <input type="hidden" name="location_field_identifier[]" value=""> <!-- Hidden input for location type -->
                                 </div>
                                 <div class="col-md-1 text-end">
@@ -191,7 +191,7 @@
                                 </div>
                                 <div class="col-md-12 mt-2">
                                     <div class="form-check">
-                                        <input class="form-check-input required-checkbox" type="checkbox" value="" name="field_required[]">
+                                        <input class="form-check-input required-checkbox" type="checkbox" value="" name="field_required[]" title="Required field checkbox">
                                         <label class="form-check-label">
                                             Required
                                         </label>
@@ -223,14 +223,14 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Edit Form</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close"></button>
                 </div>
                 <form method="POST" action="" id="editForm">
                     <div class="modal-body">
                         <input type="hidden" id="editFormId" value="">
                         <div class="mb-3">
                             <label for="editFormTitle" class="form-label">Form Title</label>
-                            <input type="text" class="form-control" id="editFormTitle" name="title" required>
+                            <input type="text" class="form-control" id="editFormTitle" name="title" required placeholder="Form title">
                         </div>
                         <hr>
                         <h6>Form Fields</h6>
@@ -262,7 +262,7 @@
         <div class="modal-content">
                 <div class="modal-header bg-danger text-white">
                     <h5 class="modal-title">Confirm Programme Deletion</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" title="Close"></button>
             </div>
             <div class="modal-body">
                     <p><strong>Warning!</strong> Deleting this programme (<strong>{{ project.name }}</strong>) will permanently remove:</p>
@@ -297,11 +297,11 @@ function addFieldRow(containerId, allowRemove) {
         <div class="row form-field-row mb-3 align-items-center">
                 <div class="col-md-4">
                 <label class="form-label">Field Label</label>
-                <input type="text" class="form-control form-control-sm" name="field_labels[]" required>
+                <input type="text" class="form-control form-control-sm" name="field_labels[]" required placeholder="Field label" title="Field label">
                 </div>
             <div class="col-md-3">
                 <label class="form-label">Field Type</label>
-                <select class="form-select form-select-sm field-type" name="field_types[]">
+                <select class="form-select form-select-sm field-type" name="field_types[]" title="Field type">
                     <option value="text">Text</option>
                     <option value="number">Number</option>
                     <option value="date">Date</option>
@@ -312,16 +312,20 @@ function addFieldRow(containerId, allowRemove) {
             </div>
             <div class="col-md-4 options-container" style="display: none;">
                 <label class="form-label">Options (comma-separated)</label>
-                <input type="text" class="form-control form-control-sm" name="field_options[]">
+                <input type="text" class="form-control form-control-sm" name="field_options[]" placeholder="Comma-separated options" title="Options">
                 <input type="hidden" name="location_field_identifier[]" value=""> 
+                <div class="form-check mt-2 allow-other-check" style="display:none;">
+                    <input class="form-check-input" type="checkbox" name="allow_other[]" title="Allow Other (specify)">
+                    <label class="form-check-label">Allow Other (specify)</label>
                 </div>
+            </div>
             <div class="col-md-1 text-end">
                  <label class="form-label">&nbsp;</label><br/>
                 <button type="button" class="btn btn-sm btn-danger remove-field-btn" style="display: none;">X</button>
             </div>
             <div class="col-md-12 mt-2">
                 <div class="form-check">
-                    <input class="form-check-input required-checkbox" type="checkbox" value="" name="field_required[]">
+                    <input class="form-check-input required-checkbox" type="checkbox" value="" name="field_required[]" title="Required field checkbox">
                     <label class="form-check-label">
                         Required
                     </label>
@@ -402,19 +406,30 @@ function handleFieldTypeChange(event) {
     const row = select.closest('.row');
     const optionsContainer = row.querySelector('.options-container');
     const locationIdentifierInput = row.querySelector('input[name="location_field_identifier[]"]');
+    const allowOtherCheck = optionsContainer.querySelector('.allow-other-check');
     const value = select.value;
 
     if (value === 'dropdown' || value === 'radio' || value === 'checkbox') {
         optionsContainer.style.display = 'block';
-        locationIdentifierInput.value = ''; // Clear location identifier if standard type selected
+        locationIdentifierInput.value = '';
+        if (value === 'radio' || value === 'checkbox') {
+            allowOtherCheck.style.display = 'block';
+        } else {
+            allowOtherCheck.style.display = 'none';
+            allowOtherCheck.querySelector('input').checked = false;
+        }
     } else if (value.startsWith('location_')) {
-         optionsContainer.style.display = 'none';
-         optionsContainer.querySelector('input[name="field_options[]"]').value = ''; // Clear options input
-         locationIdentifierInput.value = value.split('_')[1]; // Set location type (region, district, ward)
-            } else {
         optionsContainer.style.display = 'none';
-        optionsContainer.querySelector('input[name="field_options[]"]').value = ''; // Clear options input
-        locationIdentifierInput.value = ''; // Clear location identifier
+        optionsContainer.querySelector('input[name="field_options[]"]').value = '';
+        locationIdentifierInput.value = value.split('_')[1];
+        allowOtherCheck.style.display = 'none';
+        allowOtherCheck.querySelector('input').checked = false;
+    } else {
+        optionsContainer.style.display = 'none';
+        optionsContainer.querySelector('input[name="field_options[]"]').value = '';
+        locationIdentifierInput.value = '';
+        allowOtherCheck.style.display = 'none';
+        allowOtherCheck.querySelector('input').checked = false;
     }
 }
 
@@ -497,6 +512,26 @@ function openEditFormModal(formId) {
                     
                      // Ensure remove buttons are visible for all rows in edit mode
                     lastRow.querySelector('.remove-field-btn').style.display = 'inline-block';
+
+                    // Set allow_other checkbox state
+                    if (['dropdown', 'radio', 'checkbox'].includes(field.type)) {
+                        const optionsContainer = lastRow.querySelector('.options-container');
+                        const allowOtherCheck = optionsContainer.querySelector('.allow-other-check input');
+                        optionsContainer.style.display = 'block';
+                        optionsInput.value = field.options.join(', ');
+                        if (field.type === 'radio' || field.type === 'checkbox') {
+                            allowOtherCheck.checked = !!field.allow_other;
+                            optionsContainer.querySelector('.allow-other-check').style.display = 'block';
+                        } else {
+                            allowOtherCheck.checked = false;
+                            optionsContainer.querySelector('.allow-other-check').style.display = 'none';
+                        }
+                        // Handle location field identifiers
+                        if (field.location_field_identifier) {
+                            const locationInput = optionsContainer.querySelector('input[name="location_field_identifier[]"]');
+                            locationInput.value = field.location_field_identifier;
+                        }
+                    }
                 });
             } else {
                 // If no fields, add one empty row
@@ -638,6 +673,11 @@ document.addEventListener('click', function(e) {
                     const locationInput = optionsContainer.querySelector('input[name="location_field_identifier[]"]');
                     locationInput.value = field.location_field_identifier;
                 }
+
+                // Set allow_other checkbox state
+                const allowOtherCheck = optionsContainer.querySelector('.allow-other-check input');
+                allowOtherCheck.checked = !!field.allow_other;
+                optionsContainer.querySelector('.allow-other-check').style.display = 'block';
             }
         });
         
