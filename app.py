@@ -4670,6 +4670,31 @@ def toggle_form_waitlist(form_id):
         traceback.print_exc()  # Print the full error traceback
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/form/<form_id>/answers/<patient_id>', methods=['GET'])
+@login_required
+def get_form_answers(form_id, patient_id):
+    """
+    Returns the latest submitted answers for a given form and patient.
+    Output: { field_label: value, ... }
+    """
+    try:
+        # Get the latest submission for this form and patient
+        response = supabase.table('form_submissions')\
+            .select('*')\
+            .eq('form_id', form_id)\
+            .eq('patient_id', patient_id)\
+            .order('created_at', desc=True)\
+            .limit(1)\
+            .execute()
+        if not response.data:
+            return jsonify({}), 200  # No previous answers, return empty dict
+        submission = response.data[0]
+        answers = submission.get('data', {})
+        return jsonify(answers)
+    except Exception as e:
+        print(f"Error fetching form answers for form {form_id}, patient {patient_id}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 # Correctly indented start of the main execution block
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

@@ -738,6 +738,52 @@ document.addEventListener('DOMContentLoaded', function() {
     const previewBody = document.getElementById('patientPreviewBody');
     const defaultPreviewMessage = '<p class="text-center text-muted">Search and select a patient ID to view details.</p>';
 
+    // --- ADDED: Function to fetch and pre-fill answers ---
+    function fetchAndPrefillAnswers(formId, patientId) {
+        fetch(`/api/form/${formId}/answers/${patientId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (!data || typeof data !== 'object') return;
+                Object.entries(data).forEach(([label, value]) => {
+                    // Try to find the field by name
+                    const field = dataEntryForm.querySelector(`[name="${label}"]`);
+                    if (field) {
+                        if (field.type === 'checkbox') {
+                            // For checkboxes, value is expected to be an array
+                            if (Array.isArray(value)) {
+                                const checkboxes = dataEntryForm.querySelectorAll(`[name="${label}"]`);
+                                checkboxes.forEach(cb => {
+                                    cb.checked = value.includes(cb.value);
+                                    // Update custom card UI if present
+                                    if (cb.closest('.custom-option-card')) {
+                                        if (cb.checked) cb.closest('.custom-option-card').classList.add('selected');
+                                        else cb.closest('.custom-option-card').classList.remove('selected');
+                                    }
+                                });
+                            }
+                        } else if (field.type === 'radio') {
+                            // For radios, value is a string
+                            const radios = dataEntryForm.querySelectorAll(`[name="${label}"]`);
+                            radios.forEach(radio => {
+                                radio.checked = (radio.value == value);
+                                if (radio.closest('.custom-option-card')) {
+                                    if (radio.checked) radio.closest('.custom-option-card').classList.add('selected');
+                                    else radio.closest('.custom-option-card').classList.remove('selected');
+                                }
+                            });
+                        } else {
+                            // For text, number, date, dropdown
+                            field.value = value;
+                            // If Choices.js, update the UI
+                            if (field.choicesInstance) {
+                                field.choicesInstance.setChoiceByValue(value);
+                            }
+                        }
+                    }
+                });
+            });
+    }
+
     // Function to show the form once an ID is selected and confirmed
     function activateForm(patientId) {
         patientIdInputHidden.value = patientId;
@@ -747,9 +793,14 @@ document.addEventListener('DOMContentLoaded', function() {
         if(createBtn) createBtn.disabled = true;
         searchInput.disabled = true;
         useIdBtn.disabled = true;
-        searchResultsContainer.innerHTML = ''; 
+        searchResultsContainer.innerHTML = '';
         selectedDisplay.style.display = 'flex'; // Ensure display is flex
         selectedValueSpan.textContent = patientId;
+        // --- ADDED: Fetch and prefill answers ---
+        const formId = dataEntryForm.getAttribute('data-form-id');
+        if (formId && patientId) {
+            fetchAndPrefillAnswers(formId, patientId);
+        }
     }
 
     // Function to reset the workflow UI
