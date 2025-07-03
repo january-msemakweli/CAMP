@@ -744,17 +744,66 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (!data || typeof data !== 'object') return;
+
+                // --- Location prefill logic ---
+                const regionVal = data['Region'];
+                const districtVal = data['District'];
+                const wardVal = data['Ward'];
+
+                // Helper to set Choices.js value safely
+                function setChoicesValue(field, value) {
+                    if (field && field.choicesInstance) {
+                        field.choicesInstance.setChoiceByValue(value);
+                    } else if (field) {
+                        field.value = value;
+                    }
+                }
+
+                // Prefill Region, then District, then Ward in order
+                if (regionDropdown && regionVal) {
+                    setChoicesValue(regionDropdown, regionVal);
+                    // Trigger change to populate districts
+                    regionDropdown.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                // Wait for districts to be populated, then set District
+                function waitForDistrictAndSet() {
+                    if (!districtDropdown || !districtVal) return;
+                    const options = Array.from(districtDropdown.options).map(o => o.value);
+                    if (options.includes(districtVal)) {
+                        setChoicesValue(districtDropdown, districtVal);
+                        districtDropdown.dispatchEvent(new Event('change', { bubbles: true }));
+                        waitForWardAndSet();
+                    } else {
+                        setTimeout(waitForDistrictAndSet, 100);
+                    }
+                }
+
+                // Wait for wards to be populated, then set Ward
+                function waitForWardAndSet() {
+                    if (!wardDropdown || !wardVal) return;
+                    const options = Array.from(wardDropdown.options).map(o => o.value);
+                    if (options.includes(wardVal)) {
+                        setChoicesValue(wardDropdown, wardVal);
+                    } else {
+                        setTimeout(waitForWardAndSet, 100);
+                    }
+                }
+
+                if (districtVal) {
+                    waitForDistrictAndSet();
+                }
+
+                // --- Prefill all other fields as before ---
                 Object.entries(data).forEach(([label, value]) => {
-                    // Try to find the field by name
+                    if (label === 'Region' || label === 'District' || label === 'Ward') return;
                     const field = dataEntryForm.querySelector(`[name="${label}"]`);
                     if (field) {
                         if (field.type === 'checkbox') {
-                            // For checkboxes, value is expected to be an array
                             if (Array.isArray(value)) {
                                 const checkboxes = dataEntryForm.querySelectorAll(`[name="${label}"]`);
                                 checkboxes.forEach(cb => {
                                     cb.checked = value.includes(cb.value);
-                                    // Update custom card UI if present
                                     if (cb.closest('.custom-option-card')) {
                                         if (cb.checked) cb.closest('.custom-option-card').classList.add('selected');
                                         else cb.closest('.custom-option-card').classList.remove('selected');
@@ -762,7 +811,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                 });
                             }
                         } else if (field.type === 'radio') {
-                            // For radios, value is a string
                             const radios = dataEntryForm.querySelectorAll(`[name="${label}"]`);
                             radios.forEach(radio => {
                                 radio.checked = (radio.value == value);
@@ -772,9 +820,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
                             });
                         } else {
-                            // For text, number, date, dropdown
                             field.value = value;
-                            // If Choices.js, update the UI
                             if (field.choicesInstance) {
                                 field.choicesInstance.setChoiceByValue(value);
                             }
