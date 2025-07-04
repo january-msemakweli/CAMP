@@ -184,6 +184,10 @@
                                     <label class="form-label">Options (comma-separated)</label>
                                     <input type="text" class="form-control form-control-sm" name="field_options[]" placeholder="Comma-separated options" title="Options">
                                     <input type="hidden" name="location_field_identifier[]" value=""> <!-- Hidden input for location type -->
+                                    <div class="form-check mt-2 allow-other-check" style="display:none;">
+                                        <input class="form-check-input" type="checkbox" name="allow_other[]" value="0" title="Allow Other (specify)">
+                                        <label class="form-check-label">Allow Other (specify)</label>
+                                    </div>
                                 </div>
                                 <div class="col-md-1 text-end">
                                      <label class="form-label">&nbsp;</label><br/>
@@ -191,7 +195,7 @@
                                 </div>
                                 <div class="col-md-12 mt-2">
                                     <div class="form-check">
-                                        <input class="form-check-input required-checkbox" type="checkbox" value="" name="field_required[]" title="Required field checkbox">
+                                        <input class="form-check-input required-checkbox" type="checkbox" value="0" name="field_required[]" title="Required field checkbox">
                                         <label class="form-check-label">
                                             Required
                                         </label>
@@ -315,7 +319,7 @@ function addFieldRow(containerId, allowRemove) {
                 <input type="text" class="form-control form-control-sm" name="field_options[]" placeholder="Comma-separated options" title="Options">
                 <input type="hidden" name="location_field_identifier[]" value=""> 
                 <div class="form-check mt-2 allow-other-check" style="display:none;">
-                    <input class="form-check-input" type="checkbox" name="allow_other[]" title="Allow Other (specify)">
+                    <input class="form-check-input" type="checkbox" name="allow_other[]" value="0" title="Allow Other (specify)">
                     <label class="form-check-label">Allow Other (specify)</label>
                 </div>
             </div>
@@ -325,7 +329,7 @@ function addFieldRow(containerId, allowRemove) {
             </div>
             <div class="col-md-12 mt-2">
                 <div class="form-check">
-                    <input class="form-check-input required-checkbox" type="checkbox" value="" name="field_required[]" title="Required field checkbox">
+                    <input class="form-check-input required-checkbox" type="checkbox" value="0" name="field_required[]" title="Required field checkbox">
                     <label class="form-check-label">
                         Required
                     </label>
@@ -367,16 +371,38 @@ function addFieldRow(containerId, allowRemove) {
         removeBtn.addEventListener('click', () => newRow.remove());
     }
 
-    // Set unique IDs for the checkbox and label
+    // Set unique IDs and values for the checkboxes and labels
     const rowCount = container.querySelectorAll('.form-field-row').length;
     const requiredCheckbox = newRow.querySelector('.required-checkbox');
     const requiredLabel = newRow.querySelector('.form-check-label');
-    
     if (requiredCheckbox && requiredLabel) {
         const checkboxId = `field-required-${rowCount}`;
         requiredCheckbox.id = checkboxId;
         requiredCheckbox.value = rowCount;
         requiredLabel.setAttribute('for', checkboxId);
+    }
+    // Set value for allow_other checkbox
+    const allowOtherCheckbox = newRow.querySelector('.allow-other-check input');
+    if (allowOtherCheckbox) {
+        allowOtherCheckbox.value = rowCount;
+    }
+
+    // Show/hide allow-other-check for radio/checkbox fields on type change (for both modals)
+    const typeSelect = newRow.querySelector('select[name="field_types[]"]');
+    const optionsContainer = newRow.querySelector('.options-container');
+    const allowOtherCheck = optionsContainer.querySelector('.allow-other-check');
+    typeSelect.addEventListener('change', function() {
+        const value = this.value;
+        if (value === 'radio' || value === 'checkbox') {
+            allowOtherCheck.style.display = 'block';
+        } else {
+            allowOtherCheck.style.display = 'none';
+            allowOtherCheck.querySelector('input').checked = false;
+        }
+    });
+    // If the default type is radio/checkbox, show allow-other-check
+    if (typeSelect.value === 'radio' || typeSelect.value === 'checkbox') {
+        allowOtherCheck.style.display = 'block';
     }
 
     container.appendChild(newRow);
@@ -690,6 +716,25 @@ document.addEventListener('click', function(e) {
         // Show the edit form modal
         const editFormModal = new bootstrap.Modal(document.getElementById('editFormModal'));
         editFormModal.show();
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Ensure allow-other-check is shown for radio/checkbox on initial field row in Create Form
+    const createTypeSelect = document.querySelector('#formFieldsContainer .form-field-row select.field-type');
+    const createOptionsContainer = document.querySelector('#formFieldsContainer .form-field-row .options-container');
+    const createAllowOtherCheck = createOptionsContainer.querySelector('.allow-other-check');
+    createTypeSelect.addEventListener('change', function() {
+        if (this.value === 'radio' || this.value === 'checkbox') {
+            createAllowOtherCheck.style.display = 'block';
+        } else {
+            createAllowOtherCheck.style.display = 'none';
+            createAllowOtherCheck.querySelector('input').checked = false;
+        }
+    });
+    // If the default type is radio/checkbox, show allow-other-check
+    if (createTypeSelect.value === 'radio' || createTypeSelect.value === 'checkbox') {
+        createAllowOtherCheck.style.display = 'block';
     }
 });
 
