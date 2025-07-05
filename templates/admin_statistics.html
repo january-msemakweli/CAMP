@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Statistics - CAMP{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>📊 Statistics Dashboard</h1>
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Admin Dashboard
+                    </a>
+                </div>
+            </div>
+
+            <!-- Date Range Filter -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">📅 Date Range Filter</h5>
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-3">
+                            <label for="start_date" class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="start_date" name="start_date" 
+                                   value="{{ start_date or '' }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="end_date" class="form-label">End Date</label>
+                            <input type="date" class="form-control" id="end_date" name="end_date" 
+                                   value="{{ end_date or '' }}">
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary me-2">Apply Filter</button>
+                            <a href="{{ url_for('admin_statistics') }}" class="btn btn-outline-secondary">Clear</a>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <small class="text-muted">
+                                {% if start_date or end_date %}
+                                    Showing data from {{ start_date or 'beginning' }} to {{ end_date or 'now' }}
+                                {% else %}
+                                    Showing all-time data
+                                {% endif %}
+                            </small>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Statistics Cards -->
+            <div class="row mb-4">
+                <!-- Total Patient IDs Created -->
+                <div class="col-md-3">
+                    <div class="card text-center border-info">
+                        <div class="card-body">
+                            <div class="display-4 text-info mb-2">
+                                <i class="bi bi-person-plus"></i>
+                            </div>
+                            <h2 class="card-title text-info">{{ total_patient_ids_created }}</h2>
+                            <p class="card-text">Patient IDs Created</p>
+                            <small class="text-muted">IDs generated in the system</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Total Registered Patients -->
+                <div class="col-md-3">
+                    <div class="card text-center border-success">
+                        <div class="card-body">
+                            <div class="display-4 text-success mb-2">
+                                <i class="bi bi-person-check"></i>
+                            </div>
+                            <h2 class="card-title text-success">{{ total_registered_patients }}</h2>
+                            <p class="card-text">Registered Patients</p>
+                            <small class="text-muted">Completed registration forms</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Patients Attended -->
+                <div class="col-md-3">
+                    <div class="card text-center border-primary">
+                        <div class="card-body">
+                            <div class="display-4 text-primary mb-2">
+                                <i class="bi bi-person-heart"></i>
+                            </div>
+                            <h2 class="card-title text-primary">{{ total_patients_attended }}</h2>
+                            <p class="card-text">Patients Attended</p>
+                            <small class="text-muted">Received medical care</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Difference (Registered but not attended) -->
+                <div class="col-md-3">
+                    <div class="card text-center border-warning">
+                        <div class="card-body">
+                            <div class="display-4 text-warning mb-2">
+                                <i class="bi bi-person-dash"></i>
+                            </div>
+                            <h2 class="card-title text-warning">{{ difference }}</h2>
+                            <p class="card-text">Registered but Not Attended</p>
+                            <small class="text-muted">Registered but no medical forms</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Metrics -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">📈 Attendance Rate</h5>
+                            <div class="progress mb-2" style="height: 25px;">
+                                <div class="progress-bar bg-success" role="progressbar" 
+                                     style="width: {{ attendance_rate }}%;">
+                                    {{ "%.1f"|format(attendance_rate) }}%
+                                </div>
+                            </div>
+                            <p class="card-text">
+                                <strong>{{ total_patients_attended }}</strong> out of 
+                                <strong>{{ total_registered_patients }}</strong> registered patients attended
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">📋 Registration Rate</h5>
+                            <div class="progress mb-2" style="height: 25px;">
+                                <div class="progress-bar bg-info" role="progressbar" 
+                                     style="width: {{ registration_rate }}%;">
+                                    {{ "%.1f"|format(registration_rate) }}%
+                                </div>
+                            </div>
+                            <p class="card-text">
+                                <strong>{{ total_registered_patients }}</strong> out of 
+                                <strong>{{ total_patient_ids_created }}</strong> created IDs registered
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary Information -->
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">📊 Summary</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6 class="text-info">Patient ID Creation</h6>
+                            <p>{{ total_patient_ids_created }} unique patient IDs have been generated in the system.</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h6 class="text-success">Registration Process</h6>
+                            <p>{{ total_registered_patients }} patients completed registration forms ({{ "%.1f"|format(registration_rate) }}% of created IDs).</p>
+                        </div>
+                        <div class="col-md-4">
+                            <h6 class="text-primary">Medical Care</h6>
+                            <p>{{ total_patients_attended }} patients received medical care ({{ "%.1f"|format(attendance_rate) }}% of registered).</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border-radius: 0.5rem;
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+}
+
+.progress {
+    border-radius: 0.5rem;
+}
+
+.display-4 {
+    font-size: 2.5rem;
+}
+
+.alert {
+    border-radius: 0.5rem;
+}
+
+@media (max-width: 768px) {
+    .col-md-3 {
+        margin-bottom: 1rem;
+    }
+    
+    .display-4 {
+        font-size: 2rem;
+    }
+}
+</style>
+{% endblock %} 

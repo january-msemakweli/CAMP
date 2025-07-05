@@ -58,15 +58,24 @@ def fetch_all_pages(query, page_size=1000, debug_name="query"):
             page_data = page_response.data
             
             if not page_data:
+                print(f"{debug_name}: No more data at start={start}, stopping pagination")
                 break
                 
             all_data.extend(page_data)
             print(f"{debug_name}: Fetched page starting at {start}: {len(page_data)} records")
             
-            if len(page_data) < page_size:
+            # Continue fetching if we got a full page OR if we got exactly 999 (possible Supabase limit)
+            if len(page_data) < page_size and len(page_data) != 999:
+                print(f"{debug_name}: Got {len(page_data)} records (less than {page_size}), stopping pagination")
                 break
                 
             start += page_size
+            
+            # Safety check to prevent infinite loops
+            if start > 50000:  # Adjust this limit as needed
+                print(f"{debug_name}: Reached safety limit of 50,000 records, stopping pagination")
+                break
+                
         except Exception as e:
             print(f"{debug_name}: Error fetching page starting at {start}: {str(e)}")
             break
@@ -5060,6 +5069,142 @@ def get_form_answers(form_id, patient_id):
     except Exception as e:
         print(f"Error fetching form answers for form {form_id}, patient {patient_id}: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/admin/statistics', methods=['GET'])
+@login_required
+def admin_statistics():
+    if not current_user.is_admin:
+        return redirect(url_for('index'))
+    
+    # Get date range parameters
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    
+    # Log access
+    log_details = "Viewed statistics dashboard"
+    if start_date or end_date:
+        log_details += f" - Date range: {start_date or 'start'} to {end_date or 'end'}"
+    log_activity('view', 'statistics', None, log_details)
+    
+    print(f"Statistics dashboard accessed with date range: {start_date} to {end_date}")
+    
+    # Build date filter for queries
+    date_filter = {}
+    if start_date:
+        date_filter['start'] = start_date
+    if end_date:
+        # Add 1 day to end_date to make it inclusive
+        try:
+            end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
+            inclusive_end_date = (end_date_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+            date_filter['end'] = inclusive_end_date
+        except ValueError:
+            print(f"Invalid end date format: {end_date}")
+            date_filter['end'] = None
+    
+    # 1. Get Total Patient IDs Created (from patients table - all patient records)
+    patient_ids_query = supabase.table('patients').select('patient_id, created_at')
+    if date_filter.get('start'):
+        patient_ids_query = patient_ids_query.gte('created_at', date_filter['start'])
+    if date_filter.get('end'):
+        patient_ids_query = patient_ids_query.lt('created_at', date_filter['end'])
+    
+    try:
+        patient_ids_data = fetch_all_pages(patient_ids_query, debug_name="patient_ids_created")
+        total_patient_ids_created = len(patient_ids_data)
+    except Exception as e:
+        print(f"Error fetching patient IDs created: {str(e)}")
+        total_patient_ids_created = 0
+    
+    # 2. Get Total Registered Patients (patients with registration form submissions)
+    # First get all registration form IDs using pagination
+    all_forms_data = fetch_all_pages(supabase.table('forms').select('id'), debug_name="all_forms_for_stats")
+    registration_form_ids = []
+    if all_forms_data:
+        for form in all_forms_data:
+            if get_form_is_first(form.get('id')):
+                registration_form_ids.append(form.get('id'))
+    
+    print(f"Found {len(registration_form_ids)} registration forms")
+    
+    # Get unique patients who submitted registration forms
+    registered_patients = set()
+    if registration_form_ids:
+        registration_query = supabase.table('form_submissions').select('patient_id, created_at').in_('form_id', registration_form_ids)
+        if date_filter.get('start'):
+            registration_query = registration_query.gte('created_at', date_filter['start'])
+        if date_filter.get('end'):
+            registration_query = registration_query.lt('created_at', date_filter['end'])
+        
+        try:
+            registration_data = fetch_all_pages(registration_query, debug_name="registration_submissions")
+            for submission in registration_data:
+                if submission.get('patient_id'):
+                    registered_patients.add(submission['patient_id'])
+        except Exception as e:
+            print(f"Error fetching registration submissions: {str(e)}")
+    
+    total_registered_patients = len(registered_patients)
+    
+    # 3. Get Patients Attended (patients with non-registration form submissions)
+    # Get all non-registration form IDs
+    non_registration_form_ids = []
+    if all_forms_data:
+        for form in all_forms_data:
+            if not get_form_is_first(form.get('id')):
+                non_registration_form_ids.append(form.get('id'))
+    
+    print(f"Found {len(non_registration_form_ids)} non-registration forms")
+    
+    # Get unique patients who submitted non-registration forms
+    attended_patients = set()
+    if non_registration_form_ids:
+        attended_query = supabase.table('form_submissions').select('patient_id, created_at').in_('form_id', non_registration_form_ids)
+        if date_filter.get('start'):
+            attended_query = attended_query.gte('created_at', date_filter['start'])
+        if date_filter.get('end'):
+            attended_query = attended_query.lt('created_at', date_filter['end'])
+        
+        try:
+            attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
+            for submission in attended_data:
+                if submission.get('patient_id'):
+                    attended_patients.add(submission['patient_id'])
+        except Exception as e:
+            print(f"Error fetching attended submissions: {str(e)}")
+    
+    total_patients_attended = len(attended_patients)
+    
+    # 4. Calculate Difference (registered but not attended)
+    registered_but_not_attended = registered_patients - attended_patients
+    difference = len(registered_but_not_attended)
+    
+    # Calculate percentages
+    attendance_rate = 0
+    if total_registered_patients > 0:
+        attendance_rate = (total_patients_attended / total_registered_patients) * 100
+    
+    registration_rate = 0
+    if total_patient_ids_created > 0:
+        registration_rate = (total_registered_patients / total_patient_ids_created) * 100
+    
+    print(f"Statistics calculated:")
+    print(f"  - Patient IDs Created: {total_patient_ids_created}")
+    print(f"  - Registered Patients: {total_registered_patients}")
+    print(f"  - Patients Attended: {total_patients_attended}")
+    print(f"  - Difference (Registered but not attended): {difference}")
+    print(f"  - Attendance Rate: {attendance_rate:.1f}%")
+    print(f"  - Registration Rate: {registration_rate:.1f}%")
+    
+    return render_template('admin_statistics.html',
+                         total_patient_ids_created=total_patient_ids_created,
+                         total_registered_patients=total_registered_patients,
+                         total_patients_attended=total_patients_attended,
+                         difference=difference,
+                         attendance_rate=attendance_rate,
+                         registration_rate=registration_rate,
+                         start_date=start_date,
+                         end_date=end_date)
 
 # Correctly indented start of the main execution block
 if __name__ == '__main__':
