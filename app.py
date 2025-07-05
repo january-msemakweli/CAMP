@@ -1166,18 +1166,40 @@ def dataset_view():
     print(f"Dataset view called with project_id: {project_id}, form_id: {form_id}, search: {search_term}")
     
     # 1. Fetch Ordered Forms relevant to the filters
+    # We need to ensure registration forms come first, then other forms chronologically
     ordered_forms_data = []
-    forms_query = supabase.table('forms').select('*')
-    if form_id: # If a specific form is selected, only fetch that one
-        forms_query = forms_query.eq('id', form_id)
-    elif project_id: # If a project is selected, fetch its forms
-        forms_query = forms_query.eq('project_id', project_id).order('created_at', desc=False)
-    else: # Otherwise fetch all forms, ordered by project then creation
-        forms_query = forms_query.order('project_id', desc=False).order('created_at', desc=False)
     
-    forms_response = forms_query.execute()
-    if forms_response.data:
-        ordered_forms_data = forms_response.data
+    if form_id: # If a specific form is selected, only fetch that one
+        forms_query = supabase.table('forms').select('*').eq('id', form_id)
+        forms_response = forms_query.execute()
+        if forms_response.data:
+            ordered_forms_data = forms_response.data
+    elif project_id: # If a project is selected, fetch its forms with proper ordering
+        # Get all forms for this project
+        forms_query = supabase.table('forms').select('*').eq('project_id', project_id)
+        forms_response = forms_query.execute()
+        if forms_response.data:
+            # Separate registration forms from other forms
+            registration_forms = []
+            other_forms = []
+            
+            for form in forms_response.data:
+                if get_form_is_first(form.get('id')):
+                    registration_forms.append(form)
+                else:
+                    other_forms.append(form)
+            
+            # Sort both lists by creation date (oldest first)
+            registration_forms.sort(key=lambda x: x.get('created_at', ''))
+            other_forms.sort(key=lambda x: x.get('created_at', ''))
+            
+            # Combine: registration forms first, then other forms
+            ordered_forms_data = registration_forms + other_forms
+    else: # Otherwise fetch all forms, ordered by project then creation
+        forms_query = supabase.table('forms').select('*').order('project_id', desc=False).order('created_at', desc=False)
+        forms_response = forms_query.execute()
+        if forms_response.data:
+            ordered_forms_data = forms_response.data
 
     # 2. Build ordered_fields list based on form definitions
     ordered_fields = []
@@ -1222,6 +1244,7 @@ def dataset_view():
 
     # Also collect fields from all registration forms in the database
     # This ensures we show registration data even if the registration form isn't in the current project
+    # We need to add registration form fields to the BEGINNING of ordered_fields to maintain proper ordering
     if project_id:
         print("Looking for registration forms in other projects for cross-program data display")
         # Get all form IDs that are first/registration forms in the system
@@ -1233,7 +1256,8 @@ def dataset_view():
                 registration_form_ids.append(form_id)
                 print(f"Found external registration form: {form_id} in project {form.get('project_id')}")
         
-        # For each registration form, add its fields to our list if not already present
+        # Collect external registration fields first, then we'll prepend them to ordered_fields
+        external_registration_fields = []
         for reg_form_id in registration_form_ids:
             reg_form_response = supabase.table('forms').select('fields').eq('id', reg_form_id).execute()
             if reg_form_response.data:
@@ -1251,13 +1275,17 @@ def dataset_view():
                                 label = field['label']
                                 normalized_label = label.lower().strip().replace(' ', '_')
                                 if normalized_label not in seen_normalized_fields:
-                                    ordered_fields.append(label)
+                                    external_registration_fields.append(label)
                                     seen_normalized_fields.add(normalized_label)
                                     field_label_map[normalized_label] = label
                                     registration_form_fields.add(normalized_label)
                                     pass  # Added external registration field
                 except Exception as e:
                     print(f"Error processing registration form fields: {str(e)}")
+        
+        # Prepend external registration fields to the beginning of ordered_fields
+        # This ensures registration fields always come first
+        ordered_fields = external_registration_fields + ordered_fields
                     
     # Now continue with rest of function using modified ordered_fields
 
