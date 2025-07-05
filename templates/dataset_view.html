@@ -44,6 +44,48 @@
             pointer-events: none;
         }
     }
+
+    /* Pagination improvements */
+    .pagination {
+        margin-bottom: 0;
+    }
+    
+    .pagination .page-link {
+        border-radius: 0.375rem;
+        margin: 0 2px;
+        border: 1px solid #dee2e6;
+        color: #6c757d;
+    }
+    
+    .pagination .page-item.active .page-link {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+        color: white;
+    }
+    
+    .pagination .page-link:hover {
+        background-color: #e9ecef;
+        border-color: #dee2e6;
+        color: #0d6efd;
+    }
+    
+    .pagination .page-item.disabled .page-link {
+        color: #6c757d;
+        background-color: #fff;
+        border-color: #dee2e6;
+    }
+    
+    /* Mobile pagination adjustments */
+    @media (max-width: 576px) {
+        .pagination-sm .page-link {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+        
+        .pagination {
+            justify-content: center;
+        }
+    }
 </style>
 <div class="container-fluid p-4">
     <!-- Page Header -->
@@ -65,7 +107,7 @@
                         <i class="fas fa-filter me-2"></i><span class="d-none d-sm-inline">Filter Data</span>
                     </button>
                     {% if current_user.is_admin %}
-                    <a href="{{ url_for('export_dataset', project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, start_date=start_date, end_date=end_date, search=search_term) }}" class="btn btn-success">
+                    <a href="{{ url_for('export_dataset', project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, start_date=start_date, end_date=end_date, search=search_term) }}" class="btn btn-success" title="Export all {{ total_patients }} patients">
                         <i class="fas fa-file-excel me-2"></i><span class="d-none d-sm-inline">Export Dataset</span>
                     </a>
                     {% else %}
@@ -83,7 +125,7 @@
         <div class="col-6 col-md-3">
             <div class="stat-card text-center p-2 p-md-3">
                 <i class="fas fa-users fa-2x mb-1 mb-md-2"></i>
-                <h3 class="mb-1 fs-5 fs-md-3">{{ patient_data_list|length }}</h3>
+                <h3 class="mb-1 fs-5 fs-md-3">{{ total_patients }}</h3>
                 <p class="mb-0 small text-md-normal">Total Patients</p>
             </div>
         </div>
@@ -120,6 +162,7 @@
             <input type="hidden" name="field_value" value="{{ selected_value or '' }}">
             <input type="hidden" name="start_date" value="{{ start_date or '' }}">
             <input type="hidden" name="end_date" value="{{ end_date or '' }}">
+            <input type="hidden" name="page" value="1"> <!-- Reset to page 1 on search -->
 
             <div class="input-group">
                 <input type="search" class="form-control" placeholder="Search patient ID or data..."
@@ -131,6 +174,21 @@
         </form>
     </div>
 
+    <!-- Pagination Info -->
+    {% if total_patients > 0 %}
+    <div class="mb-3 d-flex justify-content-between align-items-center flex-wrap">
+        <div class="mb-2 mb-md-0">
+            <small class="text-muted">
+                Showing {{ start_index }}-{{ end_index }} of {{ total_patients }} patients
+                {% if total_pages > 1 %}(Page {{ current_page }} of {{ total_pages }}){% endif %}
+            </small>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <small class="text-muted d-none d-md-inline">{{ per_page }} per page</small>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Filter Modal -->
     <div class="modal fade" id="filterModal" tabindex="-1">
         <div class="modal-dialog">
@@ -140,8 +198,9 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close"></button>
                 </div>
                 <form method="GET" action="{{ url_for('dataset_view') }}" id="filterForm">
-                     <!-- Preserve search term -->
+                     <!-- Preserve search term and reset to page 1 -->
                      <input type="hidden" name="search" value="{{ search_term or '' }}">
+                     <input type="hidden" name="page" value="1">
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="projectFilter" class="form-label">Programme</label>
@@ -252,6 +311,54 @@
             </div>
         </div>
     </div>
+
+    <!-- Pagination Navigation -->
+    {% if total_pages > 1 %}
+    <div class="d-flex justify-content-center mt-4">
+        <nav aria-label="Dataset pagination">
+            <ul class="pagination pagination-sm">
+                <!-- Previous Page -->
+                {% if has_prev %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('dataset_view', page=prev_num, project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, start_date=start_date, end_date=end_date, search=search_term) }}" aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link" aria-hidden="true">&laquo;</span>
+                </li>
+                {% endif %}
+
+                <!-- Page Numbers -->
+                {% for page_num in page_numbers %}
+                {% if page_num == current_page %}
+                <li class="page-item active" aria-current="page">
+                    <span class="page-link">{{ page_num }}</span>
+                </li>
+                {% else %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('dataset_view', page=page_num, project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, start_date=start_date, end_date=end_date, search=search_term) }}">{{ page_num }}</a>
+                </li>
+                {% endif %}
+                {% endfor %}
+
+                <!-- Next Page -->
+                {% if has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('dataset_view', page=next_num, project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, start_date=start_date, end_date=end_date, search=search_term) }}" aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link" aria-hidden="true">&raquo;</span>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Patient Detail Modal (Placeholder - needs JS implementation) -->
@@ -848,5 +955,31 @@
     // Run on page load and resize
     window.addEventListener('DOMContentLoaded', adjustForMobile);
     window.addEventListener('resize', adjustForMobile);
+
+    // Keyboard navigation for pagination
+    document.addEventListener('keydown', function(e) {
+        // Only if user is not typing in an input field
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            return;
+        }
+        
+        // Left arrow key - Previous page
+        if (e.key === 'ArrowLeft') {
+            const prevLink = document.querySelector('.pagination .page-item:not(.disabled) .page-link[aria-label="Previous"]');
+            if (prevLink) {
+                e.preventDefault();
+                window.location.href = prevLink.href;
+            }
+        }
+        
+        // Right arrow key - Next page
+        if (e.key === 'ArrowRight') {
+            const nextLink = document.querySelector('.pagination .page-item:not(.disabled) .page-link[aria-label="Next"]');
+            if (nextLink) {
+                e.preventDefault();
+                window.location.href = nextLink.href;
+            }
+        }
+    });
 </script>
 {% endblock %}

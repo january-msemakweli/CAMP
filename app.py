@@ -1130,6 +1130,16 @@ def program_list():
 @app.route('/dataset')
 @login_required
 def dataset_view():
+    # Get pagination parameters
+    try:
+        page = int(request.args.get('page', 1))
+        if page < 1:
+            page = 1
+    except ValueError:
+        page = 1
+    
+    per_page = 20  # Number of patients per page
+    
     # Get filter parameters
     project_id = request.args.get('project_id')
     form_id = request.args.get('form_id')
@@ -1649,9 +1659,35 @@ def dataset_view():
         
         patient_data_list.append(patient_row)
 
+    # 12. Apply pagination to patient_data_list
+    total_patients = len(patient_data_list)
+    total_pages = (total_patients + per_page - 1) // per_page  # Ceiling division
+    
+    # Calculate pagination bounds
+    start_index = (page - 1) * per_page
+    end_index = start_index + per_page
+    paginated_patient_list = patient_data_list[start_index:end_index]
+    
+    # Calculate pagination controls
+    has_prev = page > 1
+    has_next = page < total_pages
+    prev_num = page - 1 if has_prev else None
+    next_num = page + 1 if has_next else None
+    
+    # Generate page numbers for pagination nav (show 5 pages max)
+    max_pages_to_show = 5
+    start_page = max(1, page - max_pages_to_show // 2)
+    end_page = min(total_pages, start_page + max_pages_to_show - 1)
+    
+    # Adjust start_page if we're near the end
+    if end_page - start_page < max_pages_to_show - 1:
+        start_page = max(1, end_page - max_pages_to_show + 1)
+    
+    page_numbers = list(range(start_page, end_page + 1))
+
     return render_template('dataset_view.html',
                          patient_data=patient_data,
-                         patient_data_list=patient_data_list,  # Add this new parameter
+                         patient_data_list=paginated_patient_list,  # Use paginated list
                          # Pass the final ordered list of field labels
                          ordered_fields=final_ordered_fields, 
                          all_fields_for_filter=fields_for_filter,  # Add this missing parameter
@@ -1665,7 +1701,19 @@ def dataset_view():
                          selected_value=field_value,
                          start_date=start_date,
                          end_date=end_date,
-                         search_term=search_term)
+                         search_term=search_term,
+                         # Pagination variables
+                         current_page=page,
+                         total_pages=total_pages,
+                         total_patients=total_patients,
+                         per_page=per_page,
+                         has_prev=has_prev,
+                         has_next=has_next,
+                         prev_num=prev_num,
+                         next_num=next_num,
+                         page_numbers=page_numbers,
+                         start_index=start_index + 1,  # 1-based for display
+                         end_index=min(end_index, total_patients))
 
 @app.route('/api/submission/<submission_id>')
 @login_required
