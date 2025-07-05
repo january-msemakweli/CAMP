@@ -65,7 +65,7 @@
                         <i class="fas fa-filter me-2"></i><span class="d-none d-sm-inline">Filter Data</span>
                     </button>
                     {% if current_user.is_admin %}
-                    <a href="{{ url_for('export_dataset', project_id=selected_project) }}" class="btn btn-success">
+                    <a href="{{ url_for('export_dataset', project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, start_date=start_date, end_date=end_date, search=search_term) }}" class="btn btn-success">
                         <i class="fas fa-file-excel me-2"></i><span class="d-none d-sm-inline">Export Dataset</span>
                     </a>
                     {% else %}
