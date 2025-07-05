@@ -4179,130 +4179,205 @@ def search_patient_id():
         results = []
         seen_ids = set()  # To prevent duplicates
             
-        # First search patients table by patient_id, order by created_at desc for newest first
-        response = supabase.table('patients').select('patient_id, data, created_at').like('patient_id', f"%{query}%").order('created_at', desc=True).limit(10).execute()
+        # First search patients table by patient_id using pagination to search ALL patients
+        print(f"Searching for patient ID pattern: {query}")
+        patient_id_matches = fetch_all_pages(
+            supabase.table('patients').select('patient_id, data, created_at').like('patient_id', f"%{query}%").order('created_at', desc=True),
+            debug_name=f"patient_id_search_{query}"
+        )
         
         # Add patient_id matches to results
-        if response.data:
-            for patient in response.data:
-                patient_id = patient['patient_id']
-                if patient_id not in seen_ids:
-                    results.append(patient)
-                    seen_ids.add(patient_id)
+        for patient in patient_id_matches:
+            patient_id = patient['patient_id']
+            if patient_id not in seen_ids and len(results) < 10:
+                results.append(patient)
+                seen_ids.add(patient_id)
+                
+        print(f"Found {len(patient_id_matches)} patient ID matches, added {len([p for p in results])} to results")
         
-        # Simplify name search - Supabase can't easily do complex JSON searches via API
-        # So we'll fetch records and filter in Python
+        # Name search - fetch ALL patients and search through them in chunks to find name matches
         if len(results) < 10:
             try:
-                # Get additional patients (up to 50) not already in results, newest first
-                additional_patients = []
+                print(f"Starting name search for: {query}")
+                # Get ALL patients using pagination, excluding those already found
                 if seen_ids:
-                    additional_response = supabase.table('patients').select('patient_id, data, created_at').not_('patient_id', 'in', list(seen_ids)).order('created_at', desc=True).limit(50).execute()
-                    additional_patients = additional_response.data
+                    all_patients_query = supabase.table('patients').select('patient_id, data, created_at').not_('patient_id', 'in', list(seen_ids)).order('created_at', desc=True)
                 else:
-                    additional_response = supabase.table('patients').select('patient_id, data, created_at').order('created_at', desc=True).limit(50).execute()
-                    additional_patients = additional_response.data
+                    all_patients_query = supabase.table('patients').select('patient_id, data, created_at').order('created_at', desc=True)
                 
-                # Common name field variations to check
-                name_fields = ["Name", "Full Name", "First Name", "Last Name", "Patient Name"]
+                # Process patients in chunks to avoid memory issues
+                page_size = 1000
+                start = 0
                 query_lower = query.lower()
+                name_fields = ["Name", "Full Name", "First Name", "Last Name", "Patient Name"]
                 
-                # Manually search through JSON data for name matches
-                for patient in additional_patients:
-                    if len(results) >= 10:
-                        break
+                while len(results) < 10:
+                    try:
+                        # Get next chunk of patients
+                        chunk_response = all_patients_query.range(start, start + page_size - 1).execute()
+                        patients_chunk = chunk_response.data
                         
-                    patient_id = patient['patient_id']
-                    if patient_id in seen_ids:
-                        continue
+                        if not patients_chunk:
+                            print(f"No more patients to search at start={start}")
+                            break
+                            
+                        print(f"Searching through {len(patients_chunk)} patients (chunk starting at {start})")
                         
-                    patient_data = patient.get('data', {})
-                    name_match = False
-                    
-                    # Check all forms in patient data
-                    if isinstance(patient_data, dict):
-                        for form_id, form_data in patient_data.items():
-                            if not isinstance(form_data, dict):
-                                continue
-                                
-                            # Check all fields in this form for name fields
-                            for field_name, field_value in form_data.items():
-                                if not field_value:
-                                    continue
-                                    
-                                # Check if this is a name field and contains our search term
-                                if field_name in name_fields and query_lower in str(field_value).lower():
-                                    name_match = True
-                                    patient['display_name'] = field_value
-                                    break
-                                    
-                            if name_match:
+                        # Search through this chunk for name matches
+                        chunk_matches = 0
+                        for patient in patients_chunk:
+                            if len(results) >= 10:
                                 break
                                 
-                    if name_match:
-                        results.append(patient)
-                        seen_ids.add(patient_id)
+                            patient_id = patient['patient_id']
+                            if patient_id in seen_ids:
+                                continue
+                                
+                            patient_data = patient.get('data', {})
+                            name_match = False
+                            
+                            # Check all forms in patient data
+                            if isinstance(patient_data, dict):
+                                for form_id, form_data in patient_data.items():
+                                    if not isinstance(form_data, dict):
+                                        continue
+                                        
+                                    # Check all fields in this form for name fields
+                                    for field_name, field_value in form_data.items():
+                                        if not field_value:
+                                            continue
+                                            
+                                        # Check if this is a name field and contains our search term
+                                        if field_name in name_fields and query_lower in str(field_value).lower():
+                                            name_match = True
+                                            patient['display_name'] = field_value
+                                            break
+                                            
+                                    if name_match:
+                                        break
+                                        
+                            if name_match:
+                                results.append(patient)
+                                seen_ids.add(patient_id)
+                                chunk_matches += 1
+                        
+                        print(f"Found {chunk_matches} name matches in this chunk")
+                        
+                        # If we got less than a full page, we've reached the end
+                        if len(patients_chunk) < page_size:
+                            print(f"Reached end of patients table (got {len(patients_chunk)} < {page_size})")
+                            break
+                            
+                        start += page_size
+                        
+                    except Exception as e:
+                        print(f"Error processing chunk starting at {start}: {str(e)}")
+                        break
+                
+                print(f"Name search completed. Total results: {len(results)}")
                 
             except Exception as e:
-                print(f"Error during manual name search: {str(e)}")
+                print(f"Error during paginated name search: {str(e)}")
         
         # If we still have fewer than 5 results, try searching form submissions as a fallback
         if len(results) < 5:
             try:
-                # Search in submissions by patient_id, order by newest first
-                submissions_response = supabase.table('form_submissions').select('patient_id, data, created_at').like('patient_id', f"%{query}%").order('created_at', desc=True).limit(10).execute()
+                print(f"Starting fallback search in form_submissions for: {query}")
+                
+                # Search in submissions by patient_id using pagination
+                submission_id_matches = fetch_all_pages(
+                    supabase.table('form_submissions').select('patient_id, data, created_at').like('patient_id', f"%{query}%").order('created_at', desc=True),
+                    debug_name=f"submission_id_search_{query}"
+                )
                 
                 # Process submission results
-                if submissions_response.data:
-                    for submission in submissions_response.data:
-                        patient_id = submission['patient_id']
-                        if patient_id not in seen_ids and len(results) < 10:
-                            results.append({
-                                'patient_id': patient_id,
-                                'data': submission.get('data', {}),
-                                'created_at': submission.get('created_at')
-                            })
-                            seen_ids.add(patient_id)
+                for submission in submission_id_matches:
+                    patient_id = submission['patient_id']
+                    if patient_id not in seen_ids and len(results) < 10:
+                        results.append({
+                            'patient_id': patient_id,
+                            'data': submission.get('data', {}),
+                            'created_at': submission.get('created_at')
+                        })
+                        seen_ids.add(patient_id)
                 
-                # Also manually check names in submissions, order by newest first
-                additional_submissions = supabase.table('form_submissions').select('patient_id, data, created_at').order('created_at', desc=True).limit(20).execute()
+                print(f"Found {len(submission_id_matches)} submission ID matches")
                 
-                if additional_submissions.data:
+                # Also search names in ALL submissions using chunked pagination
+                if len(results) < 10:
+                    print("Searching submission names using pagination...")
                     query_lower = query.lower()
-                    for submission in additional_submissions.data:
-                        if len(results) >= 10:
-                            break
+                    name_fields = ["Name", "Full Name", "First Name", "Last Name", "Patient Name"]
+                    
+                    # Process submissions in chunks
+                    page_size = 1000
+                    start = 0
+                    
+                    while len(results) < 10:
+                        try:
+                            # Get next chunk of submissions
+                            chunk_response = supabase.table('form_submissions').select('patient_id, data, created_at').order('created_at', desc=True).range(start, start + page_size - 1).execute()
+                            submissions_chunk = chunk_response.data
                             
-                        patient_id = submission['patient_id']
-                        if patient_id in seen_ids:
-                            continue
+                            if not submissions_chunk:
+                                print(f"No more submissions to search at start={start}")
+                                break
+                                
+                            print(f"Searching through {len(submissions_chunk)} submissions (chunk starting at {start})")
                             
-                        # Check data for name fields
-                        submission_data = submission.get('data', {})
-                        name_match = False
-                        display_name = None
-                        
-                        if isinstance(submission_data, dict):
-                            for field_name, field_value in submission_data.items():
-                                if not field_value:
-                                    continue
-                                    
-                                if field_name in name_fields and query_lower in str(field_value).lower():
-                                    name_match = True
-                                    display_name = field_value
+                            # Search through this chunk for name matches
+                            chunk_matches = 0
+                            for submission in submissions_chunk:
+                                if len(results) >= 10:
                                     break
                                     
-                        if name_match:
-                            result = {
-                                'patient_id': patient_id,
-                                'data': submission_data,
-                                'created_at': submission.get('created_at')
-                            }
-                            if display_name:
-                                result['display_name'] = display_name
+                                patient_id = submission['patient_id']
+                                if patient_id in seen_ids:
+                                    continue
+                                    
+                                # Check data for name fields
+                                submission_data = submission.get('data', {})
+                                name_match = False
+                                display_name = None
                                 
-                            results.append(result)
-                            seen_ids.add(patient_id)
+                                if isinstance(submission_data, dict):
+                                    for field_name, field_value in submission_data.items():
+                                        if not field_value:
+                                            continue
+                                            
+                                        if field_name in name_fields and query_lower in str(field_value).lower():
+                                            name_match = True
+                                            display_name = field_value
+                                            break
+                                            
+                                if name_match:
+                                    result = {
+                                        'patient_id': patient_id,
+                                        'data': submission_data,
+                                        'created_at': submission.get('created_at')
+                                    }
+                                    if display_name:
+                                        result['display_name'] = display_name
+                                        
+                                    results.append(result)
+                                    seen_ids.add(patient_id)
+                                    chunk_matches += 1
+                            
+                            print(f"Found {chunk_matches} submission name matches in this chunk")
+                            
+                            # If we got less than a full page, we've reached the end
+                            if len(submissions_chunk) < page_size:
+                                print(f"Reached end of submissions table (got {len(submissions_chunk)} < {page_size})")
+                                break
+                                
+                            start += page_size
+                            
+                        except Exception as e:
+                            print(f"Error processing submissions chunk starting at {start}: {str(e)}")
+                            break
+                
+                print(f"Fallback search completed. Total results: {len(results)}")
+                
             except Exception as e:
                 print(f"Error searching form submissions: {str(e)}")
         
