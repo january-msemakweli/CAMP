@@ -1388,12 +1388,14 @@ def dataset_view():
     # 4. Filter submissions based on search term (if any)
     if search_term:
         try:
-            filtered_submissions = []
+            matching_patient_ids = set()
             search_lower = search_term.lower()
+            
+            # First pass: find all patient IDs that have matching submissions
             for sub in submissions:
                 # Check patient_id first
                 if search_lower in str(sub.get('patient_id', '')).lower():
-                    filtered_submissions.append(sub)
+                    matching_patient_ids.add(sub.get('patient_id'))
                     continue 
                 
                 # Only search in data if it exists and is a dictionary
@@ -1409,10 +1411,17 @@ def dataset_view():
                             break
                     
                     if match_found:
-                        filtered_submissions.append(sub)
+                        matching_patient_ids.add(sub.get('patient_id'))
+            
+            # Second pass: get ALL submissions for matching patients
+            filtered_submissions = []
+            for sub in submissions:
+                if sub.get('patient_id') in matching_patient_ids:
+                    filtered_submissions.append(sub)
             
             submissions = filtered_submissions
-            print(f"Found {len(submissions)} submissions after search for '{search_term}'")
+            print(f"Found {len(matching_patient_ids)} patients with matches for '{search_term}'")
+            print(f"Including {len(submissions)} total submissions for those patients")
         except Exception as e:
             print(f"Error during search filtering: {str(e)}")
             # If search fails, fall back to using all submissions before search
@@ -1476,13 +1485,38 @@ def dataset_view():
     if project_id and project_form_ids:
         filtered_patient_data = {}
         for patient_id, data in patient_data.items():
-            # MODIFIED: Include patients only if they have both registration data AND non-registration submissions
-            # OR if they only have non-registration submissions in this project
-            if data.get('has_non_registration_submissions', False):
-                filtered_patient_data[patient_id] = data
-            # Exclude patients who ONLY have registration form submissions
+            # When there's a search term, we need to be more careful about filtering
+            # The search might only return registration form submissions, but the patient
+            # might have other non-registration forms in the full dataset
+            if search_term:
+                # For search results, check if the patient has non-registration submissions
+                # in the FULL dataset (not just in the search results)
+                full_patient_check = supabase.table('form_submissions').select('form_id').eq('patient_id', patient_id).execute()
+                if full_patient_check.data:
+                    has_non_registration_in_full_dataset = False
+                    for sub in full_patient_check.data:
+                        sub_form_id = sub.get('form_id')
+                        if sub_form_id in project_form_ids and not get_form_is_first(sub_form_id):
+                            has_non_registration_in_full_dataset = True
+                            break
+                    
+                    # Include patient if they have non-registration forms in the full dataset
+                    # even if the search only found registration form matches
+                    if has_non_registration_in_full_dataset:
+                        filtered_patient_data[patient_id] = data
+                    else:
+                        print(f"Filtered out patient {patient_id} because they only have registration form submissions in full dataset")
+                else:
+                    print(f"Filtered out patient {patient_id} because no submissions found in full dataset check")
             else:
-                print(f"Filtered out patient {patient_id} because they only have registration form submissions")
+                # Original logic for non-search cases
+                # Include patients only if they have both registration data AND non-registration submissions
+                # OR if they only have non-registration submissions in this project
+                if data.get('has_non_registration_submissions', False):
+                    filtered_patient_data[patient_id] = data
+                # Exclude patients who ONLY have registration form submissions
+                else:
+                    print(f"Filtered out patient {patient_id} because they only have registration form submissions")
         
         print(f"Filtered out {len(patient_data) - len(filtered_patient_data)} patients with only registration form submissions")
         patient_data = filtered_patient_data
