@@ -37,6 +37,43 @@ EAT = timezone(timedelta(hours=3))
 # Load environment variables
 load_dotenv()
 
+def fetch_all_pages(query, page_size=1000, debug_name="query"):
+    """
+    Fetch all pages of data from a Supabase query to handle pagination.
+    
+    Args:
+        query: Supabase query object (before .execute())
+        page_size: Number of records per page (default 1000)
+        debug_name: Name for debug logging
+        
+    Returns:
+        List of all records across all pages
+    """
+    all_data = []
+    start = 0
+    
+    while True:
+        try:
+            page_response = query.range(start, start + page_size - 1).execute()
+            page_data = page_response.data
+            
+            if not page_data:
+                break
+                
+            all_data.extend(page_data)
+            print(f"{debug_name}: Fetched page starting at {start}: {len(page_data)} records")
+            
+            if len(page_data) < page_size:
+                break
+                
+            start += page_size
+        except Exception as e:
+            print(f"{debug_name}: Error fetching page starting at {start}: {str(e)}")
+            break
+    
+    print(f"{debug_name}: Total records fetched: {len(all_data)}")
+    return all_data
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 
@@ -402,13 +439,11 @@ def admin_dashboard():
     response = supabase.table('users').select('*').eq('is_approved', False).execute()
     pending_users = response.data
     
-    # Get all users
-    all_users_response = supabase.table('users').select('*').execute()
-    all_users = all_users_response.data
+    # Get all users using pagination
+    all_users = fetch_all_pages(supabase.table('users').select('*'), debug_name="admin_dashboard_users")
     
-    # Get all projects
-    projects_response = supabase.table('projects').select('*').execute()
-    projects = projects_response.data
+    # Get all projects using pagination
+    projects = fetch_all_pages(supabase.table('projects').select('*'), debug_name="admin_dashboard_projects")
     
     return render_template('admin_dashboard.html', 
                          pending_users=pending_users,
@@ -570,9 +605,8 @@ def project_detail(project_id):
                 access['users'] = user_response.data[0]
                 project_access.append(access)
         
-        # Get all approved users for the dropdown
-        users_response = supabase.table('users').select('*').eq('is_approved', True).execute()
-        users = users_response.data
+        # Get all approved users for the dropdown using pagination
+        users = fetch_all_pages(supabase.table('users').select('*').eq('is_approved', True), debug_name="project_detail_users")
     
     log_activity('view', 'project', project_id, f"Project: {project['name']}")
     
@@ -1043,9 +1077,8 @@ def user_dashboard():
     if current_user.is_admin:
         return redirect(url_for('admin_dashboard'))
     
-    # Get approved projects
-    response = supabase.table('projects').select('*').execute()
-    projects = response.data
+    # Get approved projects using pagination
+    projects = fetch_all_pages(supabase.table('projects').select('*'), debug_name="user_dashboard_projects")
     # Remove camp_date from fetched projects
     for p in projects:
         p.pop('camp_date', None)
@@ -1175,7 +1208,7 @@ def dataset_view():
                         # Mark if this field is from a registration form
                         if is_first:
                             registration_form_fields.add(normalized_label)
-                            print(f"Added registration field: {label}")
+                            pass  # Added registration field
 
     # Also collect fields from all registration forms in the database
     # This ensures we show registration data even if the registration form isn't in the current project
@@ -1183,7 +1216,7 @@ def dataset_view():
         print("Looking for registration forms in other projects for cross-program data display")
         # Get all form IDs that are first/registration forms in the system
         registration_form_ids = []
-        all_forms_response = supabase.table('forms').select('id, title, project_id').execute()
+        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
         for form in all_forms_response.data:
             form_id = form.get('id')
             if form_id and get_form_is_first(form_id) and form.get('project_id') != project_id:
@@ -1212,7 +1245,7 @@ def dataset_view():
                                     seen_normalized_fields.add(normalized_label)
                                     field_label_map[normalized_label] = label
                                     registration_form_fields.add(normalized_label)
-                                    print(f"Added external registration field: {label}")
+                                    pass  # Added external registration field
                 except Exception as e:
                     print(f"Error processing registration form fields: {str(e)}")
                     
@@ -1227,8 +1260,8 @@ def dataset_view():
     all_registration_form_ids = []
     if project_id:
         print("Looking for ALL registration forms across ALL projects for cross-program data")
-        # Query all forms
-        all_forms_response = supabase.table('forms').select('id, title, project_id').execute()
+        # Query all forms (add limit to ensure all rows are fetched)
+        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
         
         for form in all_forms_response.data:
             form_id = form.get('id')
@@ -1270,23 +1303,77 @@ def dataset_view():
              print(f"Invalid end date format: {end_date}")
              # Optionally handle error, or proceed without end date filter
     
-    response = query.execute()
-    submissions = response.data
-    print(f"Initial submissions fetched: {len(submissions)}")
+    # Fetch all submissions using pagination to handle large datasets
+    submissions = []
+    page_size = 1000
+    start = 0
     
-    # If no submissions were found through the form-based filters,
-    # try a direct query on form_submissions without form filtering
-    if not submissions and (form_id or project_id):
-        print("No submissions found with form filters. Trying direct query.")
+    while True:
         try:
-            # Direct query without form filtering
-            backup_query = supabase.table('form_submissions').select('*')
-            backup_response = backup_query.execute()
-            submissions = backup_response.data
-            print(f"Direct query found {len(submissions)} submissions")
+            page_response = query.range(start, start + page_size - 1).execute()
+            page_data = page_response.data
+            
+            if not page_data:
+                print(f"No more data at start={start}, stopping pagination")
+                break
+                
+            submissions.extend(page_data)
+            print(f"Fetched page starting at {start}: {len(page_data)} submissions")
+            
+            # Continue fetching if we got a full page OR if we got exactly 999 (possible Supabase limit)
+            if len(page_data) < page_size and len(page_data) != 999:
+                print(f"Got {len(page_data)} records (less than {page_size}), stopping pagination")
+                break
+                
+            start += page_size
+            
+            # Safety check to prevent infinite loops
+            if start > 50000:  # Adjust this limit as needed
+                print(f"Reached safety limit of 50,000 records, stopping pagination")
+                break
+                
         except Exception as e:
-            print(f"Error in backup query: {str(e)}")
-            submissions = []
+            print(f"Error fetching page starting at {start}: {str(e)}")
+            break
+    
+    print(f"Total submissions fetched: {len(submissions)}")
+    
+    # If we got exactly 999 records, try to fetch more directly
+    if len(submissions) == 999:
+        print("Got exactly 999 records, trying alternative pagination approach...")
+        try:
+            # Try with a different approach - fetch a large batch directly
+            large_batch_query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
+            
+            if submission_form_ids:
+                large_batch_query = large_batch_query.in_('form_id', submission_form_ids)
+            elif form_id:
+                large_batch_query = large_batch_query.eq('form_id', form_id)
+            elif project_id:
+                large_batch_query = large_batch_query.eq('forms.project_id', project_id)
+                
+            # Apply date filters if present
+            if start_date:
+                large_batch_query = large_batch_query.gte('created_at', start_date)
+            if end_date:
+                try:
+                    end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                    inclusive_end_date = (end_date_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+                    large_batch_query = large_batch_query.lt('created_at', inclusive_end_date)
+                except ValueError:
+                    pass
+            
+            # Try to get a large batch with limit
+            large_batch_response = large_batch_query.limit(10000).execute()
+            if large_batch_response.data and len(large_batch_response.data) > len(submissions):
+                print(f"Alternative approach found {len(large_batch_response.data)} records vs {len(submissions)}, using larger set")
+                submissions = large_batch_response.data
+            else:
+                print(f"Alternative approach found {len(large_batch_response.data) if large_batch_response.data else 0} records, keeping original")
+                
+        except Exception as e:
+            print(f"Alternative pagination approach failed: {str(e)}")
+            print("Using original pagination results")
 
     # 4. Filter submissions based on search term (if any)
     if search_term:
@@ -1459,13 +1546,10 @@ def dataset_view():
         first_form_ids = set()
         
         # Find all first forms submitted by this patient
-        print(f"Looking for registration forms for patient: {patient_id}")
         for submission in data['submissions']:
             form_id = submission.get('form_id')
             if form_id and get_form_is_first(form_id) and submission.get('data'):
                 first_form_ids.add(form_id)
-                form_title = submission.get('forms', {}).get('title', 'Unknown')
-                print(f"Found registration form data from: {form_title} (ID: {form_id}) for patient {patient_id}")
                 # Add registration form data with priority to newer submissions
                 submission_date = submission.get('created_at', '')
                 for key, value in submission['data'].items():
@@ -1474,7 +1558,6 @@ def dataset_view():
                         registration_data[normalized_key] = value
                         if submission_date:
                             last_updated[normalized_key] = submission_date
-                        print(f"  Added registration field: {key}={value}")
 
         # Sort submissions by date (newest first) to prioritize recent data
         sorted_submissions = sorted(data['submissions'], key=lambda s: s.get('created_at', ''), reverse=True)
@@ -1483,7 +1566,6 @@ def dataset_view():
         # This ensures registration data is preserved and appears first in the data table
         for normalized_key, value in registration_data.items():
             merged_data[normalized_key] = value
-            print(f"Added registration data for patient {patient_id}: {normalized_key}={value}")
         
         # Then add data from regular submissions in this project
         for submission in sorted_submissions:
@@ -1828,13 +1910,12 @@ def export_dataset():
                         field_label_map[normalized_label] = label
                         if is_first:
                             registration_form_fields.add(normalized_label)
-                            print(f"Export: Added registration field: {label}")
     
     # Also collect fields from all registration forms in the database
     if project_id:
         print("Export: Looking for registration forms in other projects")
         registration_form_ids = []
-        all_forms_response = supabase.table('forms').select('id, title, project_id').execute()
+        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
         for form in all_forms_response.data:
             form_id = form.get('id')
             if form_id and get_form_is_first(form_id) and form.get('project_id') != project_id:
@@ -1874,7 +1955,7 @@ def export_dataset():
     all_registration_form_ids = []
     if project_id:
         print("Export: Including ALL registration forms across ALL projects")
-        all_forms_response = supabase.table('forms').select('id, title, project_id').execute()
+        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
         
         for form in all_forms_response.data:
             form_id = form.get('id')
@@ -1908,21 +1989,76 @@ def export_dataset():
         except ValueError:
              print(f"Invalid end date format: {end_date}")
     
-    response = query.execute()
-    submissions = response.data
-    print(f"Export: Initial submissions fetched: {len(submissions)}")
+    # Fetch all submissions using pagination to handle large datasets
+    submissions = []
+    page_size = 1000
+    start = 0
     
-    # Try direct query if no submissions found
-    if not submissions and (form_id or project_id):
-        print("Export: No submissions found with form filters. Trying direct query.")
+    while True:
         try:
-            backup_query = supabase.table('form_submissions').select('*')
-            backup_response = backup_query.execute()
-            submissions = backup_response.data
-            print(f"Export: Direct query found {len(submissions)} submissions")
+            page_response = query.range(start, start + page_size - 1).execute()
+            page_data = page_response.data
+            
+            if not page_data:
+                print(f"Export: No more data at start={start}, stopping pagination")
+                break
+                
+            submissions.extend(page_data)
+            print(f"Export: Fetched page starting at {start}: {len(page_data)} submissions")
+            
+            # Continue fetching if we got a full page OR if we got exactly 999 (possible Supabase limit)
+            if len(page_data) < page_size and len(page_data) != 999:
+                print(f"Export: Got {len(page_data)} records (less than {page_size}), stopping pagination")
+                break
+                
+            start += page_size
+            
+            # Safety check to prevent infinite loops
+            if start > 50000:
+                print(f"Export: Reached safety limit of 50,000 records, stopping pagination")
+                break
         except Exception as e:
-            print(f"Error in backup query: {str(e)}")
-            submissions = []
+            print(f"Export: Error fetching page starting at {start}: {str(e)}")
+            break
+    
+    print(f"Export: Total submissions fetched: {len(submissions)}")
+    
+    # If we got exactly 999 records, try to fetch more directly
+    if len(submissions) == 999:
+        print("Export: Got exactly 999 records, trying alternative pagination approach...")
+        try:
+            # Try with a different approach - fetch a large batch directly
+            large_batch_query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
+            
+            if submission_form_ids:
+                large_batch_query = large_batch_query.in_('form_id', submission_form_ids)
+            elif form_id:
+                large_batch_query = large_batch_query.eq('form_id', form_id)
+            elif project_id:
+                large_batch_query = large_batch_query.eq('forms.project_id', project_id)
+                
+            # Apply date filters if present
+            if start_date:
+                large_batch_query = large_batch_query.gte('created_at', start_date)
+            if end_date:
+                try:
+                    end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                    inclusive_end_date = (end_date_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+                    large_batch_query = large_batch_query.lt('created_at', inclusive_end_date)
+                except ValueError:
+                    pass
+            
+            # Try to get a large batch with limit
+            large_batch_response = large_batch_query.limit(10000).execute()
+            if large_batch_response.data and len(large_batch_response.data) > len(submissions):
+                print(f"Export: Alternative approach found {len(large_batch_response.data)} records vs {len(submissions)}, using larger set")
+                submissions = large_batch_response.data
+            else:
+                print(f"Export: Alternative approach found {len(large_batch_response.data) if large_batch_response.data else 0} records, keeping original")
+                
+        except Exception as e:
+            print(f"Export: Alternative pagination approach failed: {str(e)}")
+            print("Export: Using original pagination results")
 
     # 4. Filter submissions based on search term (if any)
     if search_term:
@@ -2066,7 +2202,6 @@ def export_dataset():
                         registration_data[normalized_key] = value
                         if submission_date:
                             last_updated[normalized_key] = submission_date
-                        print(f"  Export: Added registration field: {key}={value}")
 
         # Sort submissions by date (newest first)
         sorted_submissions = sorted(data['submissions'], key=lambda s: s.get('created_at', ''), reverse=True)
@@ -2074,7 +2209,6 @@ def export_dataset():
         # Add registration data first
         for normalized_key, value in registration_data.items():
             merged_data[normalized_key] = value
-            print(f"Export: Added registration data for patient {patient_id}: {normalized_key}={value}")
         
         # Then add data from other submissions
         for submission in sorted_submissions:
@@ -2207,9 +2341,8 @@ def stream_submissions():
 @login_required
 def projects():
     try:
-        # Query all projects, ordering by creation date
-        response = supabase.table('projects').select('*').order('created_at', desc=True).execute()
-        projects = response.data if response.data else []
+        # Query all projects, ordering by creation date, using pagination
+        projects = fetch_all_pages(supabase.table('projects').select('*').order('created_at', desc=True), debug_name="projects_list")
         
         # Check if this is being accessed from dataset view
         is_dataset_view = request.args.get('dataset_view', 'false').lower() in ['true', '1', 'yes']
@@ -2408,7 +2541,7 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
     # Also collect fields from all registration forms in the database
     if project_id:
         registration_form_ids = []
-        all_forms_response = supabase.table('forms').select('id, title, project_id').execute()
+        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
         for form in all_forms_response.data:
             form_id = form.get('id')
             if form_id and get_form_is_first(form_id) and form.get('project_id') != project_id:
@@ -2445,7 +2578,7 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
     # Include registration forms from ALL projects
     all_registration_form_ids = []
     if project_id:
-        all_forms_response = supabase.table('forms').select('id, title, project_id').execute()
+        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
         
         for form in all_forms_response.data:
             form_id = form.get('id')
@@ -2477,8 +2610,37 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
         except ValueError:
             pass
     
-    response = query.execute()
-    submissions = response.data
+    # Fetch all submissions using pagination to handle large datasets
+    submissions = []
+    page_size = 1000
+    start = 0
+    
+    while True:
+        try:
+            page_response = query.range(start, start + page_size - 1).execute()
+            page_data = page_response.data
+            
+            if not page_data:
+                print(f"Analytics: No more data at start={start}, stopping pagination")
+                break
+                
+            submissions.extend(page_data)
+            print(f"Analytics: Fetched page starting at {start}: {len(page_data)} submissions")
+            
+            # Continue fetching if we got a full page OR if we got exactly 999 (possible Supabase limit)
+            if len(page_data) < page_size and len(page_data) != 999:
+                print(f"Analytics: Got {len(page_data)} records (less than {page_size}), stopping pagination")
+                break
+                
+            start += page_size
+            
+            # Safety check to prevent infinite loops
+            if start > 50000:
+                print(f"Analytics: Reached safety limit of 50,000 records, stopping pagination")
+                break
+        except Exception as e:
+            print(f"Analytics: Error fetching page starting at {start}: {str(e)}")
+            break
 
     # 4. Process the submissions into a patient-based dataset
     patient_data = {}
@@ -2689,9 +2851,8 @@ def analytics():
     # Get correlation fields (multiple selection)
     correlation_fields = request.args.getlist('correlation_fields[]')
     
-    # Get all projects for filter dropdown
-    projects_response = supabase.table('projects').select('*').execute()
-    all_projects = projects_response.data
+    # Get all projects for filter dropdown using pagination
+    all_projects = fetch_all_pages(supabase.table('projects').select('*'), debug_name="analytics_projects")
     
     # Get relevant forms based on project selection
     if project_id:
@@ -2699,9 +2860,8 @@ def analytics():
         forms_response = supabase.table('forms').select('*').eq('project_id', project_id).execute()
         forms = forms_response.data
     else:
-        # Get all forms if no project is selected
-        forms_response = supabase.table('forms').select('*').execute()
-        forms = forms_response.data
+        # Get all forms if no project is selected using pagination
+        forms = fetch_all_pages(supabase.table('forms').select('*'), debug_name="analytics_all_forms")
     
     # Initialize variables
     df = None
@@ -4461,11 +4621,31 @@ def get_field_values(form_id, field_name):
         # Normalized field name for comparison
         normalized_field = field_name.lower().strip().replace(' ', '_')
         
-        # Fetch submissions for this form
-        submissions_response = supabase.table('form_submissions').select('data').eq('form_id', form_id).execute()
+        # Fetch submissions for this form using pagination
+        submissions_data = []
+        page_size = 1000
+        start = 0
         
-        if submissions_response.data:
-            for submission in submissions_response.data:
+        while True:
+            try:
+                page_response = supabase.table('form_submissions').select('data').eq('form_id', form_id).range(start, start + page_size - 1).execute()
+                page_data = page_response.data
+                
+                if not page_data:
+                    break
+                    
+                submissions_data.extend(page_data)
+                
+                if len(page_data) < page_size:
+                    break
+                    
+                start += page_size
+            except Exception as e:
+                print(f"Field values: Error fetching submissions page starting at {start}: {str(e)}")
+                break
+        
+        if submissions_data:
+            for submission in submissions_data:
                 if submission.get('data'):
                     # Look through normalized field names to find a match
                     for key, value in submission['data'].items():
@@ -4521,13 +4701,50 @@ def form_waitlist(form_id):
         form_indices = {f['id']: idx for idx, f in enumerate(project_forms)}
         current_form_index = form_indices.get(form_id, 0)
         
-        # Get all patients
-        patients_response = supabase.table('patients').select('*').execute()
-        patients = patients_response.data
+        # Get all patients using pagination
+        patients = []
+        page_size = 1000
+        start = 0
         
-        # Get all submissions for tracking completed forms
-        submissions_response = supabase.table('form_submissions').select('form_id, patient_id').execute()
-        submissions = submissions_response.data
+        while True:
+            try:
+                page_response = supabase.table('patients').select('*').range(start, start + page_size - 1).execute()
+                page_data = page_response.data
+                
+                if not page_data:
+                    break
+                    
+                patients.extend(page_data)
+                
+                if len(page_data) < page_size:
+                    break
+                    
+                start += page_size
+            except Exception as e:
+                print(f"Waitlist: Error fetching patients page starting at {start}: {str(e)}")
+                break
+        
+        # Get all submissions for tracking completed forms using pagination
+        submissions = []
+        start = 0
+        
+        while True:
+            try:
+                page_response = supabase.table('form_submissions').select('form_id, patient_id').range(start, start + page_size - 1).execute()
+                page_data = page_response.data
+                
+                if not page_data:
+                    break
+                    
+                submissions.extend(page_data)
+                
+                if len(page_data) < page_size:
+                    break
+                    
+                start += page_size
+            except Exception as e:
+                print(f"Waitlist: Error fetching submissions page starting at {start}: {str(e)}")
+                break
         
         # Create a set of (patient_id, form_id) tuples for quick lookup
         completed_forms = set([(sub['patient_id'], sub['form_id']) for sub in submissions])
