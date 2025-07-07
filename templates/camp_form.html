@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - CAMP{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1 class="display-5 fw-bold mb-3" style="color: var(--primary-color);">
+                    <i class="fas fa-mountain me-2" style="color: var(--gold-color);"></i>{{ title }}
+                </h1>
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('camps_list') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>Back to Camps
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camp Form -->
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow">
+                <div class="card-header py-3" style="background-color: var(--primary-color); color: white;">
+                    <h5 class="mb-0">
+                        <i class="fas fa-edit me-2" style="color: var(--gold-color);"></i>{{ title }}
+                    </h5>
+                </div>
+                <div class="card-body p-4">
+                    <form method="POST" novalidate>
+                        <div class="row">
+                            <!-- Camp Name -->
+                            <div class="col-md-12 mb-3">
+                                <label for="name" class="form-label required">
+                                    <i class="fas fa-mountain me-1"></i>Camp Name
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="name" 
+                                       name="name" 
+                                       value="{{ camp.name if camp else (name if name is defined else '') }}" 
+                                       required
+                                       placeholder="Enter camp name (e.g., KILINDI CAMP 1)">
+                                <div class="form-text">
+                                    Provide a clear, descriptive name for the camp
+                                </div>
+                            </div>
+
+                            <!-- Location -->
+                            <div class="col-md-12 mb-3">
+                                <label for="location" class="form-label required">
+                                    <i class="fas fa-map-marker-alt me-1"></i>Location
+                                </label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="location" 
+                                       name="location" 
+                                       value="{{ camp.location if camp else (location if location is defined else '') }}" 
+                                       required
+                                       placeholder="Enter camp location (e.g., KILINDI)">
+                                <div class="form-text">
+                                    Specify the geographic location where the camp will be held
+                                </div>
+                            </div>
+
+                            <!-- Date Range -->
+                            <div class="col-md-6 mb-3">
+                                <label for="start_date" class="form-label required">
+                                    <i class="fas fa-calendar-alt me-1"></i>Start Date
+                                </label>
+                                <input type="date" 
+                                       class="form-control" 
+                                       id="start_date" 
+                                       name="start_date" 
+                                       value="{{ camp.start_date if camp else (start_date if start_date is defined else '') }}" 
+                                       required>
+                                <div class="form-text">
+                                    Select the camp start date
+                                </div>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="end_date" class="form-label required">
+                                    <i class="fas fa-calendar-check me-1"></i>End Date
+                                </label>
+                                <input type="date" 
+                                       class="form-control" 
+                                       id="end_date" 
+                                       name="end_date" 
+                                       value="{{ camp.end_date if camp else (end_date if end_date is defined else '') }}" 
+                                       required>
+                                <div class="form-text">
+                                    Select the camp end date
+                                </div>
+                            </div>
+
+                            <!-- Description -->
+                            <div class="col-md-12 mb-4">
+                                <label for="description" class="form-label">
+                                    <i class="fas fa-file-text me-1"></i>Description
+                                    <span class="text-muted">(Optional)</span>
+                                </label>
+                                <textarea class="form-control" 
+                                          id="description" 
+                                          name="description" 
+                                          rows="4" 
+                                          placeholder="Enter camp description (optional)">{{ camp.description if camp else (description if description is defined else '') }}</textarea>
+                                <div class="form-text">
+                                    Provide additional details about the camp (optional)
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Form Actions -->
+                        <div class="d-flex justify-content-between">
+                            <div>
+                                <span class="text-muted">
+                                    <i class="fas fa-info-circle me-1"></i>
+                                    Fields marked with <span class="text-danger">*</span> are required
+                                </span>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <a href="{{ url_for('camps_list') }}" class="btn btn-secondary">
+                                    <i class="fas fa-times me-2"></i>Cancel
+                                </a>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save me-2"></i>
+                                    {% if camp %}Update Camp{% else %}Create Camp{% endif %}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- Camp Information (for editing) -->
+                    {% if camp %}
+                    <hr class="my-4">
+                    <div class="row">
+                        <div class="col-12">
+                            <h6 class="text-muted mb-3">
+                                <i class="fas fa-info-circle me-1"></i>Camp Information
+                            </h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <small class="text-muted">Created:</small><br>
+                                    <span>{{ camp.created_at|to_eat if camp.created_at else 'N/A' }}</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <small class="text-muted">Created By:</small><br>
+                                    <span>{{ camp.users.username if camp.users and camp.users.username else 'Unknown' }}</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <small class="text-muted">Camp ID:</small><br>
+                                    <code class="small">{{ camp.id }}</code>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Form Validation Script -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    const startDateInput = document.getElementById('start_date');
+    const endDateInput = document.getElementById('end_date');
+    
+    // Add required indicator to labels
+    document.querySelectorAll('label.required').forEach(label => {
+        if (!label.querySelector('.text-danger')) {
+            label.innerHTML += ' <span class="text-danger">*</span>';
+        }
+    });
+    
+    // Date validation
+    function validateDates() {
+        const startDate = startDateInput.value;
+        const endDate = endDateInput.value;
+        
+        if (startDate && endDate) {
+            if (startDate > endDate) {
+                endDateInput.setCustomValidity('End date must be after or equal to start date');
+                endDateInput.classList.add('is-invalid');
+                return false;
+            } else {
+                endDateInput.setCustomValidity('');
+                endDateInput.classList.remove('is-invalid');
+                return true;
+            }
+        }
+        return true;
+    }
+    
+    // Add event listeners for date validation
+    startDateInput.addEventListener('change', validateDates);
+    endDateInput.addEventListener('change', validateDates);
+    
+    // Form submission validation
+    form.addEventListener('submit', function(e) {
+        let isValid = true;
+        
+        // Remove previous validation classes
+        form.querySelectorAll('.form-control').forEach(input => {
+            input.classList.remove('is-invalid', 'is-valid');
+        });
+        
+        // Check required fields
+        form.querySelectorAll('input[required], textarea[required]').forEach(input => {
+            if (!input.value.trim()) {
+                input.classList.add('is-invalid');
+                isValid = false;
+            } else {
+                input.classList.add('is-valid');
+            }
+        });
+        
+        // Validate dates
+        if (!validateDates()) {
+            isValid = false;
+        }
+        
+        if (!isValid) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Show error message
+            const firstInvalidField = form.querySelector('.is-invalid');
+            if (firstInvalidField) {
+                firstInvalidField.focus();
+                firstInvalidField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    });
+    
+    // Auto-set end date when start date is selected (helpful UX)
+    startDateInput.addEventListener('change', function() {
+        if (this.value && !endDateInput.value) {
+            // Set end date to same as start date by default
+            endDateInput.value = this.value;
+        }
+    });
+});
+</script>
+
+<!-- Custom CSS for form styling -->
+<style>
+.required::after {
+    content: ' *';
+    color: #dc3545;
+}
+
+.form-control.is-invalid {
+    border-color: #dc3545;
+    padding-right: calc(1.5em + 0.75rem);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23dc3545' viewBox='0 0 12 12'%3e%3ccircle cx='6' cy='6' r='4.5'/%3e%3cpath d='m5.8 3.6h.4L6 6.5z'/%3e%3ccircle cx='6' cy='8.2' r='.6' fill='%23dc3545' stroke='none'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right calc(0.375em + 0.1875rem) center;
+    background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
+}
+
+.form-control.is-valid {
+    border-color: #198754;
+    padding-right: calc(1.5em + 0.75rem);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3e%3cpath fill='%23198754' d='m2.3 6.73.79-.79L4.25 7.1l2.96-2.96.79.79L4.25 8.34z'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right calc(0.375em + 0.1875rem) center;
+    background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
+}
+</style>
+{% endblock %} 

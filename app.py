@@ -454,10 +454,17 @@ def admin_dashboard():
     # Get all projects using pagination
     projects = fetch_all_pages(supabase.table('projects').select('*'), debug_name="admin_dashboard_projects")
     
+    # Get recent camps for the camps management section
+    recent_camps = fetch_all_pages(
+        supabase.table('camps').select('*').order('created_at', desc=True).limit(5),
+        debug_name="admin_dashboard_recent_camps"
+    )
+    
     return render_template('admin_dashboard.html', 
                          pending_users=pending_users,
                          all_users=all_users,
-                         projects=projects)
+                         projects=projects,
+                         recent_camps=recent_camps)
 
 @app.route('/admin/approve_user/<user_id>', methods=['POST'])
 @login_required
@@ -1156,7 +1163,22 @@ def dataset_view():
     field_value = request.args.get('field_value')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    camp_id = request.args.get('camp_id')
     search_term = request.args.get('search', '').strip()  # Get search term
+    
+    # Handle camp filtering - if camp_id is provided, override start_date and end_date
+    selected_camp = None
+    if camp_id:
+        try:
+            camp_response = supabase.table('camps').select('*').eq('id', camp_id).execute()
+            if camp_response.data:
+                selected_camp = camp_response.data[0]
+                start_date = selected_camp['start_date']
+                end_date = selected_camp['end_date']
+                print(f"Using camp '{selected_camp['name']}' dates: {start_date} to {end_date}")
+        except Exception as e:
+            print(f"Error fetching camp details: {str(e)}")
+            # If camp lookup fails, continue with original dates
     
     # If no project_id is provided, redirect to program list
     if not project_id:
@@ -1166,7 +1188,9 @@ def dataset_view():
     log_details = f"Filters - Project: {project_id or 'All'}, Form: {form_id or 'All'}"
     if field_name and field_value:
         log_details += f", Field: {field_name}={field_value}"
-    if start_date or end_date:
+    if camp_id and selected_camp:
+        log_details += f", Camp: {selected_camp['name']}"
+    elif start_date or end_date:
         log_details += f", Date range: {start_date or 'start'} to {end_date or 'end'}"
     if search_term: # Log search term
         log_details += f", Search: '{search_term}'"
@@ -1671,6 +1695,12 @@ def dataset_view():
     projects_response = supabase.table('projects').select('*').execute()
     all_projects = projects_response.data
     
+    # Get all camps for filter dropdown
+    camps_data = fetch_all_pages(
+        supabase.table('camps').select('*').order('start_date', desc=True),
+        debug_name="camps_for_dataset_filter"
+    )
+    
     # Get the selected project name if a project is selected
     selected_project_name = None
     if project_id:
@@ -1764,12 +1794,15 @@ def dataset_view():
                          all_fields_for_filter=fields_for_filter,  # Add this missing parameter
                          projects=all_projects,
                          forms=filter_forms, # Use all forms for the filter dropdown
+                         camps=camps_data,  # Add camps for filter dropdown
                          field_values=sorted(list(field_values)),
                          selected_project=project_id,
                          selected_project_name=selected_project_name,  # Add this parameter
                          selected_form=form_id,
                          selected_field=field_name,
                          selected_value=field_value,
+                         selected_camp=camp_id,
+                         selected_camp_name=selected_camp['name'] if selected_camp else None,
                          start_date=start_date,
                          end_date=end_date,
                          search_term=search_term,
@@ -1964,7 +1997,22 @@ def export_dataset():
     field_value = request.args.get('field_value')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    camp_id = request.args.get('camp_id')
     search_term = request.args.get('search', '').strip()
+    
+    # Handle camp filtering - if camp_id is provided, override start_date and end_date
+    selected_camp = None
+    if camp_id:
+        try:
+            camp_response = supabase.table('camps').select('*').eq('id', camp_id).execute()
+            if camp_response.data:
+                selected_camp = camp_response.data[0]
+                start_date = selected_camp['start_date']
+                end_date = selected_camp['end_date']
+                print(f"Export: Using camp '{selected_camp['name']}' dates: {start_date} to {end_date}")
+        except Exception as e:
+            print(f"Export: Error fetching camp details: {str(e)}")
+            # If camp lookup fails, continue with original dates
     
     print(f"Export dataset called with project_id: {project_id}, form_id: {form_id}, search: {search_term}")
     
@@ -1972,7 +2020,9 @@ def export_dataset():
     log_details = f"Filters - Project: {project_id or 'All'}, Form: {form_id or 'All'}"
     if field_name and field_value:
         log_details += f", Field: {field_name}={field_value}"
-    if start_date or end_date:
+    if camp_id and selected_camp:
+        log_details += f", Camp: {selected_camp['name']}"
+    elif start_date or end_date:
         log_details += f", Date range: {start_date or 'start'} to {end_date or 'end'}"
     if search_term:
         log_details += f", Search: '{search_term}'"
@@ -2963,9 +3013,24 @@ def analytics():
     form_id = request.args.get('form_id')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    camp_id = request.args.get('camp_id')
     analysis_type = request.args.get('analysis_type')
     field1 = request.args.get('field1')
     field2 = request.args.get('field2')
+    
+    # Handle camp filtering - if camp_id is provided, override start_date and end_date
+    selected_camp = None
+    if camp_id:
+        try:
+            camp_response = supabase.table('camps').select('*').eq('id', camp_id).execute()
+            if camp_response.data:
+                selected_camp = camp_response.data[0]
+                start_date = selected_camp['start_date']
+                end_date = selected_camp['end_date']
+                print(f"Analytics: Using camp '{selected_camp['name']}' dates: {start_date} to {end_date}")
+        except Exception as e:
+            print(f"Analytics: Error fetching camp details: {str(e)}")
+            # If camp lookup fails, continue with original dates
     
     # Get correlation fields (multiple selection)
     correlation_fields = request.args.getlist('correlation_fields[]')
@@ -3772,13 +3837,22 @@ def analytics():
                             stats += "<h5>Strongest Correlations:</h5>"
                             stats += strong_corr_df.to_html(classes='table table-striped table-hover', index=False)
     
+    # Get all camps for filter dropdown
+    camps_data = fetch_all_pages(
+        supabase.table('camps').select('*').order('start_date', desc=True),
+        debug_name="camps_for_analytics_filter"
+    )
+    
     # Render the template with all data
     return render_template('analytics.html',
                           title=title if title else 'Analytics',
                           all_projects=all_projects,
                           forms=forms,
+                          camps=camps_data,
                           selected_project=project_id,
                           selected_form=form_id,
+                          selected_camp=camp_id,
+                          selected_camp_name=selected_camp['name'] if selected_camp else None,
                           start_date=start_date,
                           end_date=end_date,
                           fields=all_fields,
@@ -3803,16 +3877,35 @@ def export_analytics():
     form_id = request.args.get('form_id')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    camp_id = request.args.get('camp_id')
     analysis_type = request.args.get('analysis_type')
     field1 = request.args.get('field1')
     field2 = request.args.get('field2')
     export_format = request.args.get('format', 'excel')  # Default to excel
+    
+    # Handle camp filtering - if camp_id is provided, override start_date and end_date
+    selected_camp = None
+    if camp_id:
+        try:
+            camp_response = supabase.table('camps').select('*').eq('id', camp_id).execute()
+            if camp_response.data:
+                selected_camp = camp_response.data[0]
+                start_date = selected_camp['start_date']
+                end_date = selected_camp['end_date']
+                print(f"Export Analytics: Using camp '{selected_camp['name']}' dates: {start_date} to {end_date}")
+        except Exception as e:
+            print(f"Export Analytics: Error fetching camp details: {str(e)}")
+            # If camp lookup fails, continue with original dates
     
     # Get correlation fields (multiple selection)
     correlation_fields = request.args.getlist('correlation_fields[]')
     
     # Log export action
     log_details = f"Export Analytics - Project: {project_id or 'All'}, Form: {form_id or 'All'}, Analysis: {analysis_type}"
+    if camp_id and selected_camp:
+        log_details += f", Camp: {selected_camp['name']}"
+    elif start_date or end_date:
+        log_details += f", Date range: {start_date or 'start'} to {end_date or 'end'}"
     log_activity('generate', 'analytics_export', None, log_details)
     
     # Require project_id
@@ -4866,12 +4959,25 @@ def form_waitlist(form_id):
     This endpoint returns patients who:
     1. Have not yet completed the current form
     2. For forms beyond the first, have completed the previous form
+    3. Were created today (in East African Time)
     
     Returns:
         JSON: List of patient records with eligibility status
     """
     try:
         print(f"Fetching waitlist for form: {form_id}")
+        
+        # Calculate today's date range in East African Time (GMT+3)
+        now_eat = datetime.now(EAT)
+        today_start = now_eat.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = now_eat.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # Convert to UTC for database query (Supabase stores timestamps in UTC)
+        today_start_utc = today_start.astimezone(timezone.utc)
+        today_end_utc = today_end.astimezone(timezone.utc)
+        
+        print(f"Filtering patients created today in EAT: {today_start.strftime('%Y-%m-%d %H:%M:%S')} to {today_end.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"UTC range for database query: {today_start_utc.isoformat()} to {today_end_utc.isoformat()}")
         
         # Get form details
         form_response = supabase.table('forms').select('*').eq('id', form_id).execute()
@@ -4895,14 +5001,20 @@ def form_waitlist(form_id):
         form_indices = {f['id']: idx for idx, f in enumerate(project_forms)}
         current_form_index = form_indices.get(form_id, 0)
         
-        # Get all patients using pagination
+        # Get patients created today using pagination with date filtering
         patients = []
         page_size = 1000
         start = 0
         
         while True:
             try:
-                page_response = supabase.table('patients').select('*').range(start, start + page_size - 1).execute()
+                # Filter patients to only those created today in EAT
+                page_response = supabase.table('patients')\
+                    .select('*')\
+                    .gte('created_at', today_start_utc.isoformat())\
+                    .lte('created_at', today_end_utc.isoformat())\
+                    .range(start, start + page_size - 1)\
+                    .execute()
                 page_data = page_response.data
                 
                 if not page_data:
@@ -5079,10 +5191,27 @@ def admin_statistics():
     # Get date range parameters
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    camp_id = request.args.get('camp_id')
+    
+    # Handle camp filtering - if camp_id is provided, override start_date and end_date
+    selected_camp = None
+    if camp_id:
+        try:
+            camp_response = supabase.table('camps').select('*').eq('id', camp_id).execute()
+            if camp_response.data:
+                selected_camp = camp_response.data[0]
+                start_date = selected_camp['start_date']
+                end_date = selected_camp['end_date']
+                print(f"Statistics: Using camp '{selected_camp['name']}' dates: {start_date} to {end_date}")
+        except Exception as e:
+            print(f"Statistics: Error fetching camp details: {str(e)}")
+            # If camp lookup fails, continue with original dates
     
     # Log access
     log_details = "Viewed statistics dashboard"
-    if start_date or end_date:
+    if camp_id and selected_camp:
+        log_details += f" - Camp: {selected_camp['name']}"
+    elif start_date or end_date:
         log_details += f" - Date range: {start_date or 'start'} to {end_date or 'end'}"
     log_activity('view', 'statistics', None, log_details)
     
@@ -5196,6 +5325,12 @@ def admin_statistics():
     print(f"  - Attendance Rate: {attendance_rate:.1f}%")
     print(f"  - Registration Rate: {registration_rate:.1f}%")
     
+    # Get all camps for filter dropdown
+    camps_data = fetch_all_pages(
+        supabase.table('camps').select('*').order('start_date', desc=True),
+        debug_name="camps_for_statistics_filter"
+    )
+    
     return render_template('admin_statistics.html',
                          total_patient_ids_created=total_patient_ids_created,
                          total_registered_patients=total_registered_patients,
@@ -5203,8 +5338,283 @@ def admin_statistics():
                          difference=difference,
                          attendance_rate=attendance_rate,
                          registration_rate=registration_rate,
+                         camps=camps_data,
+                         selected_camp=camp_id,
+                         selected_camp_name=selected_camp['name'] if selected_camp else None,
                          start_date=start_date,
                          end_date=end_date)
+
+# =======================
+# CAMP MANAGEMENT ROUTES
+# =======================
+
+@app.route('/admin/camps')
+@login_required
+def camps_list():
+    """List all camps (admin only)"""
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('index'))
+    
+    # Log access
+    log_activity('view', 'camps', None, 'Viewed camps list')
+    
+    try:
+        # Get all camps ordered by start_date
+        camps_data = fetch_all_pages(
+            supabase.table('camps').select('*, users(username)').order('start_date', desc=True),
+            debug_name="camps_list"
+        )
+        
+        print(f"Found {len(camps_data)} camps")
+        
+        return render_template('camps_list.html', camps=camps_data)
+        
+    except Exception as e:
+        print(f"Error fetching camps: {str(e)}")
+        flash(f'Error loading camps: {str(e)}', 'error')
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/camps/new', methods=['GET', 'POST'])
+@login_required
+def create_camp():
+    """Create a new camp (admin only)"""
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        try:
+            # Get form data
+            name = request.form.get('name', '').strip()
+            start_date = request.form.get('start_date', '').strip()
+            end_date = request.form.get('end_date', '').strip()
+            location = request.form.get('location', '').strip()
+            description = request.form.get('description', '').strip()
+            
+            # Validate required fields
+            if not name:
+                flash('Camp name is required.', 'error')
+                return render_template('camp_form.html', 
+                                     title='Create New Camp',
+                                     name=name, start_date=start_date, end_date=end_date,
+                                     location=location, description=description)
+            
+            if not start_date:
+                flash('Start date is required.', 'error')
+                return render_template('camp_form.html', 
+                                     title='Create New Camp',
+                                     name=name, start_date=start_date, end_date=end_date,
+                                     location=location, description=description)
+            
+            if not end_date:
+                flash('End date is required.', 'error')
+                return render_template('camp_form.html', 
+                                     title='Create New Camp',
+                                     name=name, start_date=start_date, end_date=end_date,
+                                     location=location, description=description)
+            
+            if not location:
+                flash('Location is required.', 'error')
+                return render_template('camp_form.html', 
+                                     title='Create New Camp',
+                                     name=name, start_date=start_date, end_date=end_date,
+                                     location=location, description=description)
+            
+            # Validate date order
+            try:
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                if start_dt > end_dt:
+                    flash('Start date must be before or equal to end date.', 'error')
+                    return render_template('camp_form.html', 
+                                         title='Create New Camp',
+                                         name=name, start_date=start_date, end_date=end_date,
+                                         location=location, description=description)
+            except ValueError:
+                flash('Invalid date format. Please use YYYY-MM-DD format.', 'error')
+                return render_template('camp_form.html', 
+                                     title='Create New Camp',
+                                     name=name, start_date=start_date, end_date=end_date,
+                                     location=location, description=description)
+            
+            # Create camp record
+            camp_id = str(uuid.uuid4())
+            camp_data = {
+                'id': camp_id,
+                'name': name,
+                'start_date': start_date,
+                'end_date': end_date,
+                'location': location,
+                'description': description if description else None,
+                'created_by': current_user.id
+            }
+            
+            # Insert into database
+            response = supabase.table('camps').insert(camp_data).execute()
+            
+            if response.data:
+                log_activity('create', 'camp', camp_id, f'Created camp: {name}')
+                flash(f'Camp "{name}" created successfully!', 'success')
+                return redirect(url_for('camps_list'))
+            else:
+                flash('Failed to create camp. Please try again.', 'error')
+                
+        except Exception as e:
+            print(f"Error creating camp: {str(e)}")
+            flash(f'Error creating camp: {str(e)}', 'error')
+    
+    # GET request - show form
+    return render_template('camp_form.html', title='Create New Camp')
+
+@app.route('/admin/camps/edit/<camp_id>', methods=['GET', 'POST'])
+@login_required
+def edit_camp(camp_id):
+    """Edit an existing camp (admin only)"""
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('index'))
+    
+    try:
+        # Get camp details
+        camp_response = supabase.table('camps').select('*').eq('id', camp_id).execute()
+        if not camp_response.data:
+            flash('Camp not found.', 'error')
+            return redirect(url_for('camps_list'))
+        
+        camp = camp_response.data[0]
+        
+        if request.method == 'POST':
+            # Get form data
+            name = request.form.get('name', '').strip()
+            start_date = request.form.get('start_date', '').strip()
+            end_date = request.form.get('end_date', '').strip()
+            location = request.form.get('location', '').strip()
+            description = request.form.get('description', '').strip()
+            
+            # Validate required fields
+            if not name:
+                flash('Camp name is required.', 'error')
+                return render_template('camp_form.html', 
+                                     title='Edit Camp', camp=camp,
+                                     name=name, start_date=start_date, end_date=end_date,
+                                     location=location, description=description)
+            
+            if not start_date:
+                flash('Start date is required.', 'error')
+                return render_template('camp_form.html', 
+                                     title='Edit Camp', camp=camp,
+                                     name=name, start_date=start_date, end_date=end_date,
+                                     location=location, description=description)
+            
+            if not end_date:
+                flash('End date is required.', 'error')
+                return render_template('camp_form.html', 
+                                     title='Edit Camp', camp=camp,
+                                     name=name, start_date=start_date, end_date=end_date,
+                                     location=location, description=description)
+            
+            if not location:
+                flash('Location is required.', 'error')
+                return render_template('camp_form.html', 
+                                     title='Edit Camp', camp=camp,
+                                     name=name, start_date=start_date, end_date=end_date,
+                                     location=location, description=description)
+            
+            # Validate date order
+            try:
+                start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                if start_dt > end_dt:
+                    flash('Start date must be before or equal to end date.', 'error')
+                    return render_template('camp_form.html', 
+                                         title='Edit Camp', camp=camp,
+                                         name=name, start_date=start_date, end_date=end_date,
+                                         location=location, description=description)
+            except ValueError:
+                flash('Invalid date format. Please use YYYY-MM-DD format.', 'error')
+                return render_template('camp_form.html', 
+                                     title='Edit Camp', camp=camp,
+                                     name=name, start_date=start_date, end_date=end_date,
+                                     location=location, description=description)
+            
+            # Update camp record
+            update_data = {
+                'name': name,
+                'start_date': start_date,
+                'end_date': end_date,
+                'location': location,
+                'description': description if description else None
+            }
+            
+            # Update in database
+            response = supabase.table('camps').update(update_data).eq('id', camp_id).execute()
+            
+            if response.data:
+                log_activity('update', 'camp', camp_id, f'Updated camp: {name}')
+                flash(f'Camp "{name}" updated successfully!', 'success')
+                return redirect(url_for('camps_list'))
+            else:
+                flash('Failed to update camp. Please try again.', 'error')
+        
+        # GET request - show form with current data
+        return render_template('camp_form.html', title='Edit Camp', camp=camp)
+        
+    except Exception as e:
+        print(f"Error editing camp: {str(e)}")
+        flash(f'Error editing camp: {str(e)}', 'error')
+        return redirect(url_for('camps_list'))
+
+@app.route('/admin/camps/delete/<camp_id>', methods=['POST'])
+@login_required
+def delete_camp(camp_id):
+    """Delete a camp (admin only)"""
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('index'))
+    
+    try:
+        # Get camp details first for logging
+        camp_response = supabase.table('camps').select('name').eq('id', camp_id).execute()
+        camp_name = camp_response.data[0]['name'] if camp_response.data else 'Unknown'
+        
+        # Delete the camp
+        response = supabase.table('camps').delete().eq('id', camp_id).execute()
+        
+        if response.data:
+            log_activity('delete', 'camp', camp_id, f'Deleted camp: {camp_name}')
+            flash(f'Camp "{camp_name}" deleted successfully!', 'success')
+        else:
+            flash('Failed to delete camp. Please try again.', 'error')
+            
+    except Exception as e:
+        print(f"Error deleting camp: {str(e)}")
+        flash(f'Error deleting camp: {str(e)}', 'error')
+    
+    return redirect(url_for('camps_list'))
+
+@app.route('/api/camps')
+@login_required
+def get_camps_api():
+    """API endpoint to get all camps for use in filter dropdowns"""
+    try:
+        # Get all camps ordered by start_date
+        camps_data = fetch_all_pages(
+            supabase.table('camps').select('id, name, start_date, end_date, location').order('start_date', desc=True),
+            debug_name="camps_api"
+        )
+        
+        return jsonify({
+            'success': True,
+            'camps': camps_data
+        })
+        
+    except Exception as e:
+        print(f"Error fetching camps API: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 # Correctly indented start of the main execution block
 if __name__ == '__main__':

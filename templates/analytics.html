@@ -82,15 +82,36 @@
                                             {% endfor %}
                                         </select>
                                     </div>
+                                    <div class="col-md-12">
+                                        <label for="camp_filter" class="form-label">
+                                            <i class="fas fa-mountain me-1"></i>Camp
+                                        </label>
+                                        <select class="form-select" id="camp_filter" name="camp_id" onchange="handleCampSelection()">
+                                            <option value="">Select a Camp...</option>
+                                            {% for camp in camps %}
+                                            <option value="{{ camp.id }}" 
+                                                    data-start="{{ camp.start_date }}" 
+                                                    data-end="{{ camp.end_date }}"
+                                                    {% if selected_camp == camp.id %}selected{% endif %}>
+                                                {{ camp.name }} ({{ camp.start_date }} to {{ camp.end_date }})
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                        {% if selected_camp_name %}
+                                        <div class="form-text">
+                                            Currently filtering by <strong>{{ selected_camp_name }}</strong> dates
+                                        </div>
+                                        {% endif %}
+                                    </div>
                                     <div class="col-md-6">
                                         <label for="start_date" class="form-label">Start Date</label>
                                         <input type="date" class="form-control" id="start_date" name="start_date" 
-                                            value="{{ start_date if start_date else '' }}">
+                                            value="{{ start_date if not selected_camp else '' }}">
                                     </div>
                                     <div class="col-md-6">
                                         <label for="end_date" class="form-label">End Date</label>
                                         <input type="date" class="form-control" id="end_date" name="end_date"
-                                            value="{{ end_date if end_date else '' }}">
+                                            value="{{ end_date if not selected_camp else '' }}">
                                     </div>
                                 </div>
                             </div>
@@ -179,12 +200,12 @@
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li>
-                                    <a class="dropdown-item" href="{{ url_for('export_analytics', project_id=selected_project, form_id=selected_form, start_date=start_date, end_date=end_date, analysis_type=selected_analysis, field1=selected_field1, field2=selected_field2, format='excel') }}">
+                                    <a class="dropdown-item" href="{{ url_for('export_analytics', project_id=selected_project, form_id=selected_form, camp_id=selected_camp, start_date=start_date, end_date=end_date, analysis_type=selected_analysis, field1=selected_field1, field2=selected_field2, format='excel') }}">
                                         <i class="fas fa-file-excel me-2"></i>Excel (.xlsx)
                                     </a>
                                 </li>
                                 <li>
-                                    <a class="dropdown-item" href="{{ url_for('export_analytics', project_id=selected_project, form_id=selected_form, start_date=start_date, end_date=end_date, analysis_type=selected_analysis, field1=selected_field1, field2=selected_field2, format='csv') }}">
+                                    <a class="dropdown-item" href="{{ url_for('export_analytics', project_id=selected_project, form_id=selected_form, camp_id=selected_camp, start_date=start_date, end_date=end_date, analysis_type=selected_analysis, field1=selected_field1, field2=selected_field2, format='csv') }}">
                                         <i class="fas fa-file-csv me-2"></i>CSV (.csv)
                                     </a>
                                 </li>
@@ -266,6 +287,49 @@
         
         // Initialize visibility
         updateFieldVisibility();
+    });
+    
+    // Handle camp selection and auto-populate dates
+    function handleCampSelection() {
+        const campSelect = document.getElementById('camp_filter');
+        const startDateInput = document.getElementById('start_date');
+        const endDateInput = document.getElementById('end_date');
+        
+        if (campSelect.value) {
+            // Get selected option
+            const selectedOption = campSelect.options[campSelect.selectedIndex];
+            const startDate = selectedOption.getAttribute('data-start');
+            const endDate = selectedOption.getAttribute('data-end');
+            
+            // Clear manual date inputs and disable them
+            startDateInput.value = '';
+            endDateInput.value = '';
+            startDateInput.disabled = true;
+            endDateInput.disabled = true;
+            
+            // Add visual indication
+            startDateInput.classList.add('bg-light');
+            endDateInput.classList.add('bg-light');
+            
+            console.log('Analytics: Camp selected:', selectedOption.text, 'Dates:', startDate, 'to', endDate);
+        } else {
+            // Enable manual date inputs
+            startDateInput.disabled = false;
+            endDateInput.disabled = false;
+            
+            // Remove visual indication
+            startDateInput.classList.remove('bg-light');
+            endDateInput.classList.remove('bg-light');
+            
+            // Restore original values if they exist
+            startDateInput.value = '{{ start_date if not selected_camp else "" }}';
+            endDateInput.value = '{{ end_date if not selected_camp else "" }}';
+        }
+    }
+    
+    // Initialize camp selection on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        handleCampSelection();
     });
 </script>
 {% endblock %} 

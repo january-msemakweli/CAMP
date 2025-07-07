@@ -107,7 +107,7 @@
                         <i class="fas fa-filter me-2"></i><span class="d-none d-sm-inline">Filter Data</span>
                     </button>
                     {% if current_user.is_admin %}
-                    <a href="{{ url_for('export_dataset', project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, start_date=start_date, end_date=end_date, search=search_term) }}" class="btn btn-success" title="Export all {{ total_patients }} patients">
+                    <a href="{{ url_for('export_dataset', project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, camp_id=selected_camp, start_date=start_date, end_date=end_date, search=search_term) }}" class="btn btn-success" title="Export all {{ total_patients }} patients">
                         <i class="fas fa-file-excel me-2"></i><span class="d-none d-sm-inline">Export Dataset</span>
                     </a>
                     {% else %}
@@ -160,6 +160,7 @@
             <input type="hidden" name="form_id" value="{{ selected_form or '' }}">
             <input type="hidden" name="field_name" value="{{ selected_field or '' }}">
             <input type="hidden" name="field_value" value="{{ selected_value or '' }}">
+            <input type="hidden" name="camp_id" value="{{ selected_camp or '' }}">
             <input type="hidden" name="start_date" value="{{ start_date or '' }}">
             <input type="hidden" name="end_date" value="{{ end_date or '' }}">
             <input type="hidden" name="page" value="1"> <!-- Reset to page 1 on search -->
@@ -245,11 +246,32 @@
                             </datalist>
                         </div>
                         <div class="mb-3">
-                            <label for="dateRange" class="form-label">Patient Creation Date Range</label>
+                            <label for="campFilter" class="form-label">
+                                <i class="fas fa-mountain me-1"></i>Camp
+                            </label>
+                            <select class="form-select" id="campFilter" name="camp_id" onchange="handleCampSelection()">
+                                <option value="">Select a Camp...</option>
+                                {% for camp in camps %}
+                                <option value="{{ camp.id }}" 
+                                        data-start="{{ camp.start_date }}" 
+                                        data-end="{{ camp.end_date }}"
+                                        {% if selected_camp == camp.id %}selected{% endif %}>
+                                    {{ camp.name }} ({{ camp.start_date }} to {{ camp.end_date }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                            {% if selected_camp_name %}
+                            <div class="form-text">
+                                Currently filtering by <strong>{{ selected_camp_name }}</strong> dates
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <label for="dateRange" class="form-label">Date Range</label>
                             <div class="input-group">
-                                <input type="date" class="form-control" name="start_date" value="{{ start_date }}" title="Start date" placeholder="Start date">
+                                <input type="date" class="form-control" id="startDate" name="start_date" value="{{ start_date if not selected_camp else '' }}" title="Start date" placeholder="Start date">
                                 <span class="input-group-text">to</span>
-                                <input type="date" class="form-control" name="end_date" value="{{ end_date }}" title="End date" placeholder="End date">
+                                <input type="date" class="form-control" id="endDate" name="end_date" value="{{ end_date if not selected_camp else '' }}" title="End date" placeholder="End date">
                             </div>
                         </div>
                     </div>
@@ -320,7 +342,7 @@
                 <!-- Previous Page -->
                 {% if has_prev %}
                 <li class="page-item">
-                    <a class="page-link" href="{{ url_for('dataset_view', page=prev_num, project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, start_date=start_date, end_date=end_date, search=search_term) }}" aria-label="Previous">
+                    <a class="page-link" href="{{ url_for('dataset_view', page=prev_num, project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, camp_id=selected_camp, start_date=start_date, end_date=end_date, search=search_term) }}" aria-label="Previous">
                         <span aria-hidden="true">&laquo;</span>
                     </a>
                 </li>
@@ -338,7 +360,7 @@
                 </li>
                 {% else %}
                 <li class="page-item">
-                    <a class="page-link" href="{{ url_for('dataset_view', page=page_num, project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, start_date=start_date, end_date=end_date, search=search_term) }}">{{ page_num }}</a>
+                    <a class="page-link" href="{{ url_for('dataset_view', page=page_num, project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, camp_id=selected_camp, start_date=start_date, end_date=end_date, search=search_term) }}">{{ page_num }}</a>
                 </li>
                 {% endif %}
                 {% endfor %}
@@ -346,7 +368,7 @@
                 <!-- Next Page -->
                 {% if has_next %}
                 <li class="page-item">
-                    <a class="page-link" href="{{ url_for('dataset_view', page=next_num, project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, start_date=start_date, end_date=end_date, search=search_term) }}" aria-label="Next">
+                    <a class="page-link" href="{{ url_for('dataset_view', page=next_num, project_id=selected_project, form_id=selected_form, field_name=selected_field, field_value=selected_value, camp_id=selected_camp, start_date=start_date, end_date=end_date, search=search_term) }}" aria-label="Next">
                         <span aria-hidden="true">&raquo;</span>
                     </a>
                 </li>
@@ -389,6 +411,44 @@
 
 {% block scripts %}
 <script>
+    // Handle camp selection and auto-populate dates
+    function handleCampSelection() {
+        const campSelect = document.getElementById('campFilter');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        
+        if (campSelect.value) {
+            // Get selected option
+            const selectedOption = campSelect.options[campSelect.selectedIndex];
+            const startDate = selectedOption.getAttribute('data-start');
+            const endDate = selectedOption.getAttribute('data-end');
+            
+            // Clear manual date inputs and disable them
+            startDateInput.value = '';
+            endDateInput.value = '';
+            startDateInput.disabled = true;
+            endDateInput.disabled = true;
+            
+            // Add visual indication
+            startDateInput.classList.add('bg-light');
+            endDateInput.classList.add('bg-light');
+            
+            console.log('Camp selected:', selectedOption.text, 'Dates:', startDate, 'to', endDate);
+        } else {
+            // Enable manual date inputs
+            startDateInput.disabled = false;
+            endDateInput.disabled = false;
+            
+            // Remove visual indication
+            startDateInput.classList.remove('bg-light');
+            endDateInput.classList.remove('bg-light');
+            
+            // Restore original values if they exist
+            startDateInput.value = '{{ start_date if not selected_camp else "" }}';
+            endDateInput.value = '{{ end_date if not selected_camp else "" }}';
+        }
+    }
+
     // Function to fetch and display patient details in modal
     function viewPatientData(patientId) {
         const modalTitle = document.getElementById('modalPatientId');
@@ -673,6 +733,9 @@
 
     // Chrome-friendly approach for fixed columns with horizontal scrolling
     document.addEventListener('DOMContentLoaded', function() {
+        // Initialize camp selection
+        handleCampSelection();
+        
         // Initialize the cascade filtering
         updateFormDropdown();
         

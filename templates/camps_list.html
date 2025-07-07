@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Camps Management - CAMP{% endblock %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Page Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h1 class="display-5 fw-bold mb-3" style="color: var(--primary-color);">
+                    <i class="fas fa-mountain me-2" style="color: var(--gold-color);"></i>Camps Management
+                </h1>
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('create_camp') }}" class="btn btn-primary">
+                        <i class="fas fa-plus me-2"></i>Create New Camp
+                    </a>
+                    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left me-2"></i>Back to Admin Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camps List -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 shadow">
+                <div class="card-header py-3" style="background-color: var(--primary-color); color: white;">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list me-2" style="color: var(--gold-color);"></i>All Camps
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if camps %}
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead style="background-color: rgba(0,0,0,0.02);">
+                                    <tr>
+                                        <th class="px-4">Camp Name</th>
+                                        <th>Location</th>
+                                        <th>Start Date</th>
+                                        <th>End Date</th>
+                                        <th>Duration</th>
+                                        <th>Status</th>
+                                        <th>Created By</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for camp in camps %}
+                                    <tr>
+                                        <td class="px-4">
+                                            <div class="d-flex align-items-center">
+                                                <div class="icon-circle me-3" style="background-color: rgba(15, 52, 96, 0.1); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                                    <i class="fas fa-mountain" style="color: var(--accent-color);"></i>
+                                                </div>
+                                                <div>
+                                                    <h6 class="mb-0">{{ camp.name }}</h6>
+                                                    {% if camp.description %}
+                                                    <small class="text-muted">{{ camp.description[:50] }}{% if camp.description|length > 50 %}...{% endif %}</small>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <i class="fas fa-map-marker-alt me-1 text-muted"></i>
+                                            {{ camp.location }}
+                                        </td>
+                                        <td>
+                                            <i class="fas fa-calendar-alt me-1 text-muted"></i>
+                                            {{ camp.start_date }}
+                                        </td>
+                                        <td>
+                                            <i class="fas fa-calendar-check me-1 text-muted"></i>
+                                            {{ camp.end_date }}
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-info" data-start="{{ camp.start_date }}" data-end="{{ camp.end_date }}">Calculating...</span>
+                                        </td>
+                                        <td>
+                                            <span class="badge" data-start="{{ camp.start_date }}" data-end="{{ camp.end_date }}">Calculating...</span>
+                                        </td>
+                                        <td>
+                                            {% if camp.users and camp.users.username %}
+                                                <i class="fas fa-user me-1 text-muted"></i>
+                                                {{ camp.users.username }}
+                                            {% else %}
+                                                <span class="text-muted">Unknown</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group">
+                                                <a href="{{ url_for('edit_camp', camp_id=camp.id) }}" class="btn btn-sm" style="background-color: var(--primary-color); color: white;" title="Edit Camp">
+                                                    <i class="fas fa-edit"></i>
+                                                </a>
+                                                <form method="POST" action="{{ url_for('delete_camp', camp_id=camp.id) }}" class="d-inline">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                                            onclick="return confirm('Are you sure you want to delete this camp? This action cannot be undone.');" 
+                                                            title="Delete Camp">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="p-5 text-center empty-state">
+                            <div class="empty-state-icon mb-4">
+                                <div class="icon-circle mx-auto" style="width: 80px; height: 80px; background-color: rgba(15, 52, 96, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                    <i class="fas fa-mountain" style="font-size: 2.5rem; color: var(--accent-color);"></i>
+                                </div>
+                            </div>
+                            <h4 style="color: var(--primary-color);">No Camps Found</h4>
+                            <p class="text-muted mb-4">Get started by creating your first camp</p>
+                            <a href="{{ url_for('create_camp') }}" class="btn btn-lg px-4 py-2" style="background-color: var(--primary-color); color: white;">
+                                <i class="fas fa-plus-circle me-2"></i>Create First Camp
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Custom JavaScript to handle date calculations -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Get today's date in YYYY-MM-DD format
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Calculate duration for each camp
+    const durationBadges = document.querySelectorAll('td:nth-child(5) .badge');
+    durationBadges.forEach(badge => {
+        const startDate = badge.getAttribute('data-start');
+        const endDate = badge.getAttribute('data-end');
+        
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const diffTime = Math.abs(end - start);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Add 1 to include both start and end days
+            
+            badge.textContent = `${diffDays} day${diffDays !== 1 ? 's' : ''}`;
+        }
+    });
+    
+    // Calculate status for each camp
+    const statusBadges = document.querySelectorAll('td:nth-child(6) .badge');
+    statusBadges.forEach(badge => {
+        const startDate = badge.getAttribute('data-start');
+        const endDate = badge.getAttribute('data-end');
+        
+        if (startDate && endDate) {
+            let statusText, statusClass;
+            
+            if (startDate > today) {
+                statusText = 'Upcoming';
+                statusClass = 'bg-primary';
+            } else if (endDate < today) {
+                statusText = 'Completed';
+                statusClass = 'bg-secondary';
+            } else {
+                statusText = 'Active';
+                statusClass = 'bg-success';
+            }
+            
+            badge.textContent = statusText;
+            badge.className = `badge ${statusClass}`;
+        }
+    });
+});
+</script>
+{% endblock %} 
