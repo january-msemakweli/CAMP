@@ -3705,7 +3705,7 @@ def analytics():
                                 # Extract DDMMYY part from patient_id and convert to datetime
                                 df['extracted_date'] = df['patient_id'].str.extract(r'(\d{6})-', expand=False)
                                 # Convert to datetime format (add 20 or 19 as prefix for year based on current date)
-                                current_year = datetime.now().year
+                                current_year = datetime.now(EAT).year
                                 
                                 def convert_to_date(date_str):
                                     if pd.isna(date_str):
@@ -5750,8 +5750,6 @@ def get_doctors_for_programme(programme_id):
 def report_preview():
     """Get preview statistics for the report"""
     try:
-        from datetime import datetime, timezone
-        
         programme_id = request.form.get('programme')
         doctor_name = request.form.get('doctor')
         date_type = request.form.get('dateType', 'today')
@@ -5761,7 +5759,7 @@ def report_preview():
         
         # Get date range
         if date_type == 'today':
-            today = datetime.now(timezone.utc).date()
+            today = datetime.now(EAT).date()
             start_date = today
             end_date = today
         else:
@@ -5792,8 +5790,6 @@ def report_preview():
 def generate_report():
     """Generate PDF report"""
     try:
-        from datetime import datetime, timezone
-        
         programme_id = request.form.get('programme')
         doctor_name = request.form.get('doctor')
         date_type = request.form.get('dateType', 'today')
@@ -5804,7 +5800,7 @@ def generate_report():
         
         # Get date range
         if date_type == 'today':
-            today = datetime.now(timezone.utc).date()
+            today = datetime.now(EAT).date()
             start_date = today
             end_date = today
         else:
@@ -5961,11 +5957,13 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
     else:
         date_str = f"{start_date.strftime('%B %d, %Y')} - {end_date.strftime('%B %d, %Y')}"
     
-    # Create header info table
+    # Create header info table with generation timestamp
+    generated_at = datetime.datetime.now(EAT).strftime('%B %d, %Y at %I:%M %p EAT')
     header_data = [
         ['Doctor:', doctor_name],
         ['Date:', date_str],
-        ['Total Patients:', str(len(patients))]
+        ['Total Patients:', str(len(patients))],
+        ['Generated:', generated_at]
     ]
     
     header_table = Table(header_data, colWidths=[2*inch, 4*inch])
