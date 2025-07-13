@@ -216,7 +216,7 @@
                     <input type="hidden" id="patientIdInput" name="patient_id" value="">
                     {# Form fields loop #}
                     {% for field in form.fields %}
-                    <div class="mb-3">
+                    <div class="mb-3 form-field" data-field-label="{{ field.label }}" {% if field.condition %}data-condition='{{ field.condition | tojson }}'{% endif %}>
                         <label class="form-label" for="field-{{ loop.index }}">{{ field.label }}</label>
                         {% if field.location_type %}
                             {# Add specific class based on location_type #}
@@ -1451,6 +1451,145 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Conditional Fields Functionality
+document.addEventListener('DOMContentLoaded', function() {
+    initializeConditionalFields();
+});
+
+function initializeConditionalFields() {
+    const formFields = document.querySelectorAll('.form-field[data-condition]');
+    
+    // Initially hide all conditional fields
+    formFields.forEach(field => {
+        field.style.display = 'none';
+    });
+    
+    // Add event listeners to all form inputs to check conditions
+    const dataEntryForm = document.getElementById('dataEntryForm');
+    if (dataEntryForm) {
+        dataEntryForm.addEventListener('change', function(event) {
+            checkConditionalFields();
+        });
+        
+        dataEntryForm.addEventListener('input', function(event) {
+            checkConditionalFields();
+        });
+    }
+}
+
+function checkConditionalFields() {
+    const formFields = document.querySelectorAll('.form-field[data-condition]');
+    
+    formFields.forEach(field => {
+        const conditionStr = field.getAttribute('data-condition');
+        if (!conditionStr) return;
+        
+        try {
+            const condition = JSON.parse(conditionStr);
+            const dependentField = condition.dependent_field;
+            const operator = condition.operator;
+            const expectedValue = condition.value;
+            
+            // Find the dependent field input
+            const dependentInput = findFieldInput(dependentField);
+            if (!dependentInput) {
+                field.style.display = 'none';
+                return;
+            }
+            
+            // Get the current value of the dependent field
+            const currentValue = getFieldValue(dependentInput);
+            
+            // Check if the condition is met
+            const conditionMet = evaluateCondition(currentValue, operator, expectedValue);
+            
+            // Show or hide the field based on the condition
+            if (conditionMet) {
+                field.style.display = 'block';
+            } else {
+                field.style.display = 'none';
+                // Clear the value of hidden fields
+                clearFieldValue(field);
+            }
+        } catch (error) {
+            console.error('Error parsing condition:', error);
+            field.style.display = 'none';
+        }
+    });
+}
+
+function findFieldInput(fieldLabel) {
+    // Find input by name attribute (which corresponds to field label)
+    let input = document.querySelector(`[name="${fieldLabel}"]`);
+    
+    // For radio buttons and checkboxes, get the first one
+    if (!input) {
+        input = document.querySelector(`[name="${fieldLabel}"]:first-of-type`);
+    }
+    
+    return input;
+}
+
+function getFieldValue(input) {
+    if (!input) return '';
+    
+    if (input.type === 'radio') {
+        const checkedRadio = document.querySelector(`[name="${input.name}"]:checked`);
+        return checkedRadio ? checkedRadio.value : '';
+    } else if (input.type === 'checkbox') {
+        const checkedBoxes = document.querySelectorAll(`[name="${input.name}"]:checked`);
+        return Array.from(checkedBoxes).map(cb => cb.value);
+    } else {
+        return input.value || '';
+    }
+}
+
+function evaluateCondition(currentValue, operator, expectedValue) {
+    // Convert arrays to strings for comparison if needed
+    const current = Array.isArray(currentValue) ? currentValue.join(', ') : String(currentValue).trim();
+    const expected = String(expectedValue).trim();
+    
+    switch (operator) {
+        case 'equals':
+            return current === expected;
+        case 'not_equals':
+            return current !== expected;
+        case 'contains':
+            if (Array.isArray(currentValue)) {
+                return currentValue.some(val => String(val).toLowerCase().includes(expected.toLowerCase()));
+            }
+            return current.toLowerCase().includes(expected.toLowerCase());
+        case 'not_contains':
+            if (Array.isArray(currentValue)) {
+                return !currentValue.some(val => String(val).toLowerCase().includes(expected.toLowerCase()));
+            }
+            return !current.toLowerCase().includes(expected.toLowerCase());
+        default:
+            return false;
+    }
+}
+
+function clearFieldValue(fieldContainer) {
+    // Find all inputs within the field container and clear them
+    const inputs = fieldContainer.querySelectorAll('input, select, textarea');
+    inputs.forEach(input => {
+        if (input.type === 'radio' || input.type === 'checkbox') {
+            input.checked = false;
+            // Update custom option card styling
+            const card = input.closest('.custom-option-card');
+            if (card) {
+                card.classList.remove('selected');
+            }
+        } else {
+            input.value = '';
+            // For Choices.js dropdowns
+            if (input.choicesInstance) {
+                input.choicesInstance.setChoiceByValue('');
+            }
+        }
+    });
+}
 
 </script>
 {% endblock %} 

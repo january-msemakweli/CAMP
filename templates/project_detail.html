@@ -189,6 +189,39 @@
                                         <label class="form-check-label">Allow Other (specify)</label>
                                     </div>
                                 </div>
+                                <div class="col-md-12 mt-2 conditional-container">
+                                    <div class="card card-body bg-light">
+                                        <h6 class="mb-2"><i class="fas fa-code-branch me-1"></i>Conditional Display</h6>
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input conditional-checkbox" type="checkbox" name="is_conditional[]" value="0" title="Enable conditional display">
+                                            <label class="form-check-label">Show this field only when another field meets a condition</label>
+                                        </div>
+                                        <div class="conditional-settings" style="display: none;">
+                                            <div class="row g-2">
+                                                <div class="col-md-4">
+                                                    <label class="form-label small">Dependent Field</label>
+                                                    <select class="form-select form-select-sm dependent-field-select" name="condition_field[]">
+                                                        <option value="">Select a field...</option>
+                                                        <!-- Options will be populated by JavaScript -->
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label small">Condition</label>
+                                                    <select class="form-select form-select-sm" name="condition_operator[]">
+                                                        <option value="equals">Equals</option>
+                                                        <option value="not_equals">Not Equals</option>
+                                                        <option value="contains">Contains</option>
+                                                        <option value="not_contains">Does Not Contain</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <label class="form-label small">Value</label>
+                                                    <input type="text" class="form-control form-control-sm" name="condition_value[]" placeholder="Expected value">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div class="col-md-1 text-end">
                                      <label class="form-label">&nbsp;</label><br/>
                                     <button type="button" class="btn btn-sm btn-danger remove-field-btn" style="display: none;">X</button>
@@ -323,6 +356,38 @@ function addFieldRow(containerId, allowRemove) {
                     <label class="form-check-label">Allow Other (specify)</label>
                 </div>
             </div>
+            <div class="col-md-12 mt-2 conditional-container">
+                <div class="card card-body bg-light">
+                    <h6 class="mb-2"><i class="fas fa-code-branch me-1"></i>Conditional Display</h6>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input conditional-checkbox" type="checkbox" name="is_conditional[]" value="" title="Enable conditional display">
+                        <label class="form-check-label">Show this field only when another field meets a condition</label>
+                    </div>
+                    <div class="conditional-settings" style="display: none;">
+                        <div class="row g-2">
+                            <div class="col-md-4">
+                                <label class="form-label small">Dependent Field</label>
+                                <select class="form-select form-select-sm dependent-field-select" name="condition_field[]" title="Select dependent field">
+                                    <option value="">Select a field...</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Condition</label>
+                                <select class="form-select form-select-sm" name="condition_operator[]" title="Select condition operator">
+                                    <option value="equals">Equals</option>
+                                    <option value="not_equals">Not Equals</option>
+                                    <option value="contains">Contains</option>
+                                    <option value="not_contains">Does Not Contain</option>
+                                </select>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label small">Value</label>
+                                <input type="text" class="form-control form-control-sm" name="condition_value[]" placeholder="Expected value" title="Expected value for condition">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="col-md-1 text-end">
                  <label class="form-label">&nbsp;</label><br/>
                 <button type="button" class="btn btn-sm btn-danger remove-field-btn" style="display: none;">X</button>
@@ -385,6 +450,12 @@ function addFieldRow(containerId, allowRemove) {
     const allowOtherCheckbox = newRow.querySelector('.allow-other-check input');
     if (allowOtherCheckbox) {
         allowOtherCheckbox.value = rowCount;
+    }
+
+    // Set value for conditional checkbox
+    const conditionalCheckbox = newRow.querySelector('.conditional-checkbox');
+    if (conditionalCheckbox) {
+        conditionalCheckbox.value = rowCount;
     }
 
     // Show/hide allow-other-check for radio/checkbox fields on type change (for both modals)
@@ -704,6 +775,31 @@ document.addEventListener('click', function(e) {
                 const allowOtherCheck = optionsContainer.querySelector('.allow-other-check input');
                 allowOtherCheck.checked = !!field.allow_other;
                 optionsContainer.querySelector('.allow-other-check').style.display = 'block';
+                
+                // Set conditional field data
+                const conditionalContainer = lastRow.querySelector('.conditional-container');
+                const conditionalCheckbox = conditionalContainer.querySelector('.conditional-checkbox');
+                const conditionalSettings = conditionalContainer.querySelector('.conditional-settings');
+                const dependentSelect = conditionalContainer.querySelector('.dependent-field-select');
+                const operatorSelect = conditionalContainer.querySelector('select[name="condition_operator[]"]');
+                const valueInput = conditionalContainer.querySelector('input[name="condition_value[]"]');
+                
+                if (field.condition && field.condition.dependent_field) {
+                    conditionalCheckbox.checked = true;
+                    conditionalSettings.style.display = 'block';
+                    operatorSelect.value = field.condition.operator || 'equals';
+                    valueInput.value = field.condition.value || '';
+                    
+                    // Update dependent field options and set the value
+                    updateDependentFieldOptions(lastRow);
+                    // Wait a bit for options to be populated, then set the value
+                    setTimeout(() => {
+                        dependentSelect.value = field.condition.dependent_field;
+                    }, 100);
+                } else {
+                    conditionalCheckbox.checked = false;
+                    conditionalSettings.style.display = 'none';
+                }
             }
         });
         
@@ -736,7 +832,83 @@ document.addEventListener('DOMContentLoaded', function() {
     if (createTypeSelect.value === 'radio' || createTypeSelect.value === 'checkbox') {
         createAllowOtherCheck.style.display = 'block';
     }
+
+    // Initialize conditional field functionality
+    initializeConditionalFields();
 });
+
+// Conditional Fields Functionality
+function initializeConditionalFields() {
+    // Handle conditional checkbox changes
+    document.addEventListener('change', function(event) {
+        if (event.target && event.target.classList.contains('conditional-checkbox')) {
+            const checkbox = event.target;
+            const row = checkbox.closest('.form-field-row');
+            const conditionalSettings = row.querySelector('.conditional-settings');
+            
+            if (checkbox.checked) {
+                conditionalSettings.style.display = 'block';
+                updateDependentFieldOptions(row);
+            } else {
+                conditionalSettings.style.display = 'none';
+                // Clear the conditional settings
+                const dependentSelect = row.querySelector('.dependent-field-select');
+                const operatorSelect = row.querySelector('select[name="condition_operator[]"]');
+                const valueInput = row.querySelector('input[name="condition_value[]"]');
+                if (dependentSelect) dependentSelect.value = '';
+                if (operatorSelect) operatorSelect.value = 'equals';
+                if (valueInput) valueInput.value = '';
+            }
+        }
+    });
+
+    // Handle field label changes to update dependent field options
+    document.addEventListener('input', function(event) {
+        if (event.target && event.target.name === 'field_labels[]') {
+            updateAllDependentFieldOptions();
+        }
+    });
+
+    // Handle field removal to update dependent field options
+    document.addEventListener('click', function(event) {
+        if (event.target && event.target.classList.contains('remove-field-btn')) {
+            setTimeout(updateAllDependentFieldOptions, 100); // Delay to allow DOM update
+        }
+    });
+}
+
+function updateDependentFieldOptions(targetRow) {
+    const dependentSelect = targetRow.querySelector('.dependent-field-select');
+    if (!dependentSelect) return;
+
+    // Get all field rows that come before this one
+    const container = targetRow.closest('#formFieldsContainer, #editFormFieldsContainer');
+    const allRows = Array.from(container.querySelectorAll('.form-field-row'));
+    const targetIndex = allRows.indexOf(targetRow);
+    const previousRows = allRows.slice(0, targetIndex);
+
+    // Clear existing options except the first one
+    dependentSelect.innerHTML = '<option value="">Select a field...</option>';
+
+    // Add options from previous fields
+    previousRows.forEach((row, index) => {
+        const labelInput = row.querySelector('input[name="field_labels[]"]');
+        if (labelInput && labelInput.value.trim()) {
+            const option = document.createElement('option');
+            option.value = labelInput.value.trim();
+            option.textContent = labelInput.value.trim();
+            dependentSelect.appendChild(option);
+        }
+    });
+}
+
+function updateAllDependentFieldOptions() {
+    // Update all conditional field dropdowns
+    document.querySelectorAll('.conditional-checkbox:checked').forEach(checkbox => {
+        const row = checkbox.closest('.form-field-row');
+        updateDependentFieldOptions(row);
+    });
+}
 
 </script>
 {% endblock %} 

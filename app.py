@@ -735,6 +735,22 @@ def create_form(project_id):
         location_identifiers = request.form.getlist('location_field_identifier[]')
         required_fields = request.form.getlist('field_required[]')
         allow_other_fields = request.form.getlist('allow_other[]')
+        
+        # Conditional field data
+        is_conditional_fields = request.form.getlist('is_conditional[]')
+        condition_fields = request.form.getlist('condition_field[]')
+        condition_operators = request.form.getlist('condition_operator[]')
+        condition_values = request.form.getlist('condition_value[]')
+        
+        # Debug conditional fields data
+        print(f"DEBUG - Total fields: {len(labels)}")
+        print(f"DEBUG - is_conditional_fields: {is_conditional_fields}")
+        print(f"DEBUG - condition_fields: {condition_fields}")
+        print(f"DEBUG - condition_operators: {condition_operators}")
+        print(f"DEBUG - condition_values: {condition_values}")
+        print(f"DEBUG - field labels: {labels}")
+        print(f"DEBUG - required_fields: {required_fields}")
+        print(f"DEBUG - allow_other_fields: {allow_other_fields}")
         if not title:
             flash('Form title is required.', 'danger')
             return redirect(url_for('project_detail', project_id=project_id))
@@ -759,6 +775,30 @@ def create_form(project_id):
                 location_idx += 1
             else:
                 field['location_field_identifier'] = None
+            
+            # Add conditional logic if this field is conditional
+            is_in_conditional = str(i) in is_conditional_fields
+            has_condition_field = i < len(condition_fields) and condition_fields[i].strip() if i < len(condition_fields) else False
+            
+            print(f"DEBUG - Field {i} ({labels[i]}):")
+            print(f"  - str(i) = '{str(i)}'")
+            print(f"  - is_conditional_fields = {is_conditional_fields}")
+            print(f"  - is '{str(i)}' in conditional list? {is_in_conditional}")
+            print(f"  - condition_fields[{i}] = '{condition_fields[i] if i < len(condition_fields) else 'N/A'}'")
+            print(f"  - has valid condition field? {has_condition_field}")
+            
+            if is_in_conditional and has_condition_field:
+                condition_data = {
+                    'dependent_field': condition_fields[i].strip(),
+                    'operator': condition_operators[i] if i < len(condition_operators) else 'equals',
+                    'value': condition_values[i] if i < len(condition_values) else ''
+                }
+                field['condition'] = condition_data
+                print(f"  - RESULT: Field {i} is conditional: {condition_data}")
+            else:
+                field['condition'] = None
+                print(f"  - RESULT: Field {i} is NOT conditional (condition set to null)")
+                
             fields.append(field)
         serialized_fields = json.dumps(fields)
         form_id = str(uuid.uuid4())
@@ -4240,6 +4280,12 @@ def edit_form(form_id):
         location_identifiers = request.form.getlist('location_field_identifier[]')
         required_fields = request.form.getlist('field_required[]')
         allow_other_fields = request.form.getlist('allow_other[]')
+        
+        # Conditional field data
+        is_conditional_fields = request.form.getlist('is_conditional[]')
+        condition_fields = request.form.getlist('condition_field[]')
+        condition_operators = request.form.getlist('condition_operator[]')
+        condition_values = request.form.getlist('condition_value[]')
         if not title:
             flash('Form title is required.', 'danger')
             return redirect(url_for('project_detail', project_id=project_id))
@@ -4264,6 +4310,17 @@ def edit_form(form_id):
                 location_idx += 1
             else:
                 field['location_field_identifier'] = None
+            
+            # Add conditional logic if this field is conditional
+            if str(i) in is_conditional_fields and i < len(condition_fields) and condition_fields[i].strip():
+                field['condition'] = {
+                    'dependent_field': condition_fields[i].strip(),
+                    'operator': condition_operators[i] if i < len(condition_operators) else 'equals',
+                    'value': condition_values[i] if i < len(condition_values) else ''
+                }
+            else:
+                field['condition'] = None
+                
             fields.append(field)
         serialized_fields = json.dumps(fields)
         update_data = {
