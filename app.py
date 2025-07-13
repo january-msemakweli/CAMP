@@ -1133,11 +1133,24 @@ def user_dashboard():
     if current_user.is_admin:
         return redirect(url_for('admin_dashboard'))
     
-    # Get approved projects using pagination
-    projects = fetch_all_pages(supabase.table('projects').select('*'), debug_name="user_dashboard_projects")
-    # Remove camp_date from fetched projects
-    for p in projects:
-        p.pop('camp_date', None)
+    # Get only projects that the user has access to
+    accessible_projects = []
+    
+    # Get user's project access records
+    access_response = supabase.table('user_project_access').select('project_id').eq('user_id', current_user.id).execute()
+    
+    if access_response.data:
+        # Get project IDs that user has access to
+        project_ids = [access['project_id'] for access in access_response.data]
+        
+        if project_ids:
+            # Get project details for accessible projects
+            projects_response = supabase.table('projects').select('*').in_('id', project_ids).execute()
+            accessible_projects = projects_response.data if projects_response.data else []
+            
+            # Remove camp_date from fetched projects
+            for p in accessible_projects:
+                p.pop('camp_date', None)
         
     # Get forms that the user has access to
     accessible_forms = []
@@ -1166,7 +1179,7 @@ def user_dashboard():
                     form['project_name'] = project_response.data[0]['name']
                     accessible_forms.append(form)
     
-    return render_template('user_dashboard.html', projects=projects, accessible_forms=accessible_forms)
+    return render_template('user_dashboard.html', projects=accessible_projects, accessible_forms=accessible_forms)
 
 @app.route('/programs')
 @login_required
