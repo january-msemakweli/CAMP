@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid p-4">
+    <!-- Reports Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="display-5 fw-bold mb-3" style="color: var(--primary-color);">
+                <i class="fas fa-file-pdf me-2" style="color: var(--gold-color);"></i>Generate Reports
+            </h1>
+            <p class="text-muted">Generate comprehensive PDF reports for medical camp activities</p>
+        </div>
+    </div>
+
+    <!-- Report Configuration Form -->
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="card border-0 shadow">
+                <div class="card-header py-3" style="background-color: var(--primary-color); color: white;">
+                    <h5 class="mb-0">
+                        <i class="fas fa-cog me-2" style="color: var(--gold-color);"></i>Report Configuration
+                    </h5>
+                </div>
+                <div class="card-body p-4">
+                    <form id="reportForm" action="{{ url_for('generate_report') }}" method="POST" target="_blank">
+                        
+                        <!-- Step 1: Select Programme -->
+                        <div class="mb-4">
+                            <label for="programme" class="form-label fw-bold">
+                                <i class="fas fa-project-diagram me-2" style="color: var(--accent-color);"></i>
+                                1. SELECT PROGRAMME
+                            </label>
+                            <select class="form-select" id="programme" name="programme" required>
+                                <option value="">Choose a programme...</option>
+                                {% for project in projects %}
+                                <option value="{{ project.id }}">{{ project.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <!-- Step 2: Select Doctor's Name (Hidden until programme selected) -->
+                        <div class="mb-4" id="doctorSection" style="display: none;">
+                            <label for="doctor" class="form-label fw-bold">
+                                <i class="fas fa-user-md me-2" style="color: var(--accent-color);"></i>
+                                2. CHOOSE DOCTOR'S NAME
+                            </label>
+                            <select class="form-select" id="doctor" name="doctor" required>
+                                <option value="">Choose a doctor...</option>
+                            </select>
+                            <div class="form-text">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Loading doctors from the selected programme...
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Choose Date Range (Hidden until doctor selected) -->
+                        <div class="mb-4" id="dateSection" style="display: none;">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-calendar-alt me-2" style="color: var(--accent-color);"></i>
+                                3. CHOOSE DATE RANGE
+                            </label>
+                            
+                            <!-- Quick Date Options -->
+                            <div class="mb-3">
+                                <div class="btn-group w-100" role="group" aria-label="Quick date selection">
+                                    <input type="radio" class="btn-check" name="dateType" id="today" value="today" checked>
+                                    <label class="btn btn-outline-primary" for="today">
+                                        <i class="fas fa-clock me-1"></i>Today
+                                    </label>
+                                    
+                                    <input type="radio" class="btn-check" name="dateType" id="custom" value="custom">
+                                    <label class="btn btn-outline-primary" for="custom">
+                                        <i class="fas fa-calendar-week me-1"></i>Custom Range
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Custom Date Range (Hidden by default) -->
+                            <div id="customDateRange" style="display: none;">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="startDate" class="form-label">Start Date</label>
+                                        <input type="date" class="form-control" id="startDate" name="startDate">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="endDate" class="form-label">End Date</label>
+                                        <input type="date" class="form-control" id="endDate" name="endDate">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step 4: Generate Report Button (Hidden until all selections made) -->
+                        <div class="mb-3" id="generateSection" style="display: none;">
+                            <button type="submit" class="btn btn-success btn-lg w-100">
+                                <i class="fas fa-download me-2"></i>Generate PDF Report
+                            </button>
+                            <div class="form-text text-center mt-2">
+                                <i class="fas fa-info-circle me-1"></i>
+                                The report will open in a new tab
+                            </div>
+                        </div>
+
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Preview Section -->
+    <div class="row mt-4" id="previewSection" style="display: none;">
+        <div class="col-12">
+            <div class="card border-0 shadow">
+                <div class="card-header py-3" style="background-color: var(--secondary-color); color: white;">
+                    <h5 class="mb-0">
+                        <i class="fas fa-eye me-2" style="color: var(--gold-color);"></i>Report Preview
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="reportStats" class="row text-center">
+                        <div class="col-md-4">
+                            <div class="bg-light p-3 rounded">
+                                <i class="fas fa-users fa-2x text-primary mb-2"></i>
+                                <h4 id="totalPatients" class="mb-1">-</h4>
+                                <small class="text-muted">Total Patients</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="bg-light p-3 rounded">
+                                <i class="fas fa-calendar fa-2x text-success mb-2"></i>
+                                <h4 id="dateRange" class="mb-1">-</h4>
+                                <small class="text-muted">Date Range</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="bg-light p-3 rounded">
+                                <i class="fas fa-user-md fa-2x text-info mb-2"></i>
+                                <h4 id="selectedDoctor" class="mb-1">-</h4>
+                                <small class="text-muted">Doctor</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const programmeSelect = document.getElementById('programme');
+    const doctorSelect = document.getElementById('doctor');
+    const doctorSection = document.getElementById('doctorSection');
+    const dateSection = document.getElementById('dateSection');
+    const generateSection = document.getElementById('generateSection');
+    const previewSection = document.getElementById('previewSection');
+    const customDateRange = document.getElementById('customDateRange');
+    
+    // Date type radio buttons
+    const todayRadio = document.getElementById('today');
+    const customRadio = document.getElementById('custom');
+    
+    // Set today's date as default for custom range
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('startDate').value = today;
+    document.getElementById('endDate').value = today;
+    
+    // Handle programme selection
+    programmeSelect.addEventListener('change', function() {
+        if (this.value) {
+            loadDoctors(this.value);
+            doctorSection.style.display = 'block';
+            
+            // Hide subsequent sections
+            dateSection.style.display = 'none';
+            generateSection.style.display = 'none';
+            previewSection.style.display = 'none';
+        } else {
+            doctorSection.style.display = 'none';
+            dateSection.style.display = 'none';
+            generateSection.style.display = 'none';
+            previewSection.style.display = 'none';
+        }
+    });
+    
+    // Handle doctor selection
+    doctorSelect.addEventListener('change', function() {
+        if (this.value) {
+            dateSection.style.display = 'block';
+            generateSection.style.display = 'block';
+            updatePreview();
+        } else {
+            dateSection.style.display = 'none';
+            generateSection.style.display = 'none';
+            previewSection.style.display = 'none';
+        }
+    });
+    
+    // Handle date type change
+    [todayRadio, customRadio].forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (customRadio.checked) {
+                customDateRange.style.display = 'block';
+            } else {
+                customDateRange.style.display = 'none';
+            }
+            updatePreview();
+        });
+    });
+    
+    // Handle custom date changes
+    ['startDate', 'endDate'].forEach(id => {
+        document.getElementById(id).addEventListener('change', updatePreview);
+    });
+    
+    function loadDoctors(programmeId) {
+        doctorSelect.innerHTML = '<option value="">Loading doctors...</option>';
+        
+        fetch(`/api/doctors/${programmeId}`)
+            .then(response => response.json())
+            .then(data => {
+                doctorSelect.innerHTML = '<option value="">Choose a doctor...</option>';
+                if (data.doctors && data.doctors.length > 0) {
+                    data.doctors.forEach(doctor => {
+                        const option = document.createElement('option');
+                        option.value = doctor;
+                        option.textContent = doctor;
+                        doctorSelect.appendChild(option);
+                    });
+                } else {
+                    doctorSelect.innerHTML = '<option value="">No doctors found</option>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading doctors:', error);
+                doctorSelect.innerHTML = '<option value="">Error loading doctors</option>';
+            });
+    }
+    
+    function updatePreview() {
+        if (!programmeSelect.value || !doctorSelect.value) return;
+        
+        const formData = new FormData();
+        formData.append('programme', programmeSelect.value);
+        formData.append('doctor', doctorSelect.value);
+        formData.append('dateType', document.querySelector('input[name="dateType"]:checked').value);
+        
+        if (customRadio.checked) {
+            formData.append('startDate', document.getElementById('startDate').value);
+            formData.append('endDate', document.getElementById('endDate').value);
+        }
+        
+        fetch('/api/report_preview', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('totalPatients').textContent = data.totalPatients || 0;
+            document.getElementById('selectedDoctor').textContent = doctorSelect.options[doctorSelect.selectedIndex].text;
+            
+            let dateRangeText = 'Today';
+            if (customRadio.checked) {
+                const start = document.getElementById('startDate').value;
+                const end = document.getElementById('endDate').value;
+                if (start === end) {
+                    dateRangeText = new Date(start).toLocaleDateString();
+                } else {
+                    dateRangeText = `${new Date(start).toLocaleDateString()} - ${new Date(end).toLocaleDateString()}`;
+                }
+            }
+            document.getElementById('dateRange').textContent = dateRangeText;
+            
+            previewSection.style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Error updating preview:', error);
+        });
+    }
+});
+</script>
+{% endblock %} 

@@ -5673,6 +5673,573 @@ def get_camps_api():
             'error': str(e)
         }), 500
 
+@app.route('/reports')
+@login_required
+def reports():
+    """Display the reports page for users (not admins)"""
+    if current_user.is_admin:
+        flash('Reports section is for regular users only.', 'info')
+        return redirect(url_for('admin_dashboard'))
+    
+    # Get all projects for the dropdown
+    projects_response = supabase.table('projects').select('*').order('name').execute()
+    projects = projects_response.data if projects_response.data else []
+    
+    log_activity('view', 'reports', None, "Viewed reports page")
+    
+    return render_template('reports.html', projects=projects)
+
+@app.route('/api/doctors/<programme_id>')
+@login_required
+def get_doctors_for_programme(programme_id):
+    """Get unique doctor names from a specific programme"""
+    try:
+        # Get all forms for this programme
+        forms_response = supabase.table('forms').select('id').eq('project_id', programme_id).execute()
+        if not forms_response.data:
+            return jsonify({'doctors': []})
+        
+        form_ids = [form['id'] for form in forms_response.data]
+        
+        # Get all submissions for these forms (with pagination)
+        submissions_query = supabase.table('form_submissions').select('data').in_('form_id', form_ids)
+        all_submissions = fetch_all_pages(submissions_query, debug_name="doctors_submissions")
+        
+        doctors = set()
+        for submission in all_submissions:
+            if submission.get('data'):
+                # Look for doctor's name field (case insensitive)
+                for key, value in submission['data'].items():
+                    if key.lower().replace(' ', '').replace("'", '') in ['doctorsname', 'doctorname', 'doctor']:
+                        if value and isinstance(value, str) and value.strip():
+                            doctors.add(value.strip())
+        
+        # Also check patient records (with pagination)
+        patients_query = supabase.table('patients').select('data')
+        all_patients = fetch_all_pages(patients_query, debug_name="doctors_patients")
+        for patient in all_patients:
+            if patient.get('data'):
+                for form_id, form_data in patient['data'].items():
+                    if form_id in form_ids and isinstance(form_data, dict):
+                        for key, value in form_data.items():
+                            if key.lower().replace(' ', '').replace("'", '') in ['doctorsname', 'doctorname', 'doctor']:
+                                if value and isinstance(value, str) and value.strip():
+                                    doctors.add(value.strip())
+        
+        return jsonify({'doctors': sorted(list(doctors))})
+        
+    except Exception as e:
+        print(f"Error getting doctors: {str(e)}")
+        return jsonify({'doctors': []}), 500
+
+@app.route('/api/report_preview', methods=['POST'])
+@login_required
+def report_preview():
+    """Get preview statistics for the report"""
+    try:
+        from datetime import datetime, timezone
+        
+        programme_id = request.form.get('programme')
+        doctor_name = request.form.get('doctor')
+        date_type = request.form.get('dateType', 'today')
+        
+        if not programme_id or not doctor_name:
+            return jsonify({'totalPatients': 0})
+        
+        # Get date range
+        if date_type == 'today':
+            today = datetime.now(timezone.utc).date()
+            start_date = today
+            end_date = today
+        else:
+            start_date = request.form.get('startDate')
+            end_date = request.form.get('endDate')
+            if start_date:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+            if end_date:
+                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        # Get matching patients
+        patients = get_patients_for_report(programme_id, doctor_name, start_date, end_date)
+        
+        return jsonify({
+            'totalPatients': len(patients),
+            'programme': programme_id,
+            'doctor': doctor_name,
+            'startDate': start_date.isoformat() if start_date else None,
+            'endDate': end_date.isoformat() if end_date else None
+        })
+        
+    except Exception as e:
+        print(f"Error in report preview: {str(e)}")
+        return jsonify({'totalPatients': 0}), 500
+
+@app.route('/generate_report', methods=['POST'])
+@login_required
+def generate_report():
+    """Generate PDF report"""
+    try:
+        from datetime import datetime, timezone
+        
+        programme_id = request.form.get('programme')
+        doctor_name = request.form.get('doctor')
+        date_type = request.form.get('dateType', 'today')
+        
+        if not programme_id or not doctor_name:
+            flash('Programme and doctor are required', 'danger')
+            return redirect(url_for('reports'))
+        
+        # Get date range
+        if date_type == 'today':
+            today = datetime.now(timezone.utc).date()
+            start_date = today
+            end_date = today
+        else:
+            start_date = request.form.get('startDate')
+            end_date = request.form.get('endDate')
+            if start_date:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+            if end_date:
+                end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        # Get programme name
+        programme_response = supabase.table('projects').select('name').eq('id', programme_id).execute()
+        programme_name = programme_response.data[0]['name'] if programme_response.data else 'Unknown Programme'
+        
+        # Get patients data
+        patients = get_patients_for_report(programme_id, doctor_name, start_date, end_date)
+        
+        # Generate PDF
+        pdf_buffer = generate_pdf_report(patients, programme_name, doctor_name, start_date, end_date)
+        
+        # Log activity
+        log_activity('generate', 'report', programme_id, f"Generated report for {doctor_name} in {programme_name}")
+        
+        # Return PDF as response
+        from flask import make_response
+        response = make_response(pdf_buffer.getvalue())
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'inline; filename="Medical_Report_{doctor_name}_{start_date}.pdf"'
+        
+        return response
+        
+    except Exception as e:
+        print(f"Error generating report: {str(e)}")
+        flash('Error generating report. Please try again.', 'danger')
+        return redirect(url_for('reports'))
+
+def get_patients_for_report(programme_id, doctor_name, start_date, end_date):
+    """Get patients data for the report based on filters"""
+    try:
+        from datetime import timedelta
+        
+        # Get all forms for this programme
+        forms_response = supabase.table('forms').select('id').eq('project_id', programme_id).execute()
+        if not forms_response.data:
+            return []
+        
+        form_ids = [form['id'] for form in forms_response.data]
+        
+        # Get all submissions for these forms within date range
+        query = supabase.table('form_submissions').select('*').in_('form_id', form_ids)
+        
+        if start_date:
+            query = query.gte('created_at', start_date.isoformat())
+        if end_date:
+            # Add one day to end_date to include all of that day
+            end_date_plus_one = end_date + timedelta(days=1)
+            query = query.lt('created_at', end_date_plus_one.isoformat())
+        
+        # Use pagination to fetch ALL submissions
+        all_submissions = fetch_all_pages(query, debug_name="report_submissions")
+        
+        # First, aggregate ALL patient data from ALL forms
+        all_patient_data = {}
+        patients_with_doctor = set()
+        
+        for submission in all_submissions:
+            if not submission.get('data'):
+                continue
+            
+            patient_id = submission['patient_id']
+            
+            # Aggregate all data for this patient
+            if patient_id not in all_patient_data:
+                all_patient_data[patient_id] = {
+                    'patient_id': patient_id,
+                    'data': {},
+                    'latest_date': submission.get('created_at')
+                }
+            
+            # Merge submission data from ALL forms
+            all_patient_data[patient_id]['data'].update(submission['data'])
+            
+            # Keep track of latest submission date
+            if submission.get('created_at') > all_patient_data[patient_id]['latest_date']:
+                all_patient_data[patient_id]['latest_date'] = submission.get('created_at')
+            
+            # Check if this submission has the specified doctor
+            for key, value in submission['data'].items():
+                if (key.lower().replace(' ', '').replace("'", '') in ['doctorsname', 'doctorname', 'doctor'] 
+                    and value and str(value).strip().lower() == doctor_name.lower()):
+                    patients_with_doctor.add(patient_id)
+                    break
+        
+        # Filter to only include patients who have been seen by the specified doctor
+        filtered_patient_data = []
+        for patient_id, patient_info in all_patient_data.items():
+            if patient_id in patients_with_doctor:
+                filtered_patient_data.append(patient_info)
+        
+        return filtered_patient_data
+        
+    except Exception as e:
+        print(f"Error getting patients for report: {str(e)}")
+        return []
+
+def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_date):
+    """Generate PDF report using reportlab"""
+    from reportlab.lib.pagesizes import letter, A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    from io import BytesIO
+    import datetime
+    
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=36, leftMargin=36, topMargin=72, bottomMargin=18)
+    
+    # Container for the 'Flowable' objects
+    elements = []
+    
+    # Get styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, alignment=1)
+    header_style = ParagraphStyle('CustomHeader', parent=styles['Heading2'], fontSize=12, alignment=1)
+    
+    # Title
+    title = Paragraph(f"Medical Camp Report - {programme_name}", title_style)
+    elements.append(title)
+    elements.append(Spacer(1, 12))
+    
+    # Report details
+    if start_date == end_date:
+        date_str = start_date.strftime('%B %d, %Y')
+    else:
+        date_str = f"{start_date.strftime('%B %d, %Y')} - {end_date.strftime('%B %d, %Y')}"
+    
+    details = Paragraph(f"Doctor: <b>{doctor_name}</b><br/>Date: <b>{date_str}</b><br/>Total Patients: <b>{len(patients)}</b>", header_style)
+    elements.append(details)
+    elements.append(Spacer(1, 20))
+    
+    if not patients:
+        no_data = Paragraph("No patients found for the selected criteria.", styles['Normal'])
+        elements.append(no_data)
+    else:
+        # Create table data
+        headers = ['Patient ID', 'Name', 'Age (Years)', 'VA RE', 'VA LE', 'Diagnosis', 'Treatment Plan', 'Physical Address']
+        data = [headers]
+        
+        for patient in patients:
+            patient_data = patient.get('data', {})
+            
+            # Extract required fields with various possible field names
+            patient_id = patient.get('patient_id', '')
+            name = get_field_value(patient_data, [
+                'Name', 'name', 'patient name', 'full name', 'patient_name', 'full_name', 
+                'Patient Name', 'Full Name', 'NAME'
+            ])
+            age = get_field_value(patient_data, [
+                'Age (Years)', 'age (years)', 'age', 'age years', 'Age', 'AGE', 
+                'age_years', 'Age Years', 'age(years)', 'Age(Years)'
+            ])
+            va_re = get_field_value(patient_data, [
+                'va re', 'visual acuity re', 'right eye', 'va right', 'VA RE', 'Visual Acuity RE',
+                'va_re', 'visual_acuity_re', 'Right Eye', 'VA Right'
+            ])
+            va_le = get_field_value(patient_data, [
+                'va le', 'visual acuity le', 'left eye', 'va left', 'VA LE', 'Visual Acuity LE',
+                'va_le', 'visual_acuity_le', 'Left Eye', 'VA Left'
+            ])
+            diagnosis = get_field_value(patient_data, [
+                'diagnosis', 'diagnoses', 'Diagnosis', 'Diagnoses', 'DIAGNOSIS', 
+                'Diagnose', 'diagnose'
+            ])
+            
+            # Build treatment plan based on priority: Surgical Procedure > Eyedrops & Tabs > Reading Glasses
+            treatment_plan = build_treatment_plan(patient_data)
+            
+            # Physical address (use Ward field)
+            address = get_field_value(patient_data, ['ward', 'physical address', 'address'])
+            
+            row = [
+                patient_id,
+                name or '',
+                age or '',
+                va_re or '',
+                va_le or '',
+                diagnosis or '',
+                treatment_plan or '',
+                address or ''
+            ]
+            data.append(row)
+        
+        # Create table with optimized column widths for landscape
+        # Calculate available width and distribute it among columns
+        available_width = landscape(A4)[0] - 72  # Total width minus margins
+        
+        # Define column widths (in inches) - optimized for landscape and readability
+        col_widths = [
+            0.9 * inch,  # Patient ID
+            1.5 * inch,  # Name (increased)
+            0.8 * inch,  # Age (increased)
+            0.8 * inch,  # VA RE (increased)
+            0.8 * inch,  # VA LE (increased)
+            1.6 * inch,  # Diagnosis (increased)
+            1.8 * inch,  # Treatment Plan
+            1.2 * inch,  # Physical Address (increased)
+        ]
+        
+        table = Table(data, repeatRows=1, colWidths=col_widths)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),  # Headers centered
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Patient ID centered
+            ('ALIGN', (1, 1), (2, -1), 'LEFT'),    # Name and Age left-aligned
+            ('ALIGN', (3, 1), (-1, -1), 'CENTER'), # Rest centered
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        ]))
+        
+        elements.append(table)
+        
+        # Add summary statistics
+        add_summary_statistics(elements, patients, styles)
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+def add_summary_statistics(elements, patients, styles):
+    """Add summary statistics cards and diagnosis chart to PDF"""
+    from reportlab.platypus import Spacer, Table, TableStyle, Paragraph, Image
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    import matplotlib.pyplot as plt
+    import matplotlib
+    matplotlib.use('Agg')  # Use non-interactive backend
+    from io import BytesIO
+    import base64
+    
+    # Add page break and title
+    elements.append(Spacer(1, 30))
+    title_style = styles['Heading1']
+    title_style.fontSize = 14
+    title_style.alignment = 1  # Center
+    summary_title = Paragraph("Summary Statistics", title_style)
+    elements.append(summary_title)
+    elements.append(Spacer(1, 20))
+    
+    # Calculate statistics
+    total_patients = len(patients)
+    cataract_patients = 0
+    reading_glasses_count = 0
+    surgical_referrals = 0
+    diagnosis_counts = {}
+    
+    for patient in patients:
+        patient_data = patient.get('data', {})
+        
+        # Count cataract patients
+        diagnosis = get_field_value(patient_data, [
+            'diagnosis', 'diagnoses', 'Diagnosis', 'Diagnoses', 'DIAGNOSIS'
+        ])
+        if diagnosis:
+            # Clean and normalize diagnosis
+            diagnosis_clean = diagnosis.strip()
+            if 'cataract' in diagnosis_clean.lower():
+                cataract_patients += 1
+            
+            # Count all diagnoses for chart
+            if diagnosis_clean:
+                diagnosis_counts[diagnosis_clean] = diagnosis_counts.get(diagnosis_clean, 0) + 1
+        
+        # Count reading glasses prescriptions
+        treatment_plan = build_treatment_plan(patient_data)
+        if 'READING GLASS' in treatment_plan:
+            reading_glasses_count += 1
+        
+        # Count surgical referrals
+        surgical_procedure = get_field_value(patient_data, [
+            'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure'
+        ])
+        referral_surgery = get_field_value(patient_data, [
+            'Referral for Surgery', 'referral for surgery', 'surgery referral'
+        ])
+        
+        if ((surgical_procedure and surgical_procedure.strip().lower() not in ['no', 'none', 'n/a']) or 
+            (referral_surgery and referral_surgery.strip().lower() in ['yes', 'y'])):
+            surgical_referrals += 1
+    
+    # Create summary cards table
+    card_data = [
+        ['Total Patients', 'Cataracts Patients', 'Reading Glasses', 'Surgical Referrals'],
+        [str(total_patients), str(cataract_patients), str(reading_glasses_count), str(surgical_referrals)]
+    ]
+    
+    # Calculate percentages for second row
+    def safe_percentage(count, total):
+        return f"({count/total*100:.1f}%)" if total > 0 else "(0%)"
+    
+    percentage_row = [
+        f"{total_patients} (100%)",
+        f"{cataract_patients} {safe_percentage(cataract_patients, total_patients)}",
+        f"{reading_glasses_count} {safe_percentage(reading_glasses_count, total_patients)}",
+        f"{surgical_referrals} {safe_percentage(surgical_referrals, total_patients)}"
+    ]
+    
+    # Replace the values row with percentages
+    card_data[1] = percentage_row
+    
+    # Create cards table
+    cards_table = Table(card_data, colWidths=[2*inch, 2*inch, 2*inch, 2*inch])
+    cards_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, 1), colors.lightblue),
+        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 1), (-1, 1), 11),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    
+    elements.append(cards_table)
+    elements.append(Spacer(1, 30))
+    
+    # Create diagnosis chart if we have diagnosis data
+    if diagnosis_counts and total_patients > 0:
+        chart_title = Paragraph("Diagnosis Distribution", styles['Heading2'])
+        elements.append(chart_title)
+        elements.append(Spacer(1, 10))
+        
+        # Create bar chart
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        diagnoses = list(diagnosis_counts.keys())
+        counts = list(diagnosis_counts.values())
+        percentages = [(count/total_patients)*100 for count in counts]
+        
+        # Create bars
+        bars = ax.bar(range(len(diagnoses)), counts, color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd'])
+        
+        # Customize chart
+        ax.set_xlabel('Diagnosis', fontsize=12)
+        ax.set_ylabel('Number of Patients', fontsize=12)
+        ax.set_title(f'Distribution of Diagnoses (Total: {total_patients} patients)', fontsize=14, fontweight='bold')
+        
+        # Set x-axis labels with rotation for better readability
+        ax.set_xticks(range(len(diagnoses)))
+        ax.set_xticklabels(diagnoses, rotation=45, ha='right')
+        
+        # Add value labels on bars
+        for i, (bar, count, percentage) in enumerate(zip(bars, counts, percentages)):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                   f'{count}\n({percentage:.1f}%)',
+                   ha='center', va='bottom', fontsize=9, fontweight='bold')
+        
+        # Adjust layout to prevent label cutoff
+        plt.tight_layout()
+        
+        # Save chart to BytesIO
+        chart_buffer = BytesIO()
+        plt.savefig(chart_buffer, format='png', dpi=150, bbox_inches='tight')
+        chart_buffer.seek(0)
+        plt.close()
+        
+        # Add chart to PDF
+        chart_image = Image(chart_buffer, width=7*inch, height=4.2*inch)
+        elements.append(chart_image)
+
+def get_field_value(data, possible_keys):
+    """Get field value from data using possible key variations"""
+    for key in possible_keys:
+        # Try exact match first
+        if key in data and data[key]:
+            return str(data[key]).strip()
+        
+        # Try case-insensitive match
+        for data_key, value in data.items():
+            if data_key.lower().strip() == key.lower().strip() and value:
+                return str(value).strip()
+        
+        # Try partial match for more flexible matching
+        for data_key, value in data.items():
+            if (key.lower().replace(' ', '').replace('(', '').replace(')', '') in 
+                data_key.lower().replace(' ', '').replace('(', '').replace(')', '') and value):
+                return str(value).strip()
+    
+    return None
+
+def build_treatment_plan(patient_data):
+    """Build treatment plan by collecting ALL available treatments and joining them"""
+    
+    treatments = []
+    
+    # Helper function to check if a value is a valid treatment (not a negative response)
+    def is_valid_treatment(value):
+        if not value or not value.strip():
+            return False
+        value_lower = value.strip().lower()
+        # Filter out negative responses
+        negative_responses = ['no', 'none', 'n/a', 'na', 'nil', 'not applicable', '-', 'not required', 'not needed']
+        return value_lower not in negative_responses
+    
+    # Priority 1: Surgical Procedure (if exists and not "No", add it)
+    surgical_procedure = get_field_value(patient_data, [
+        'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure'
+    ])
+    if is_valid_treatment(surgical_procedure):
+        treatments.append(surgical_procedure.strip())
+    
+    # Priority 2: Eyedrops & Tabs (show actual medicine name)
+    eyedrops_tabs = get_field_value(patient_data, [
+        'Treatment Plan (Eyedrops & Tabs)', 'treatment plan (eyedrops & tabs)', 
+        'eyedrops', 'tablets', 'medication'
+    ])
+    if is_valid_treatment(eyedrops_tabs):
+        treatments.append(eyedrops_tabs.strip())
+    
+    # Priority 3: Reading Glasses (just show "READING GLASS")
+    reading_glasses = get_field_value(patient_data, [
+        'Treatment Plan (Reading Glasses)', 'treatment plan (reading glasses)', 
+        'reading glasses', 'glasses'
+    ])
+    if is_valid_treatment(reading_glasses):
+        treatments.append("READING GLASS")
+    
+    # Join all treatments with " + " separator
+    return " + ".join(treatments) if treatments else ""
+
 # Correctly indented start of the main execution block
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
