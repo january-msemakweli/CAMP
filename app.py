@@ -5913,28 +5913,77 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
     # Container for the 'Flowable' objects
     elements = []
     
-    # Get styles
+    # Get styles and create clean black and white styling
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, alignment=1)
-    header_style = ParagraphStyle('CustomHeader', parent=styles['Heading2'], fontSize=12, alignment=1)
     
-    # Title
-    title = Paragraph(f"Medical Camp Report - {programme_name}", title_style)
+    # Clean title styling
+    title_style = ParagraphStyle(
+        'ReportTitle', 
+        parent=styles['Heading1'], 
+        fontSize=18, 
+        alignment=1,
+        textColor=colors.black,
+        fontName='Times-Bold',
+        spaceAfter=20
+    )
+    
+    # Clean header styling
+    header_style = ParagraphStyle(
+        'ReportHeader', 
+        parent=styles['Normal'], 
+        fontSize=12, 
+        alignment=1,
+        textColor=colors.black,
+        fontName='Times-Roman',
+        spaceAfter=25
+    )
+    
+    # Main title
+    title = Paragraph(f"MEDICAL CAMP REPORT<br/><font size='14'>{programme_name}</font>", title_style)
     elements.append(title)
-    elements.append(Spacer(1, 12))
     
-    # Report details
+    # Report details in a professional box
     if start_date == end_date:
         date_str = start_date.strftime('%B %d, %Y')
     else:
         date_str = f"{start_date.strftime('%B %d, %Y')} - {end_date.strftime('%B %d, %Y')}"
     
-    details = Paragraph(f"Doctor: <b>{doctor_name}</b><br/>Date: <b>{date_str}</b><br/>Total Patients: <b>{len(patients)}</b>", header_style)
-    elements.append(details)
-    elements.append(Spacer(1, 20))
+    # Create header info table
+    header_data = [
+        ['Doctor:', doctor_name],
+        ['Date:', date_str],
+        ['Total Patients:', str(len(patients))]
+    ]
+    
+    header_table = Table(header_data, colWidths=[2*inch, 4*inch])
+    header_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Times-Bold'),
+        ('FONTNAME', (1, 0), (1, -1), 'Times-Roman'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+    ]))
+    
+    elements.append(header_table)
+    elements.append(Spacer(1, 30))
     
     if not patients:
-        no_data = Paragraph("No patients found for the selected criteria.", styles['Normal'])
+        no_data_style = ParagraphStyle(
+            'NoData', 
+            parent=styles['Normal'], 
+            fontSize=12, 
+            alignment=1,
+            textColor=colors.black,
+            fontName='Times-Italic',
+            spaceAfter=20
+        )
+        no_data = Paragraph("No patients found for the selected criteria.", no_data_style)
         elements.append(no_data)
     else:
         # Create table data
@@ -6001,26 +6050,79 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
             1.2 * inch,  # Physical Address (increased)
         ]
         
-        table = Table(data, repeatRows=1, colWidths=col_widths)
+        # Add table title
+        table_title_style = ParagraphStyle(
+            'TableTitle',
+            parent=styles['Heading2'],
+            fontSize=14,
+            alignment=1,
+            textColor=colors.black,
+            fontName='Times-Bold',
+            spaceAfter=15
+        )
+        table_title = Paragraph("PATIENT DATA", table_title_style)
+        elements.append(table_title)
+        
+        # Process data for proper text wrapping without truncation
+        processed_data = []
+        for i, row in enumerate(data):
+            if i == 0:  # Header row
+                processed_data.append(row)
+            else:
+                processed_row = []
+                for j, cell in enumerate(row):
+                    if j in [1, 5, 6, 7]:  # Name, Diagnosis, Treatment, Address columns
+                        if cell and len(str(cell)) > 15:
+                            # Create paragraph for long text (no truncation)
+                            cell_style = ParagraphStyle(
+                                'CellText',
+                                parent=styles['Normal'],
+                                fontName='Times-Roman',
+                                fontSize=8,
+                                leading=10
+                            )
+                            processed_row.append(Paragraph(str(cell), cell_style))
+                        else:
+                            processed_row.append(cell or '')
+                    else:
+                        processed_row.append(cell or '')
+                processed_data.append(processed_row)
+        
+        table = Table(processed_data, repeatRows=1, colWidths=col_widths)
         table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),  # Headers centered
-            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Patient ID centered
-            ('ALIGN', (1, 1), (2, -1), 'LEFT'),    # Name and Age left-aligned
-            ('ALIGN', (3, 1), (-1, -1), 'CENTER'), # Rest centered
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            # Header styling - Clean black and white
+            ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, 0), 12),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            
+            # Data rows styling
+            ('FONTNAME', (0, 1), (-1, -1), 'Times-Roman'),
             ('FONTSIZE', (0, 1), (-1, -1), 9),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 6),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            
+            # Alignment optimized for each column
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Patient ID centered
+            ('ALIGN', (1, 1), (1, -1), 'LEFT'),    # Name left-aligned
+            ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # Age centered
+            ('ALIGN', (3, 1), (4, -1), 'CENTER'),  # VA fields centered
+            ('ALIGN', (5, 1), (5, -1), 'LEFT'),    # Diagnosis left-aligned
+            ('ALIGN', (6, 1), (6, -1), 'LEFT'),    # Treatment left-aligned
+            ('ALIGN', (7, 1), (7, -1), 'LEFT'),    # Address left-aligned
+            
+            # Vertical alignment for better text wrapping
+            ('VALIGN', (0, 1), (-1, -1), 'TOP'),
+            
+            # Padding for clean spacing
+            ('TOPPADDING', (0, 1), (-1, -1), 8),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+            ('LEFTPADDING', (0, 1), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 1), (-1, -1), 6),
+            
+            # Grid and borders - simple black lines
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
         ]))
         
         elements.append(table)
@@ -6034,48 +6136,49 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
     return buffer
 
 def add_summary_statistics(elements, patients, styles):
-    """Add summary statistics cards and diagnosis chart to PDF"""
-    from reportlab.platypus import Spacer, Table, TableStyle, Paragraph, Image
+    """Add clean summary statistics to PDF"""
+    from reportlab.platypus import Spacer, Table, TableStyle, Paragraph
     from reportlab.lib import colors
     from reportlab.lib.units import inch
-    import matplotlib.pyplot as plt
-    import matplotlib
-    matplotlib.use('Agg')  # Use non-interactive backend
-    from io import BytesIO
-    import base64
+    from reportlab.lib.styles import ParagraphStyle
     
-    # Add page break and title
+    # Add spacing and title
     elements.append(Spacer(1, 30))
-    title_style = styles['Heading1']
-    title_style.fontSize = 14
-    title_style.alignment = 1  # Center
-    summary_title = Paragraph("Summary Statistics", title_style)
+    
+    # Create clean title style
+    summary_title_style = ParagraphStyle(
+        'SummaryTitle',
+        parent=styles['Heading1'],
+        fontSize=14,
+        alignment=1,  # Center
+        textColor=colors.black,
+        spaceAfter=20,
+        fontName='Times-Bold'
+    )
+    summary_title = Paragraph("SUMMARY STATISTICS", summary_title_style)
     elements.append(summary_title)
-    elements.append(Spacer(1, 20))
     
     # Calculate statistics
     total_patients = len(patients)
     cataract_patients = 0
+    immature_cataract_patients = 0
     reading_glasses_count = 0
     surgical_referrals = 0
-    diagnosis_counts = {}
     
     for patient in patients:
         patient_data = patient.get('data', {})
         
-        # Count cataract patients
+        # Count cataract patients (separate immature from regular cataracts)
         diagnosis = get_field_value(patient_data, [
             'diagnosis', 'diagnoses', 'Diagnosis', 'Diagnoses', 'DIAGNOSIS'
         ])
         if diagnosis:
             # Clean and normalize diagnosis
-            diagnosis_clean = diagnosis.strip()
-            if 'cataract' in diagnosis_clean.lower():
+            diagnosis_clean = diagnosis.strip().lower()
+            if 'immature cataract' in diagnosis_clean:
+                immature_cataract_patients += 1
+            elif 'cataract' in diagnosis_clean:
                 cataract_patients += 1
-            
-            # Count all diagnoses for chart
-            if diagnosis_clean:
-                diagnosis_counts[diagnosis_clean] = diagnosis_counts.get(diagnosis_clean, 0) + 1
         
         # Count reading glasses prescriptions
         treatment_plan = build_treatment_plan(patient_data)
@@ -6094,91 +6197,49 @@ def add_summary_statistics(elements, patients, styles):
             (referral_surgery and referral_surgery.strip().lower() in ['yes', 'y'])):
             surgical_referrals += 1
     
-    # Create summary cards table
-    card_data = [
-        ['Total Patients', 'Cataracts Patients', 'Reading Glasses', 'Surgical Referrals'],
-        [str(total_patients), str(cataract_patients), str(reading_glasses_count), str(surgical_referrals)]
-    ]
-    
-    # Calculate percentages for second row
+    # Helper function for safe percentage calculation
     def safe_percentage(count, total):
-        return f"({count/total*100:.1f}%)" if total > 0 else "(0%)"
+        return f"{count/total*100:.1f}%" if total > 0 else "0%"
     
-    percentage_row = [
-        f"{total_patients} (100%)",
-        f"{cataract_patients} {safe_percentage(cataract_patients, total_patients)}",
-        f"{reading_glasses_count} {safe_percentage(reading_glasses_count, total_patients)}",
-        f"{surgical_referrals} {safe_percentage(surgical_referrals, total_patients)}"
+    # Create summary table
+    summary_data = [
+        ['METRIC', 'COUNT', 'PERCENTAGE'],
+        ['Total Patients', str(total_patients), '100.0%'],
+        ['Cataract Cases', str(cataract_patients), safe_percentage(cataract_patients, total_patients)],
+        ['Immature Cataract Cases', str(immature_cataract_patients), safe_percentage(immature_cataract_patients, total_patients)],
+        ['Reading Glasses Prescribed', str(reading_glasses_count), safe_percentage(reading_glasses_count, total_patients)],
+        ['Surgical Referrals', str(surgical_referrals), safe_percentage(surgical_referrals, total_patients)]
     ]
     
-    # Replace the values row with percentages
-    card_data[1] = percentage_row
-    
-    # Create cards table
-    cards_table = Table(card_data, colWidths=[2*inch, 2*inch, 2*inch, 2*inch])
-    cards_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
+    # Create summary table with clean black and white styling
+    summary_table = Table(summary_data, colWidths=[3.5*inch, 1.5*inch, 1.5*inch])
+    summary_table.setStyle(TableStyle([
+        # Header row styling
+        ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, 1), colors.lightblue),
-        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 1), (-1, 1), 11),
+        ('TOPPADDING', (0, 0), (-1, 0), 12),
+        
+        # Data rows styling
+        ('FONTNAME', (0, 1), (0, -1), 'Times-Bold'),  # First column bold
+        ('FONTNAME', (1, 1), (-1, -1), 'Times-Roman'),      # Other columns regular
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),               # Metric names left-aligned
+        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),            # Numbers centered
+        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
+        ('LEFTPADDING', (0, 1), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 1), (-1, -1), 12),
+        
+        # Grid and borders - simple black lines
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
     ]))
     
-    elements.append(cards_table)
-    elements.append(Spacer(1, 30))
-    
-    # Create diagnosis chart if we have diagnosis data
-    if diagnosis_counts and total_patients > 0:
-        chart_title = Paragraph("Diagnosis Distribution", styles['Heading2'])
-        elements.append(chart_title)
-        elements.append(Spacer(1, 10))
-        
-        # Create bar chart
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        diagnoses = list(diagnosis_counts.keys())
-        counts = list(diagnosis_counts.values())
-        percentages = [(count/total_patients)*100 for count in counts]
-        
-        # Create bars
-        bars = ax.bar(range(len(diagnoses)), counts, color=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd'])
-        
-        # Customize chart
-        ax.set_xlabel('Diagnosis', fontsize=12)
-        ax.set_ylabel('Number of Patients', fontsize=12)
-        ax.set_title(f'Distribution of Diagnoses (Total: {total_patients} patients)', fontsize=14, fontweight='bold')
-        
-        # Set x-axis labels with rotation for better readability
-        ax.set_xticks(range(len(diagnoses)))
-        ax.set_xticklabels(diagnoses, rotation=45, ha='right')
-        
-        # Add value labels on bars
-        for i, (bar, count, percentage) in enumerate(zip(bars, counts, percentages)):
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
-                   f'{count}\n({percentage:.1f}%)',
-                   ha='center', va='bottom', fontsize=9, fontweight='bold')
-        
-        # Adjust layout to prevent label cutoff
-        plt.tight_layout()
-        
-        # Save chart to BytesIO
-        chart_buffer = BytesIO()
-        plt.savefig(chart_buffer, format='png', dpi=150, bbox_inches='tight')
-        chart_buffer.seek(0)
-        plt.close()
-        
-        # Add chart to PDF
-        chart_image = Image(chart_buffer, width=7*inch, height=4.2*inch)
-        elements.append(chart_image)
+    elements.append(summary_table)
 
 def get_field_value(data, possible_keys):
     """Get field value from data using possible key variations"""
