@@ -5819,7 +5819,7 @@ def generate_report():
         from flask import make_response
         response = make_response(pdf_buffer.getvalue())
         response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'inline; filename="Medical_Report_{doctor_name}_{start_date}.pdf"'
+        response.headers['Content-Disposition'] = f'attachment; filename="Medical_Report_{doctor_name}_{start_date}.pdf"'
         
         return response
         
