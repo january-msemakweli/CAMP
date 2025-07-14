@@ -5998,7 +5998,7 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
         elements.append(no_data)
     else:
         # Create table data
-        headers = ['Patient ID', 'Name', 'Age (Years)', 'VA RE', 'VA LE', 'Diagnosis', 'Treatment Plan', 'Physical Address']
+        headers = ['Patient ID', 'Name', 'Gender', 'Age', 'VA RE', 'VA LE', 'Diagnosis', 'Treatment Plan', 'Physical Address']
         data = [headers]
         
         for patient in patients:
@@ -6009,6 +6009,9 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
             name = get_field_value(patient_data, [
                 'Name', 'name', 'patient name', 'full name', 'patient_name', 'full_name', 
                 'Patient Name', 'Full Name', 'NAME'
+            ])
+            gender = get_field_value(patient_data, [
+                'Gender', 'gender', 'sex', 'Sex', 'GENDER', 'SEX'
             ])
             age = get_field_value(patient_data, [
                 'Age (Years)', 'age (years)', 'age', 'age years', 'Age', 'AGE', 
@@ -6036,6 +6039,7 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
             row = [
                 patient_id,
                 name or '',
+                gender or '',
                 age or '',
                 va_re or '',
                 va_le or '',
@@ -6052,13 +6056,14 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
         # Define column widths (in inches) - optimized for landscape and readability
         col_widths = [
             0.9 * inch,  # Patient ID
-            1.5 * inch,  # Name (increased)
-            0.8 * inch,  # Age (increased)
-            0.8 * inch,  # VA RE (increased)
-            0.8 * inch,  # VA LE (increased)
-            1.6 * inch,  # Diagnosis (increased)
-            1.8 * inch,  # Treatment Plan
-            1.2 * inch,  # Physical Address (increased)
+            1.4 * inch,  # Name (slightly reduced)
+            0.7 * inch,  # Gender (new)
+            0.7 * inch,  # Age (slightly reduced)
+            0.8 * inch,  # VA RE
+            0.8 * inch,  # VA LE
+            1.5 * inch,  # Diagnosis (slightly reduced)
+            1.7 * inch,  # Treatment Plan (slightly reduced)
+            1.1 * inch,  # Physical Address (slightly reduced)
         ]
         
         # Add table title
@@ -6082,7 +6087,7 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
             else:
                 processed_row = []
                 for j, cell in enumerate(row):
-                    if j in [1, 5, 6, 7]:  # Name, Diagnosis, Treatment, Address columns
+                    if j in [1, 6, 7, 8]:  # Name, Diagnosis, Treatment, Address columns
                         if cell and len(str(cell)) > 15:
                             # Create paragraph for long text (no truncation)
                             cell_style = ParagraphStyle(
@@ -6116,11 +6121,12 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
             # Alignment optimized for each column
             ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Patient ID centered
             ('ALIGN', (1, 1), (1, -1), 'LEFT'),    # Name left-aligned
-            ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # Age centered
-            ('ALIGN', (3, 1), (4, -1), 'CENTER'),  # VA fields centered
-            ('ALIGN', (5, 1), (5, -1), 'LEFT'),    # Diagnosis left-aligned
-            ('ALIGN', (6, 1), (6, -1), 'LEFT'),    # Treatment left-aligned
-            ('ALIGN', (7, 1), (7, -1), 'LEFT'),    # Address left-aligned
+            ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # Gender centered
+            ('ALIGN', (3, 1), (3, -1), 'CENTER'),  # Age centered
+            ('ALIGN', (4, 1), (5, -1), 'CENTER'),  # VA fields centered
+            ('ALIGN', (6, 1), (6, -1), 'LEFT'),    # Diagnosis left-aligned
+            ('ALIGN', (7, 1), (7, -1), 'LEFT'),    # Treatment left-aligned
+            ('ALIGN', (8, 1), (8, -1), 'LEFT'),    # Address left-aligned
             
             # Vertical alignment for better text wrapping
             ('VALIGN', (0, 1), (-1, -1), 'TOP'),
