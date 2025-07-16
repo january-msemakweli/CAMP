@@ -5739,7 +5739,12 @@ def get_doctors_for_programme(programme_id):
                                 if value and isinstance(value, str) and value.strip():
                                     doctors.add(value.strip())
         
-        return jsonify({'doctors': sorted(list(doctors))})
+        # Return sorted list of doctors with "ALL DOCTORS" option at the top
+        doctor_list = sorted(list(doctors))
+        if doctor_list:  # Only add ALL DOCTORS if there are actual doctors
+            doctor_list.insert(0, "ALL DOCTORS")
+        
+        return jsonify({'doctors': doctor_list})
         
     except Exception as e:
         print(f"Error getting doctors: {str(e)}")
@@ -5828,7 +5833,14 @@ def generate_report():
         from flask import make_response
         response = make_response(pdf_buffer.getvalue())
         response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'attachment; filename="Medical_Report_{doctor_name}_{start_date}.pdf"'
+        
+        # Create appropriate filename for ALL DOCTORS vs specific doctor
+        if doctor_name == "ALL DOCTORS":
+            filename = f"Medical_Report_ALL_DOCTORS_{programme_name}_{start_date}.pdf"
+        else:
+            filename = f"Medical_Report_{doctor_name}_{start_date}.pdf"
+        
+        response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
         
         return response
         
@@ -5887,14 +5899,19 @@ def get_patients_for_report(programme_id, doctor_name, start_date, end_date):
             if submission.get('created_at') > all_patient_data[patient_id]['latest_date']:
                 all_patient_data[patient_id]['latest_date'] = submission.get('created_at')
             
-            # Check if this submission has the specified doctor
-            for key, value in submission['data'].items():
-                if (key.lower().replace(' ', '').replace("'", '') in ['doctorsname', 'doctorname', 'doctor'] 
-                    and value and str(value).strip().lower() == doctor_name.lower()):
-                    patients_with_doctor.add(patient_id)
-                    break
+            # Handle ALL DOCTORS case or specific doctor
+            if doctor_name == "ALL DOCTORS":
+                # Include all patients regardless of doctor
+                patients_with_doctor.add(patient_id)
+            else:
+                # Check if this submission has the specified doctor
+                for key, value in submission['data'].items():
+                    if (key.lower().replace(' ', '').replace("'", '') in ['doctorsname', 'doctorname', 'doctor'] 
+                        and value and str(value).strip().lower() == doctor_name.lower()):
+                        patients_with_doctor.add(patient_id)
+                        break
         
-        # Filter to only include patients who have been seen by the specified doctor
+        # Filter to only include patients who have been seen by the specified doctor (or all if ALL DOCTORS)
         filtered_patient_data = []
         for patient_id, patient_info in all_patient_data.items():
             if patient_id in patients_with_doctor:
@@ -6166,16 +6183,16 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
         
         elements.append(table)
         
-        # Add summary statistics
-        add_summary_statistics(elements, patients, styles)
+        # Add summary statistics with total percentages
+        add_summary_statistics(elements, patients, styles, programme_id, start_date, end_date)
     
     # Build PDF
     doc.build(elements)
     buffer.seek(0)
     return buffer
 
-def add_summary_statistics(elements, patients, styles):
-    """Add clean summary statistics to PDF"""
+def add_summary_statistics(elements, patients, styles, programme_id, start_date, end_date):
+    """Add clean summary statistics to PDF with total percentages"""
     from reportlab.platypus import Spacer, Table, TableStyle, Paragraph
     from reportlab.lib import colors
     from reportlab.lib.units import inch
@@ -6197,7 +6214,7 @@ def add_summary_statistics(elements, patients, styles):
     summary_title = Paragraph("SUMMARY STATISTICS", summary_title_style)
     elements.append(summary_title)
     
-    # Calculate statistics
+    # Calculate statistics for current report
     total_patients = len(patients)
     cataract_patients = 0
     immature_cataract_patients = 0
@@ -6236,26 +6253,65 @@ def add_summary_statistics(elements, patients, styles):
             (referral_surgery and referral_surgery.strip().lower() in ['yes', 'y'])):
             surgical_referrals += 1
     
+    # Get total statistics across ALL doctors for percentage calculation
+    all_doctors_patients = get_patients_for_report(programme_id, "ALL DOCTORS", start_date, end_date)
+    total_all_patients = len(all_doctors_patients)
+    total_all_cataracts = 0
+    total_all_immature_cataracts = 0
+    total_all_reading_glasses = 0
+    total_all_surgical_referrals = 0
+    
+    for patient in all_doctors_patients:
+        patient_data = patient.get('data', {})
+        
+        # Count cataract patients (separate immature from regular cataracts)
+        diagnosis = get_field_value(patient_data, [
+            'diagnosis', 'diagnoses', 'Diagnosis', 'Diagnoses', 'DIAGNOSIS'
+        ])
+        if diagnosis:
+            diagnosis_clean = diagnosis.strip().lower()
+            if 'immature cataract' in diagnosis_clean:
+                total_all_immature_cataracts += 1
+            elif 'cataract' in diagnosis_clean:
+                total_all_cataracts += 1
+        
+        # Count reading glasses prescriptions
+        treatment_plan = build_treatment_plan(patient_data)
+        if 'READING GLASS' in treatment_plan:
+            total_all_reading_glasses += 1
+        
+        # Count surgical referrals
+        surgical_procedure = get_field_value(patient_data, [
+            'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure'
+        ])
+        referral_surgery = get_field_value(patient_data, [
+            'Referral for Surgery', 'referral for surgery', 'surgery referral'
+        ])
+        
+        if ((surgical_procedure and surgical_procedure.strip().lower() not in ['no', 'none', 'n/a']) or 
+            (referral_surgery and referral_surgery.strip().lower() in ['yes', 'y'])):
+            total_all_surgical_referrals += 1
+    
     # Helper function for safe percentage calculation
     def safe_percentage(count, total):
         return f"{count/total*100:.1f}%" if total > 0 else "0%"
     
-    # Create summary table
+    # Create summary table with total percentages
     summary_data = [
-        ['METRIC', 'COUNT', 'PERCENTAGE'],
-        ['Total Patients', str(total_patients), '100.0%'],
-        ['Cataract Cases', str(cataract_patients), safe_percentage(cataract_patients, total_patients)],
-        ['Immature Cataract Cases', str(immature_cataract_patients), safe_percentage(immature_cataract_patients, total_patients)],
-        ['Reading Glasses Prescribed', str(reading_glasses_count), safe_percentage(reading_glasses_count, total_patients)],
-        ['Surgical Referrals', str(surgical_referrals), safe_percentage(surgical_referrals, total_patients)]
+        ['METRIC', 'COUNT', 'PERCENTAGE', 'TOTAL PERCENTAGE'],
+        ['Total Patients', str(total_patients), '100.0%', safe_percentage(total_patients, total_all_patients)],
+        ['Cataract Cases', str(cataract_patients), safe_percentage(cataract_patients, total_patients), safe_percentage(cataract_patients, total_all_cataracts)],
+        ['Immature Cataract Cases', str(immature_cataract_patients), safe_percentage(immature_cataract_patients, total_patients), safe_percentage(immature_cataract_patients, total_all_immature_cataracts)],
+        ['Reading Glasses Prescribed', str(reading_glasses_count), safe_percentage(reading_glasses_count, total_patients), safe_percentage(reading_glasses_count, total_all_reading_glasses)],
+        ['Surgical Referrals', str(surgical_referrals), safe_percentage(surgical_referrals, total_patients), safe_percentage(surgical_referrals, total_all_surgical_referrals)]
     ]
     
     # Create summary table with clean black and white styling
-    summary_table = Table(summary_data, colWidths=[3.5*inch, 1.5*inch, 1.5*inch])
+    summary_table = Table(summary_data, colWidths=[2.8*inch, 1.2*inch, 1.3*inch, 1.3*inch])
     summary_table.setStyle(TableStyle([
         # Header row styling
         ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
@@ -6264,14 +6320,14 @@ def add_summary_statistics(elements, patients, styles):
         # Data rows styling
         ('FONTNAME', (0, 1), (0, -1), 'Times-Bold'),  # First column bold
         ('FONTNAME', (1, 1), (-1, -1), 'Times-Roman'),      # Other columns regular
-        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
         ('ALIGN', (0, 1), (0, -1), 'LEFT'),               # Metric names left-aligned
         ('ALIGN', (1, 1), (-1, -1), 'CENTER'),            # Numbers centered
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING', (0, 1), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
-        ('LEFTPADDING', (0, 1), (-1, -1), 12),
-        ('RIGHTPADDING', (0, 1), (-1, -1), 12),
+        ('TOPPADDING', (0, 1), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        ('LEFTPADDING', (0, 1), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 1), (-1, -1), 8),
         
         # Grid and borders - simple black lines
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
