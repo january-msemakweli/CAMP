@@ -636,12 +636,11 @@ function openEditFormModal(formId) {
                         }
                     }
 
-                    // Set conditional field settings
+                    // Set conditional field settings (but don't set dependent field value yet)
                     if (field.condition) {
                         console.log(`Setting up conditional field for: ${field.label}`, field.condition);
                         const conditionalCheckbox = lastRow.querySelector('input[name="is_conditional[]"]');
                         const conditionalSettings = lastRow.querySelector('.conditional-settings');
-                        const dependentFieldSelect = lastRow.querySelector('select[name="condition_field[]"]');
                         const operatorSelect = lastRow.querySelector('select[name="condition_operator[]"]');
                         const valueInput = lastRow.querySelector('input[name="condition_value[]"]');
 
@@ -653,16 +652,16 @@ function openEditFormModal(formId) {
                             // Show the conditional settings
                             conditionalSettings.style.display = 'block';
                             
-                            // Populate conditional field values
-                            if (dependentFieldSelect && field.condition.dependent_field) {
-                                dependentFieldSelect.value = field.condition.dependent_field;
-                            }
+                            // Populate operator and value (but not dependent field yet - will do after dropdown is populated)
                             if (operatorSelect && field.condition.operator) {
                                 operatorSelect.value = field.condition.operator;
                             }
                             if (valueInput && field.condition.value) {
                                 valueInput.value = field.condition.value;
                             }
+                            
+                            // Store the dependent field value to set later
+                            lastRow.setAttribute('data-dependent-field', field.condition.dependent_field);
                         }
                     } else {
                         // Ensure conditional settings are hidden for non-conditional fields
@@ -678,8 +677,13 @@ function openEditFormModal(formId) {
                     }
                 });
 
-                // After all fields are added, update dependent field dropdowns
+                // After all fields are added, update dependent field dropdowns and set values
                 updateDependentFieldDropdowns('editFormFieldsContainer');
+                
+                // Set dependent field values after dropdowns are populated
+                setTimeout(() => {
+                    setDependentFieldValues('editFormFieldsContainer');
+                }, 100);
             } else {
                 // If no fields, add one empty row
                  addFieldRow('editFormFieldsContainer', false); // Don't allow remove if it's the only one
@@ -968,6 +972,26 @@ function updateDependentFieldDropdowns(containerSelector) {
     const allRows = Array.from(container.querySelectorAll('.form-field-row'));
     allRows.forEach(row => {
         updateDependentFieldOptions(row);
+    });
+}
+
+function setDependentFieldValues(containerSelector) {
+    // Set the dependent field values after dropdowns are populated
+    const container = document.querySelector(`#${containerSelector}`);
+    if (!container) return;
+    
+    const rowsWithConditions = container.querySelectorAll('.form-field-row[data-dependent-field]');
+    rowsWithConditions.forEach(row => {
+        const dependentFieldValue = row.getAttribute('data-dependent-field');
+        const dependentFieldSelect = row.querySelector('select[name="condition_field[]"]');
+        
+        if (dependentFieldSelect && dependentFieldValue) {
+            console.log(`Setting dependent field value: ${dependentFieldValue} for row`);
+            dependentFieldSelect.value = dependentFieldValue;
+            
+            // Remove the data attribute after setting the value
+            row.removeAttribute('data-dependent-field');
+        }
     });
 }
 
