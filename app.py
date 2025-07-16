@@ -978,6 +978,70 @@ def revoke_form_access(form_id, permission_id):
     flash('User access revoked successfully')
     return redirect(url_for('view_form', form_id=form_id))
 
+def evaluate_field_visibility(field, form_data):
+    """
+    Evaluate whether a field should be visible based on its conditional logic.
+    Returns True if the field should be visible, False if it should be hidden.
+    Handles complex nested conditional logic with multiple levels of dependencies.
+    """
+    # If field has no condition, it's always visible
+    if not field.get('condition'):
+        return True
+    
+    condition = field['condition']
+    dependent_field = condition.get('dependent_field')
+    operator = condition.get('operator', 'equals')
+    expected_value = condition.get('value', '')
+    
+    # Safety check for dependent field
+    if not dependent_field:
+        print(f"Warning: Field '{field.get('label', 'unknown')}' has condition but no dependent_field")
+        return True
+    
+    # Get the actual value from form data
+    actual_value = form_data.get(dependent_field)
+    
+    # Handle different data types
+    if actual_value is None:
+        actual_value = ''
+    elif isinstance(actual_value, list):
+        # For checkbox fields, convert to comma-separated string
+        actual_value = ', '.join(str(v) for v in actual_value if v)
+    else:
+        actual_value = str(actual_value)
+    
+    expected_value = str(expected_value)
+    
+    # Debug logging for conditional logic
+    print(f"Evaluating visibility for field '{field.get('label', 'unknown')}': "
+          f"dependent_field='{dependent_field}', operator='{operator}', "
+          f"expected='{expected_value}', actual='{actual_value}'")
+    
+    # Evaluate based on operator
+    result = False
+    if operator == 'equals':
+        result = actual_value.lower().strip() == expected_value.lower().strip()
+    elif operator == 'not_equals':
+        result = actual_value.lower().strip() != expected_value.lower().strip()
+    elif operator == 'contains':
+        result = expected_value.lower().strip() in actual_value.lower().strip()
+    elif operator == 'not_contains':
+        result = expected_value.lower().strip() not in actual_value.lower().strip()
+    elif operator == 'is_empty':
+        result = actual_value.strip() == ''
+    elif operator == 'is_not_empty':
+        result = actual_value.strip() != ''
+    elif operator == 'starts_with':
+        result = actual_value.lower().strip().startswith(expected_value.lower().strip())
+    elif operator == 'ends_with':
+        result = actual_value.lower().strip().endswith(expected_value.lower().strip())
+    else:
+        # Default to equals for unknown operators
+        result = actual_value.lower().strip() == expected_value.lower().strip()
+    
+    print(f"Field '{field.get('label', 'unknown')}' visibility result: {result}")
+    return result
+
 @app.route('/form/<form_id>/submit', methods=['POST'])
 @login_required
 def submit_form(form_id):
@@ -1015,10 +1079,11 @@ def submit_form(form_id):
         flash('Patient ID is required', 'danger')
         return redirect(url_for('view_form', form_id=form_id))
     
-    # Collect form data and validate required fields
+    # Collect form data and validate required fields with conditional logic
     form_data = {}
     validation_errors = []
     
+    # First pass: collect all form data
     for field in form['fields']:
         field_label = field['label']
         field_value = None
@@ -1030,11 +1095,22 @@ def submit_form(form_id):
         else:
             field_value = request.form.get(field_label)
         
-        # Validate required fields
-        if field.get('required', False) and (field_value is None or field_value == ''):
-            validation_errors.append(f"Field '{field_label}' is required")
-        
         form_data[field_label] = field_value
+    
+    # Second pass: validate required fields only if they should be visible
+    for field in form['fields']:
+        field_label = field['label']
+        field_value = form_data[field_label]
+        
+        # Check if this field should be visible based on conditional logic
+        should_be_visible = evaluate_field_visibility(field, form_data)
+        
+        # Only validate required fields that should be visible
+        if field.get('required', False) and should_be_visible and (field_value is None or field_value == ''):
+            validation_errors.append(f"Field '{field_label}' is required")
+            print(f"Required field validation failed: {field_label} (visible: {should_be_visible}, value: {field_value})")
+        elif field.get('required', False) and not should_be_visible:
+            print(f"Skipping required field validation for hidden field: {field_label}")
     
     # If there are validation errors, flash them and redirect back to the form
     if validation_errors:

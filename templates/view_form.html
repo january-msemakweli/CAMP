@@ -1102,33 +1102,56 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Add validation for required fields, especially for dropdowns with Choices.js
+        // Add validation for required fields, but only for visible ones based on conditional logic
         const requiredFields = dataEntryForm.querySelectorAll('[required]');
         let hasEmptyRequiredField = false;
         
         requiredFields.forEach(field => {
+            const fieldContainer = field.closest('.form-field');
+            
+            // Check if this field should be visible based on conditional logic
+            const shouldBeVisible = !fieldContainer || fieldContainer.style.display !== 'none';
+            
+            // Only validate required fields that should be visible
+            if (!shouldBeVisible) {
+                console.log('Skipping validation for hidden conditional field:', field.name || field.id);
+                return; // Skip validation for hidden fields
+            }
+            
+            // Check if field is empty
+            let isEmpty = false;
+            
             if (field.tagName === 'SELECT') {
                 // For dropdowns, check if a value is selected
-                if (!field.value) {
-                    hasEmptyRequiredField = true;
-                    // Get the Choices.js instance and highlight it
-                    if (field.choicesInstance) {
-                        field.choicesInstance.showDropdown();
-                        // Add visual indicator that field is required
-                        field.closest('.mb-3').classList.add('has-error');
-                        // Add error message
-                        let errorMsg = field.closest('.mb-3').querySelector('.invalid-feedback');
-                        if (!errorMsg) {
-                            errorMsg = document.createElement('div');
-                            errorMsg.className = 'invalid-feedback';
-                            errorMsg.style.display = 'block';
-                            errorMsg.textContent = 'This field is required';
-                            field.closest('.mb-3').appendChild(errorMsg);
-                        }
+                isEmpty = !field.value || field.value === '';
+            } else if (field.type === 'checkbox') {
+                // For checkboxes, check if at least one is checked
+                const checkboxGroup = dataEntryForm.querySelectorAll(`input[name="${field.name}"]`);
+                isEmpty = !Array.from(checkboxGroup).some(cb => cb.checked);
+            } else {
+                // For other field types
+                isEmpty = !field.value || field.value.trim() === '';
+            }
+            
+            if (isEmpty) {
+                hasEmptyRequiredField = true;
+                console.log('Empty required field found:', field.name || field.id, 'Value:', field.value);
+                
+                // Add visual feedback for SELECT fields with Choices.js
+                if (field.tagName === 'SELECT' && field.choicesInstance) {
+                    field.choicesInstance.showDropdown();
+                    // Add visual indicator that field is required
+                    field.closest('.mb-3').classList.add('has-error');
+                    // Add error message
+                    let errorMsg = field.closest('.mb-3').querySelector('.invalid-feedback');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'invalid-feedback';
+                        errorMsg.style.display = 'block';
+                        errorMsg.textContent = 'This field is required';
+                        field.closest('.mb-3').appendChild(errorMsg);
                     }
                 }
-            } else if (!field.value) {
-                hasEmptyRequiredField = true;
             }
         });
         
