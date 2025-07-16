@@ -5909,18 +5909,31 @@ def get_patients_for_report(programme_id, doctor_name, start_date, end_date):
 def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_date):
     """Generate PDF report using reportlab"""
     from reportlab.lib.pagesizes import letter, A4, landscape
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
     from reportlab.lib import colors
     from io import BytesIO
     import datetime
+    import os
     
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=36, leftMargin=36, topMargin=72, bottomMargin=18)
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=36, leftMargin=36, topMargin=50, bottomMargin=18)
     
     # Container for the 'Flowable' objects
     elements = []
+    
+    # Add MDF logo at the very top with minimal spacing
+    logo_path = os.path.join(os.path.dirname(__file__), 'MDF.png')
+    if os.path.exists(logo_path):
+        try:
+            # Create logo for page 1 only with constrained size
+            logo = Image(logo_path, width=1.0*inch, height=0.8*inch, kind='proportional')
+            logo.hAlign = 'CENTER'  # Center the logo
+            elements.append(logo)
+            elements.append(Spacer(1, 15))  # Space after logo
+        except Exception as e:
+            print(f"Could not load logo: {str(e)}")
     
     # Get styles and create clean black and white styling
     styles = getSampleStyleSheet()
@@ -5998,7 +6011,7 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
         elements.append(no_data)
     else:
         # Create table data
-        headers = ['Patient ID', 'Name', 'Gender', 'Age', 'VA RE', 'VA LE', 'Diagnosis', 'Treatment Plan', 'Physical Address']
+        headers = ['Patient ID', 'Name', 'Gender', 'Age', 'VA RE', 'VA LE', 'Diagnosis', 'Treatment Plan', 'Address', 'Phone']
         data = [headers]
         
         for patient in patients:
@@ -6036,6 +6049,12 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
             # Physical address (use Ward field)
             address = get_field_value(patient_data, ['ward', 'physical address', 'address'])
             
+            # Phone number
+            phone = get_field_value(patient_data, [
+                'Phone Number', 'phone number', 'phone', 'Phone', 'PHONE NUMBER', 
+                'PHONE', 'mobile', 'Mobile', 'contact number', 'Contact Number'
+            ])
+            
             row = [
                 patient_id,
                 name or '',
@@ -6045,7 +6064,8 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
                 va_le or '',
                 diagnosis or '',
                 treatment_plan or '',
-                address or ''
+                address or '',
+                phone or ''
             ]
             data.append(row)
         
@@ -6056,14 +6076,15 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
         # Define column widths (in inches) - optimized for landscape and readability
         col_widths = [
             0.9 * inch,  # Patient ID
-            1.4 * inch,  # Name (slightly reduced)
-            0.7 * inch,  # Gender (new)
-            0.7 * inch,  # Age (slightly reduced)
-            0.8 * inch,  # VA RE
-            0.8 * inch,  # VA LE
-            1.5 * inch,  # Diagnosis (slightly reduced)
-            1.7 * inch,  # Treatment Plan (slightly reduced)
-            1.1 * inch,  # Physical Address (slightly reduced)
+            1.3 * inch,  # Name
+            0.6 * inch,  # Gender
+            0.6 * inch,  # Age
+            0.7 * inch,  # VA RE
+            0.7 * inch,  # VA LE
+            1.4 * inch,  # Diagnosis
+            1.5 * inch,  # Treatment Plan
+            1.0 * inch,  # Address
+            1.0 * inch,  # Phone
         ]
         
         # Add table title
@@ -6087,7 +6108,7 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
             else:
                 processed_row = []
                 for j, cell in enumerate(row):
-                    if j in [1, 6, 7, 8]:  # Name, Diagnosis, Treatment, Address columns
+                    if j in [1, 6, 7, 8, 9]:  # Name, Diagnosis, Treatment, Address, Phone columns
                         if cell and len(str(cell)) > 15:
                             # Create paragraph for long text (no truncation)
                             cell_style = ParagraphStyle(
@@ -6127,6 +6148,7 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
             ('ALIGN', (6, 1), (6, -1), 'LEFT'),    # Diagnosis left-aligned
             ('ALIGN', (7, 1), (7, -1), 'LEFT'),    # Treatment left-aligned
             ('ALIGN', (8, 1), (8, -1), 'LEFT'),    # Address left-aligned
+            ('ALIGN', (9, 1), (9, -1), 'LEFT'),    # Phone left-aligned
             
             # Vertical alignment for better text wrapping
             ('VALIGN', (0, 1), (-1, -1), 'TOP'),
