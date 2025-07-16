@@ -610,6 +610,12 @@ function openEditFormModal(formId) {
                      // Ensure remove buttons are visible for all rows in edit mode
                     lastRow.querySelector('.remove-field-btn').style.display = 'inline-block';
 
+                    // Set required checkbox state
+                    const requiredCheckbox = lastRow.querySelector('input[name="field_required[]"]');
+                    if (requiredCheckbox) {
+                        requiredCheckbox.checked = !!field.required;
+                    }
+
                     // Set allow_other checkbox state
                     if (['dropdown', 'radio', 'checkbox'].includes(field.type)) {
                         const optionsContainer = lastRow.querySelector('.options-container');
@@ -629,7 +635,51 @@ function openEditFormModal(formId) {
                             locationInput.value = field.location_field_identifier;
                         }
                     }
+
+                    // Set conditional field settings
+                    if (field.condition) {
+                        console.log(`Setting up conditional field for: ${field.label}`, field.condition);
+                        const conditionalCheckbox = lastRow.querySelector('input[name="is_conditional[]"]');
+                        const conditionalSettings = lastRow.querySelector('.conditional-settings');
+                        const dependentFieldSelect = lastRow.querySelector('select[name="condition_field[]"]');
+                        const operatorSelect = lastRow.querySelector('select[name="condition_operator[]"]');
+                        const valueInput = lastRow.querySelector('input[name="condition_value[]"]');
+
+                        if (conditionalCheckbox && conditionalSettings) {
+                            // Check the conditional checkbox
+                            conditionalCheckbox.checked = true;
+                            conditionalCheckbox.value = index; // Set proper index value
+                            
+                            // Show the conditional settings
+                            conditionalSettings.style.display = 'block';
+                            
+                            // Populate conditional field values
+                            if (dependentFieldSelect && field.condition.dependent_field) {
+                                dependentFieldSelect.value = field.condition.dependent_field;
+                            }
+                            if (operatorSelect && field.condition.operator) {
+                                operatorSelect.value = field.condition.operator;
+                            }
+                            if (valueInput && field.condition.value) {
+                                valueInput.value = field.condition.value;
+                            }
+                        }
+                    } else {
+                        // Ensure conditional settings are hidden for non-conditional fields
+                        const conditionalCheckbox = lastRow.querySelector('input[name="is_conditional[]"]');
+                        const conditionalSettings = lastRow.querySelector('.conditional-settings');
+                        if (conditionalCheckbox) {
+                            conditionalCheckbox.checked = false;
+                            conditionalCheckbox.value = index;
+                        }
+                        if (conditionalSettings) {
+                            conditionalSettings.style.display = 'none';
+                        }
+                    }
                 });
+
+                // After all fields are added, update dependent field dropdowns
+                updateDependentFieldDropdowns('editFormFieldsContainer');
             } else {
                 // If no fields, add one empty row
                  addFieldRow('editFormFieldsContainer', false); // Don't allow remove if it's the only one
@@ -906,6 +956,17 @@ function updateAllDependentFieldOptions() {
     // Update all conditional field dropdowns
     document.querySelectorAll('.conditional-checkbox:checked').forEach(checkbox => {
         const row = checkbox.closest('.form-field-row');
+        updateDependentFieldOptions(row);
+    });
+}
+
+function updateDependentFieldDropdowns(containerSelector) {
+    // Update all dependent field dropdowns in a specific container
+    const container = document.querySelector(`#${containerSelector}`);
+    if (!container) return;
+    
+    const allRows = Array.from(container.querySelectorAll('.form-field-row'));
+    allRows.forEach(row => {
         updateDependentFieldOptions(row);
     });
 }
