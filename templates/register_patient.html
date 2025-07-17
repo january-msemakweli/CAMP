@@ -301,6 +301,91 @@
     font-size: 0.95rem !important;
 }
 
+/* Fix dropdown overflow issues */
+.choices {
+    position: relative !important;
+    z-index: 1000 !important;
+}
+
+/* When dropdown is open, increase z-index of the entire choices container */
+.choices.is-open {
+    z-index: 99999 !important;
+}
+
+.choices__list--dropdown {
+    position: absolute !important;
+    z-index: 999999 !important;
+    background: white !important;
+    border: 1px solid #dee2e6 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    max-height: 250px !important;
+    overflow-y: auto !important;
+    width: 100% !important;
+    top: 100% !important;
+    left: 0 !important;
+    margin-top: 2px !important;
+}
+
+.choices.is-open .choices__list--dropdown {
+    display: block !important;
+}
+
+.choices__list--dropdown .choices__item--selectable {
+    padding: 12px 16px !important;
+    border-bottom: 1px solid #f8f9fa !important;
+    transition: background-color 0.15s ease !important;
+}
+
+.choices__list--dropdown .choices__item--selectable:hover,
+.choices__list--dropdown .choices__item--selectable.is-highlighted {
+    background-color: #f8f9fa !important;
+    color: #495057 !important;
+}
+
+.choices__list--dropdown .choices__item--selectable:last-child {
+    border-bottom: none !important;
+}
+
+/* Ensure parent containers don't clip dropdowns */
+.card-body {
+    overflow: visible !important;
+}
+
+.col-lg-6 {
+    overflow: visible !important;
+}
+
+.card {
+    overflow: visible !important;
+}
+
+.row {
+    overflow: visible !important;
+}
+
+/* Additional stacking context fixes */
+.location-dropdown {
+    position: relative !important;
+}
+
+/* Ensure form fields don't interfere with dropdown stacking */
+.form-control, .form-select, .btn, .form-check-input {
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+/* Special handling for location cards */
+.card.border-success {
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+/* When any dropdown in location section is open, increase card z-index */
+.card.border-success:has(.choices.is-open) {
+    z-index: 100000 !important;
+}
+
 .form-check-input:checked {
     background-color: var(--bs-primary) !important;
     border-color: var(--bs-primary) !important;
@@ -542,6 +627,34 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             choicesInstances[el.name] = choices;
             el.choicesInstance = choices;
+            
+            // Add event listeners to handle z-index when dropdown opens/closes
+            el.addEventListener('showDropdown', function() {
+                // Increase z-index of the location card when any dropdown opens
+                const locationCard = document.querySelector('.card.border-success');
+                if (locationCard) {
+                    locationCard.style.zIndex = '100000';
+                }
+                // Also increase z-index of the choices container
+                const choicesContainer = el.closest('.choices');
+                if (choicesContainer) {
+                    choicesContainer.style.zIndex = '100001';
+                }
+            });
+            
+            el.addEventListener('hideDropdown', function() {
+                // Reset z-index when dropdown closes
+                const locationCard = document.querySelector('.card.border-success');
+                if (locationCard) {
+                    locationCard.style.zIndex = '1';
+                }
+                // Reset choices container z-index
+                const choicesContainer = el.closest('.choices');
+                if (choicesContainer) {
+                    choicesContainer.style.zIndex = '1000';
+                }
+            });
+            
         } catch (error) {
             console.error('Error initializing Choices.js for', el.name, error);
         }

@@ -1934,16 +1934,16 @@ def dataset_view():
         except Exception as e:
             print(f"Error fetching patient registration data for {patient_id}: {str(e)}")
             # Fallback to old method if centralized registration not available
-            for submission in data['submissions']:
-                form_id = submission.get('form_id')
-                if form_id and get_form_is_first(form_id) and submission.get('data'):
-                    submission_date = submission.get('created_at', '')
-                    for key, value in submission['data'].items():
-                        normalized_key = key.lower().strip().replace(' ', '_')
-                        if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
-                            registration_data[normalized_key] = value
-                            if submission_date:
-                                last_updated[normalized_key] = submission_date
+        for submission in data['submissions']:
+            form_id = submission.get('form_id')
+            if form_id and get_form_is_first(form_id) and submission.get('data'):
+                submission_date = submission.get('created_at', '')
+                for key, value in submission['data'].items():
+                    normalized_key = key.lower().strip().replace(' ', '_')
+                    if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
+                        registration_data[normalized_key] = value
+                        if submission_date:
+                            last_updated[normalized_key] = submission_date
 
         # Sort submissions by date (newest first) to prioritize recent data
         sorted_submissions = sorted(data['submissions'], key=lambda s: s.get('created_at', ''), reverse=True)
@@ -2627,18 +2627,18 @@ def export_dataset():
         except Exception as e:
             print(f"Export: Error fetching patient registration data for {patient_id}: {str(e)}")
             # Fallback to old method if centralized registration not available
-            for submission in data['submissions']:
-                form_id = submission.get('form_id')
-                if form_id and get_form_is_first(form_id) and submission.get('data'):
-                    form_title = submission.get('forms', {}).get('title', 'Unknown')
-                    print(f"Export: Found registration data from: {form_title} (ID: {form_id})")
-                    submission_date = submission.get('created_at', '')
-                    for key, value in submission['data'].items():
-                        normalized_key = key.lower().strip().replace(' ', '_')
-                        if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
-                            registration_data[normalized_key] = value
-                            if submission_date:
-                                last_updated[normalized_key] = submission_date
+        for submission in data['submissions']:
+            form_id = submission.get('form_id')
+            if form_id and get_form_is_first(form_id) and submission.get('data'):
+                form_title = submission.get('forms', {}).get('title', 'Unknown')
+                print(f"Export: Found registration data from: {form_title} (ID: {form_id})")
+                submission_date = submission.get('created_at', '')
+                for key, value in submission['data'].items():
+                    normalized_key = key.lower().strip().replace(' ', '_')
+                    if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
+                        registration_data[normalized_key] = value
+                        if submission_date:
+                            last_updated[normalized_key] = submission_date
 
         # Sort submissions by date (newest first)
         sorted_submissions = sorted(data['submissions'], key=lambda s: s.get('created_at', ''), reverse=True)
@@ -3141,16 +3141,16 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
         except Exception as e:
             print(f"Analytics: Error fetching patient registration data for {patient_id}: {str(e)}")
             # Fallback to old method if centralized registration not available
-            for submission in data['submissions']:
-                form_id = submission.get('form_id')
-                if form_id and get_form_is_first(form_id) and submission.get('data'):
-                    submission_date = submission.get('created_at', '')
-                    for key, value in submission['data'].items():
-                        normalized_key = key.lower().strip().replace(' ', '_')
-                        if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
-                            registration_data[normalized_key] = value
-                            if submission_date:
-                                last_updated[normalized_key] = submission_date
+        for submission in data['submissions']:
+            form_id = submission.get('form_id')
+            if form_id and get_form_is_first(form_id) and submission.get('data'):
+                submission_date = submission.get('created_at', '')
+                for key, value in submission['data'].items():
+                    normalized_key = key.lower().strip().replace(' ', '_')
+                    if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
+                        registration_data[normalized_key] = value
+                        if submission_date:
+                            last_updated[normalized_key] = submission_date
 
         # Sort submissions by date (newest first)
         sorted_submissions = sorted(data['submissions'], key=lambda s: s.get('created_at', ''), reverse=True)
@@ -5599,14 +5599,14 @@ def admin_statistics():
         attended_query = attended_query.gte('created_at', date_filter['start'])
     if date_filter.get('end'):
         attended_query = attended_query.lt('created_at', date_filter['end'])
-    
+        
     try:
-        attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
-        for submission in attended_data:
-            if submission.get('patient_id'):
-                attended_patients.add(submission['patient_id'])
+            attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
+            for submission in attended_data:
+                if submission.get('patient_id'):
+                    attended_patients.add(submission['patient_id'])
     except Exception as e:
-        print(f"Error fetching attended submissions: {str(e)}")
+            print(f"Error fetching attended submissions: {str(e)}")
     
     total_patients_attended = len(attended_patients)
     print(f"Found {total_patients_attended} patients who received medical care (form submissions)")
@@ -7084,7 +7084,7 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
         ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
         ('TOPPADDING', (0, 0), (-1, 0), 10),
         
-        # Data rows styling  
+        # Data rows styling
         ('VALIGN', (0, 1), (-1, -1), 'TOP'),  # Top align for better text flow
         ('TOPPADDING', (0, 1), (-1, -1), 8),
         ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
