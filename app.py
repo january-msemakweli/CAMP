@@ -226,14 +226,15 @@ def get_form_is_first(form_id):
         title_suggests_registration = any(keyword in form_title for keyword in registration_keywords)
         
         # Get all forms for this project ordered by creation date
-        all_forms_response = supabase.table('forms').select('id, title').eq('project_id', project_id).order('created_at').execute()
-        if not all_forms_response.data or len(all_forms_response.data) == 0:
+        forms_query = supabase.table('forms').select('id, title').eq('project_id', project_id).order('created_at')
+        all_forms_data = fetch_all_pages(forms_query, debug_name=f"form_is_first_project_{project_id}")
+        if not all_forms_data or len(all_forms_data) == 0:
             print(f"No forms found for project {project_id} when checking if form {form_id} is first")
             get_form_is_first.cache[form_id] = False
             return False
         
         # Check if form is the first created in its project
-        is_first_by_order = all_forms_response.data[0]['id'] == form_id
+        is_first_by_order = all_forms_data[0]['id'] == form_id
         
         # Log the decision process
         if is_first_by_order:
@@ -687,8 +688,8 @@ def project_detail(project_id):
     project.pop('camp_date', None)
     
     # Get forms for this project, excluding archived forms
-    forms_response = supabase.table('forms').select('*').eq('project_id', project_id).eq('is_archived', False).order('created_at').execute()
-    forms = forms_response.data
+    forms_query = supabase.table('forms').select('*').eq('project_id', project_id).eq('is_archived', False).order('created_at')
+    forms = fetch_all_pages(forms_query, debug_name=f"project_detail_{project_id}_forms")
     
     # Parse the fields for each form
     for form in forms:
@@ -945,16 +946,17 @@ def view_form(form_id):
     
     # Check if this is the first form in the project (for Patient ID workflow)
     # Get all forms for this project ordered by creation date
-    all_forms_response = supabase.table('forms').select('id').eq('project_id', form['project_id']).order('created_at').execute()
+    forms_query = supabase.table('forms').select('id').eq('project_id', form['project_id']).order('created_at')
+    all_project_forms = fetch_all_pages(forms_query, debug_name=f"view_form_project_{form['project_id']}_forms")
     is_first_form = False
     
     # Calculate form_index for the waitlist feature
     form_indices = {}
-    if all_forms_response.data and len(all_forms_response.data) > 0:
+    if all_project_forms and len(all_project_forms) > 0:
         # Check if current form is the first one created
-        is_first_form = all_forms_response.data[0]['id'] == form_id
+        is_first_form = all_project_forms[0]['id'] == form_id
         # Map form IDs to their positions in the sequence
-        form_indices = {f['id']: idx for idx, f in enumerate(all_forms_response.data)}
+        form_indices = {f['id']: idx for idx, f in enumerate(all_project_forms)}
         # Add form_index to form object
         form['form_index'] = form_indices.get(form_id, 0)
     
@@ -1079,12 +1081,12 @@ def manage_registration_permissions():
         return redirect(url_for('index'))
     
     # Get all approved users
-    users_response = supabase.table('users').select('*').eq('is_approved', True).execute()
-    all_users = users_response.data or []
+    users_query = supabase.table('users').select('*').eq('is_approved', True)
+    all_users = fetch_all_pages(users_query, debug_name="registration_permissions_users")
     
     # Get users with registration permissions
-    permissions_response = supabase.table('registration_permissions').select('*').execute()
-    permissions = permissions_response.data or []
+    permissions_query = supabase.table('registration_permissions').select('*')
+    permissions = fetch_all_pages(permissions_query, debug_name="registration_permissions")
     
     # Add user data to each permission
     user_permissions = []
@@ -1435,10 +1437,11 @@ def user_dashboard():
     accessible_forms = []
     
     # Get permissions for this user
-    permissions_response = supabase.table('form_permissions').select('*').eq('user_id', current_user.id).execute()
+    permissions_query = supabase.table('form_permissions').select('*').eq('user_id', current_user.id)
+    user_permissions = fetch_all_pages(permissions_query, debug_name=f"user_{current_user.id}_permissions")
     
-    if permissions_response.data:
-        for permission in permissions_response.data:
+    if user_permissions:
+        for permission in user_permissions:
             # Get form details separately - exclude archived forms
             form_response = supabase.table('forms').select('*').eq('id', permission['form_id']).eq('is_archived', False).execute()
             if form_response.data:
@@ -1474,8 +1477,8 @@ def user_dashboard():
 def program_list():
     """List all available programs before showing dataset view"""
     # Get all projects
-    projects_response = supabase.table('projects').select('*').order('name').execute()
-    projects = projects_response.data if projects_response.data else []
+    projects_query = supabase.table('projects').select('*').order('name')
+    projects = fetch_all_pages(projects_query, debug_name="program_list_projects")
     
     # Log activity
     log_activity('view', 'programs_list', None, "Viewed programs list for dataset selection")
@@ -1549,15 +1552,15 @@ def dataset_view():
         if forms_response.data:
             ordered_forms_data = forms_response.data
     elif project_id: # If a project is selected, fetch its forms with proper ordering
-        # Get all forms for this project
+        # Get all forms for this project using pagination
         forms_query = supabase.table('forms').select('*').eq('project_id', project_id)
-        forms_response = forms_query.execute()
-        if forms_response.data:
+        all_project_forms = fetch_all_pages(forms_query, debug_name=f"dataset_project_{project_id}_forms")
+        if all_project_forms:
             # Separate registration forms from other forms
             registration_forms = []
             other_forms = []
             
-            for form in forms_response.data:
+            for form in all_project_forms:
                 if get_form_is_first(form.get('id')):
                     registration_forms.append(form)
                 else:
@@ -1571,9 +1574,7 @@ def dataset_view():
             ordered_forms_data = registration_forms + other_forms
     else: # Otherwise fetch all forms, ordered by project then creation
         forms_query = supabase.table('forms').select('*').order('project_id', desc=False).order('created_at', desc=False)
-        forms_response = forms_query.execute()
-        if forms_response.data:
-            ordered_forms_data = forms_response.data
+        ordered_forms_data = fetch_all_pages(forms_query, debug_name="dataset_all_forms")
 
     # 2. Build ordered_fields list based on form definitions
     ordered_fields = []
@@ -1972,8 +1973,8 @@ def dataset_view():
 
     # 10. Get data for filter dropdowns
     # Get all projects
-    projects_response = supabase.table('projects').select('*').execute()
-    all_projects = projects_response.data
+    projects_query = supabase.table('projects').select('*')
+    all_projects = fetch_all_pages(projects_query, debug_name="dataset_all_projects")
     
     # Get all camps for filter dropdown
     camps_data = fetch_all_pages(
@@ -2320,9 +2321,7 @@ def export_dataset():
     else:
         forms_query = forms_query.order('project_id', desc=False).order('created_at', desc=False)
     
-    forms_response = forms_query.execute()
-    if forms_response.data:
-        ordered_forms_data = forms_response.data
+    ordered_forms_data = fetch_all_pages(forms_query, debug_name="export_forms")
 
     # 2. Build ordered_fields list based on form definitions
     ordered_fields = []
@@ -3302,8 +3301,8 @@ def analytics():
     # Get relevant forms based on project selection
     if project_id:
         # Only get forms for the selected project
-        forms_response = supabase.table('forms').select('*').eq('project_id', project_id).execute()
-        forms = forms_response.data
+        forms_query = supabase.table('forms').select('*').eq('project_id', project_id)
+        forms = fetch_all_pages(forms_query, debug_name=f"analytics_project_{project_id}_forms")
     else:
         # Get all forms if no project is selected using pagination
         forms = fetch_all_pages(supabase.table('forms').select('*'), debug_name="analytics_all_forms")
@@ -5297,8 +5296,8 @@ def form_waitlist(form_id):
         project = project_response.data[0]
             
         # Get all forms in this project to determine order
-        all_forms_response = supabase.table('forms').select('*').eq('project_id', project['id']).order('created_at').execute()
-        project_forms = all_forms_response.data
+        forms_query = supabase.table('forms').select('*').eq('project_id', project['id']).order('created_at')
+        project_forms = fetch_all_pages(forms_query, debug_name=f"waitlist_project_{project['id']}_forms")
         
         # Map form IDs to their positions in the sequence
         form_indices = {f['id']: idx for idx, f in enumerate(project_forms)}
@@ -5999,11 +5998,12 @@ def get_doctors_for_programme(project_id):
     """Get unique doctor names from a specific programme"""
     try:
         # Get all forms for this programme
-        forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
-        if not forms_response.data:
+        forms_query = supabase.table('forms').select('id').eq('project_id', project_id)
+        forms_data = fetch_all_pages(forms_query, debug_name=f"doctors_project_{project_id}_forms")
+        if not forms_data:
             return jsonify({'doctors': []})
         
-        form_ids = [form['id'] for form in forms_response.data]
+        form_ids = [form['id'] for form in forms_data]
         
         # Get all submissions for these forms (with pagination)
         submissions_query = supabase.table('form_submissions').select('data').in_('form_id', form_ids)
@@ -6146,11 +6146,12 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
         from datetime import timedelta
         
         # Get all forms for this programme
-        forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
-        if not forms_response.data:
+        forms_query = supabase.table('forms').select('id').eq('project_id', project_id)
+        forms_data = fetch_all_pages(forms_query, debug_name=f"report_project_{project_id}_forms")
+        if not forms_data:
             return []
         
-        form_ids = [form['id'] for form in forms_response.data]
+        form_ids = [form['id'] for form in forms_data]
         
         # Get all submissions for these forms within date range
         query = supabase.table('form_submissions').select('*').in_('form_id', form_ids)
