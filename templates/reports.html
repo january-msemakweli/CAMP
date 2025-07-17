@@ -30,7 +30,7 @@
                                 <i class="fas fa-project-diagram me-2" style="color: var(--accent-color);"></i>
                                 1. SELECT PROGRAMME
                             </label>
-                            <select class="form-select" id="programme" name="programme" required>
+                            <select class="form-select" id="programme" name="project_id" required>
                                 <option value="">Choose a programme...</option>
                                 {% for project in projects %}
                                 <option value="{{ project.id }}">{{ project.name }}</option>
@@ -241,7 +241,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!programmeSelect.value || !doctorSelect.value) return;
         
         const formData = new FormData();
-        formData.append('programme', programmeSelect.value);
+        formData.append('project_id', programmeSelect.value);
         formData.append('doctor', doctorSelect.value);
         formData.append('dateType', document.querySelector('input[name="dateType"]:checked').value);
         

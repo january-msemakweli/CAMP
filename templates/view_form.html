@@ -204,10 +204,6 @@
     <div class="col-12">
         <h2>{{ form.title }}</h2>
         <p class="text-muted">Programme: {{ project.name }}</p>
-        {# Pass is_first_form flag from backend #}
-        {% if is_first_form %}
-            <span class="badge bg-info">Registration Form</span>
-        {% endif %}
     </div>
 </div>
 
@@ -223,22 +219,7 @@
                 <div id="patientIdSection" class="mb-4 p-3 border rounded bg-light">
                     <h6 class="mb-3">Patient Identification</h6>
                     <div class="row g-2 align-items-end">
-                        {# Conditionally show Create button only for the first form #}
-                        {% if is_first_form %}
-                        <div class="col-auto">
-                            <button type="button" id="createPatientIdBtn" class="btn btn-success">
-                                <i class="fas fa-plus me-1"></i> Create New Patient ID
-                            </button>
-                        </div>
-                        {% else %}
-                         <div class="col-12">
-                            <div class="alert alert-warning small p-2">
-                                <i class="fas fa-info-circle me-1"></i> New patient IDs can only be created from the programme's first form (Registration).
-                            </div>
-                         </div>
-                        {% endif %}
-                        
-                        {# Search Section (Always shown, but functionality might differ) #}
+                        {# Search Section (Only function available in project forms) #}
                         <div class="col search-container">
                             <label for="searchPatientIdInput" class="form-label visually-hidden">Search Existing Patient ID</label>
                             <input type="search" id="searchPatientIdInput" class="form-control" placeholder="Search by Patient ID or Name...">
@@ -323,8 +304,8 @@
                 {% if field.options|length > 3 %}
                 <!-- Search box for checkbox options -->
                 <div class="checkbox-search-container mb-3">
-                    <input type="text" class="form-control checkbox-search" placeholder="{% if field.options|length >= 30 %}Type to search and show options...{% else %}Search options...{% endif %}" data-field-index="{{ loop.index }}">
-                    <small class="text-muted">{% if field.options|length >= 30 %}{{ field.options|length }} options available - start typing to see choices{% else %}Search to filter options{% endif %}</small>
+                                                    <input type="text" class="form-control checkbox-search" placeholder="{% if field.options|length >= 40 %}Type to search and show options...{% else %}Search options...{% endif %}" data-field-index="{{ loop.index }}">
+                    <small class="text-muted">{% if field.options|length >= 40 %}{{ field.options|length }} options available - start typing to see choices{% else %}Search to filter options{% endif %}</small>
                 </div>
                 {% endif %}
                 
@@ -551,10 +532,23 @@ function displayPatientPreview(patientId) {
                 content += '<h6>Previous Form Data:</h6>';
                 content += '<div class="accordion accordion-flush" id="patientDataAccordion">'; // Added accordion-flush for less border
                 
-                for (const [formId, formData] of Object.entries(patientFormData)) {
+                // Sort entries to show registration data first
+                const sortedEntries = Object.entries(patientFormData).sort(([keyA], [keyB]) => {
+                    if (keyA === 'registration') return -1; // Registration first
+                    if (keyB === 'registration') return 1;
+                    return 0; // Keep other entries in original order
+                });
+                
+                for (const [formId, formData] of sortedEntries) {
                      const formDetails = formDetailsMap[formId]; // Get details for this form
                      const formTitle = formDetails ? formDetails.title : `Form ID: ${formId}`; 
                      const fieldOrder = formDetails ? formDetails.field_order : null; // Get the ordered labels
+                     
+                     // Special styling for registration data
+                     const isRegistration = formId === 'registration';
+                     const badgeClass = isRegistration ? 'bg-primary' : 'bg-secondary';
+                     const headerClass = isRegistration ? 'text-primary fw-bold' : '';
+                     const accordionShow = isRegistration ? 'show' : ''; // Show registration by default
                      
                      let safeFormTitle = escapeHtml(formTitle);
                      let safeFormId = escapeHtml(formId);
@@ -562,11 +556,13 @@ function displayPatientPreview(patientId) {
                      content += `
                         <div class="accordion-item">
                             <h2 class="accordion-header" id="heading-${safeFormId}">
-                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${safeFormId}" aria-expanded="false" aria-controls="collapse-${safeFormId}">
-                                ${safeFormTitle} <span class="text-muted ms-2 small">(${safeFormId.substring(0,8)}...)</span>
+                            <button class="accordion-button ${accordionShow ? '' : 'collapsed'} ${headerClass}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${safeFormId}" aria-expanded="${accordionShow ? 'true' : 'false'}" aria-controls="collapse-${safeFormId}">
+                                <span class="me-2">${safeFormTitle}</span>
+                                <span class="badge ${badgeClass}">${isRegistration ? 'Registration' : 'Form Data'}</span>
+                                ${!isRegistration ? `<span class="text-muted ms-2 small">(${safeFormId.substring(0,8)}...)</span>` : ''}
                             </button>
                             </h2>
-                            <div id="collapse-${safeFormId}" class="accordion-collapse collapse" aria-labelledby="heading-${safeFormId}">
+                            <div id="collapse-${safeFormId}" class="accordion-collapse collapse ${accordionShow}" aria-labelledby="heading-${safeFormId}">
                             <div class="accordion-body">
                                 <dl class="row">`;
                                 
@@ -811,8 +807,8 @@ document.addEventListener('DOMContentLoaded', function() {
     resetDropdown(districtDropdown);
     resetDropdown(wardDropdown);
 
-    // --- Patient ID Workflow JavaScript (Remains unchanged) ---
-    const createBtn = document.getElementById('createPatientIdBtn');
+    // --- Patient ID Workflow JavaScript (Search only - no creation in project forms) ---
+    const createBtn = null; // No create button in project forms - only in centralized registration
     const searchInput = document.getElementById('searchPatientIdInput');
     const searchResultsContainer = document.getElementById('searchPatientIdResults');
     const selectedDisplay = document.getElementById('selectedPatientIdDisplay');
@@ -958,50 +954,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Set initial state for preview body
     if (previewBody) previewBody.innerHTML = defaultPreviewMessage;
-
-    // Event Listener for Create Button
-    if (createBtn) {
-        createBtn.addEventListener('click', function() {
-            this.disabled = true;
-            this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
-            
-            fetch('/api/create_patient_id', { method: 'POST' })
-                .then(response => {
-                    if (!response.ok) {
-                        if (response.status === 404) {
-                            throw new Error('API endpoint not found. Check server configuration.');
-                        } else {
-                            return response.json().then(errData => {
-                                throw new Error(errData.error || `Server error: ${response.status}`);
-                            }).catch(err => {
-                                throw new Error(`Failed to create patient ID: ${response.status}`);
-                            });
-                        }
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    if (data.error) {
-                        alert('Error creating patient ID: ' + data.error);
-                        this.disabled = false;
-                         this.innerHTML = '<i class="fas fa-plus me-1"></i> Create New Patient ID';
-                    } else {
-                        // ID created, show it and enable 'Use ID'
-                        selectedValueSpan.textContent = data.patient_id;
-                        selectedDisplay.style.display = 'flex';
-                        useIdBtn.disabled = false;
-                         this.innerHTML = '<i class="fas fa-check"></i> ID Created!'; // Feedback
-                         searchInput.disabled = true; // Disable search while ID is pending use
-                    }
-                })
-                .catch(error => {
-                    console.error('Fetch error:', error);
-                    alert('An network error occurred while creating patient ID.');
-                     this.disabled = false;
-                     this.innerHTML = '<i class="fas fa-plus me-1"></i> Create New Patient ID';
-                });
-        });
-    }
 
     // Event Listener for Search Input (with debounce)
     searchInput.addEventListener('input', function() {
@@ -1289,7 +1241,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
                 
-                // Create the table for the waitlist
+                // Create the table for the waitlist with enhanced registration information
                 let tableHtml = `
                 <div class="table-responsive">
                     <table class="table table-hover table-striped">
@@ -1297,6 +1249,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             <tr>
                                 <th>Patient ID</th>
                                 <th>Name</th>
+                                <th>Age</th>
+                                <th>Gender</th>
+                                <th>Phone</th>
                                 <th>Last Form Completed</th>
                                 <th>Status</th>
                                 <th>Action</th>
@@ -1305,12 +1260,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         <tbody>
                 `;
                 
-                // Populate table with patient data
+                // Populate table with patient data including centralized registration info
                 patients.forEach(patient => {
                     tableHtml += `
                         <tr>
                             <td>${patient.patient_id}</td>
                             <td>${patient.display_name || '<em>No name</em>'}</td>
+                            <td>${patient.age || '<em>-</em>'}</td>
+                            <td>${patient.gender || '<em>-</em>'}</td>
+                            <td>${patient.phone ? patient.phone.substring(0, 15) : '<em>-</em>'}</td>
                             <td>${patient.last_form_completed || 'None'}</td>
                             <td>
                                 <span class="badge bg-${patient.is_eligible ? 'success' : 'warning'}">
@@ -1816,6 +1774,22 @@ function evaluateCondition(currentValue, operator, expectedValue) {
                 return !currentValue.some(val => String(val).toLowerCase().includes(expected.toLowerCase()));
             }
             return !current.toLowerCase().includes(expected.toLowerCase());
+        case 'in_list':
+            // Parse comma-separated expected values and check if current value matches any of them
+            const expectedValues = expected.split(',').map(val => val.trim().toLowerCase()).filter(val => val);
+            
+            // Handle multiple selected values (like from checkboxes)
+            if (Array.isArray(currentValue)) {
+                // Multiple values selected - check if ANY selected value is in the expected list
+                return currentValue.some(val => expectedValues.includes(String(val).toLowerCase().trim()));
+            } else if (current.includes(',')) {
+                // Multiple values as comma-separated string - check if ANY is in the expected list
+                const actualValues = current.split(',').map(val => val.trim().toLowerCase()).filter(val => val);
+                return actualValues.some(val => expectedValues.includes(val));
+            } else {
+                // Single value - check if it's in the expected list
+                return expectedValues.includes(current.toLowerCase());
+            }
         default:
             return false;
     }

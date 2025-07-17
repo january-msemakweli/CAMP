@@ -85,6 +85,14 @@ CREATE TABLE IF NOT EXISTS public.form_permissions (
     UNIQUE (form_id, user_id) -- Ensure a user can only be granted access once per form
 );
 
+-- Create registration_permissions table
+CREATE TABLE IF NOT EXISTS public.registration_permissions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id) -- Ensure a user can only be granted registration access once
+);
+
 -- Add ON DELETE clauses to foreign key constraints
 
 -- Drop existing constraints first to modify them
@@ -96,6 +104,7 @@ ALTER TABLE public.form_submissions DROP CONSTRAINT IF EXISTS form_submissions_f
 ALTER TABLE public.form_submissions DROP CONSTRAINT IF EXISTS form_submissions_submitted_by_fkey;
 ALTER TABLE public.form_permissions DROP CONSTRAINT IF EXISTS form_permissions_form_id_fkey;
 ALTER TABLE public.form_permissions DROP CONSTRAINT IF EXISTS form_permissions_user_id_fkey;
+ALTER TABLE public.registration_permissions DROP CONSTRAINT IF EXISTS registration_permissions_user_id_fkey;
 
 -- Re-add constraints with desired ON DELETE behavior
 
@@ -144,5 +153,11 @@ ON DELETE CASCADE;
 -- Form Permissions -> Users: Delete permissions if user is deleted
 ALTER TABLE public.form_permissions
 ADD CONSTRAINT form_permissions_user_id_fkey
+FOREIGN KEY (user_id) REFERENCES public.users (id)
+ON DELETE CASCADE;
+
+-- Registration Permissions -> Users: Delete permissions if user is deleted
+ALTER TABLE public.registration_permissions
+ADD CONSTRAINT registration_permissions_user_id_fkey
 FOREIGN KEY (user_id) REFERENCES public.users (id)
 ON DELETE CASCADE;

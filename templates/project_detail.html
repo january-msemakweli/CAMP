@@ -212,11 +212,13 @@
                                                         <option value="not_equals">Not Equals</option>
                                                         <option value="contains">Contains</option>
                                                         <option value="not_contains">Does Not Contain</option>
+                                                        <option value="in_list">In List (comma-separated)</option>
                                                     </select>
                                                 </div>
                                                 <div class="col-md-5">
                                                     <label class="form-label small">Value</label>
-                                                    <input type="text" class="form-control form-control-sm" name="condition_value[]" placeholder="Expected value">
+                                                    <input type="text" class="form-control form-control-sm condition-value-input" name="condition_value[]" placeholder="Expected value">
+                                                    <small class="form-text text-muted condition-help-text" style="display: none;">Enter comma-separated values (e.g., yes,not sure,maybe). Field will show if ANY user selection matches ANY trigger value.</small>
                                                 </div>
                                             </div>
                                         </div>
@@ -378,11 +380,13 @@ function addFieldRow(containerId, allowRemove) {
                                     <option value="not_equals">Not Equals</option>
                                     <option value="contains">Contains</option>
                                     <option value="not_contains">Does Not Contain</option>
+                                    <option value="in_list">In List (comma-separated)</option>
                                 </select>
                             </div>
                             <div class="col-md-5">
                                 <label class="form-label small">Value</label>
-                                <input type="text" class="form-control form-control-sm" name="condition_value[]" placeholder="Expected value" title="Expected value for condition">
+                                <input type="text" class="form-control form-control-sm condition-value-input" name="condition_value[]" placeholder="Expected value" title="Expected value for condition">
+                                <small class="form-text text-muted condition-help-text" style="display: none;">Enter comma-separated values (e.g., yes,not sure,maybe). Field will show if ANY user selection matches ANY trigger value.</small>
                             </div>
                         </div>
                     </div>
@@ -974,6 +978,39 @@ function updateDependentFieldDropdowns(containerSelector) {
         updateDependentFieldOptions(row);
     });
 }
+
+// Handle dynamic placeholder and help text for conditional value inputs
+function updateConditionalValuePlaceholder(operatorSelect) {
+    const row = operatorSelect.closest('.row, .form-field-row');
+    const valueInput = row.querySelector('.condition-value-input');
+    const helpText = row.querySelector('.condition-help-text');
+    
+    if (!valueInput || !helpText) return;
+    
+    const operator = operatorSelect.value;
+    
+    if (operator === 'in_list') {
+        valueInput.placeholder = 'Enter comma-separated values (e.g., yes,not sure,maybe)';
+        helpText.style.display = 'block';
+    } else {
+        valueInput.placeholder = 'Expected value';
+        helpText.style.display = 'none';
+    }
+}
+
+// Add event listeners for operator changes
+document.addEventListener('change', function(event) {
+    if (event.target && event.target.name === 'condition_operator[]') {
+        updateConditionalValuePlaceholder(event.target);
+    }
+});
+
+// Initialize placeholders for existing operator selects
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('select[name="condition_operator[]"]').forEach(select => {
+        updateConditionalValuePlaceholder(select);
+    });
+});
 
 function setDependentFieldValues(containerSelector) {
     // Set the dependent field values after dropdowns are populated

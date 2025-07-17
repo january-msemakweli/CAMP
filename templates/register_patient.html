@@ -1,0 +1,902 @@
+{% extends "base.html" %}
+
+{% block title %}Patient Registration{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4 registration-page">
+    <div class="row justify-content-center">
+        <div class="col-xl-8 col-lg-10">
+            <!-- Header Section -->
+            <div class="text-center mb-4 registration-header">
+                <div class="d-inline-flex align-items-center justify-content-center bg-primary rounded-circle mb-3" style="width: 80px; height: 80px;">
+                    <i class="fas fa-user-plus fa-2x text-white"></i>
+                </div>
+                <h2 class="fw-bold text-primary mb-2">Patient Registration</h2>
+                <p class="text-muted mb-0">Register a new patient in the centralized system</p>
+                <small class="text-muted">This registration will be available across all programs</small>
+            </div>
+
+            <!-- Main Registration Form -->
+            <div class="card shadow-lg border-0">
+                <div class="card-body p-4 p-md-5">
+                    <form method="POST" action="{{ url_for('submit_patient_registration') }}" id="registrationForm">
+                        
+                        <!-- Patient ID Section -->
+                        <div class="bg-light rounded-3 p-4 mb-4">
+                            <div class="d-flex align-items-center mb-3">
+                                <i class="fas fa-id-card text-primary me-2"></i>
+                                <h5 class="mb-0 text-primary">Patient Identification</h5>
+                            </div>
+                            <div class="row align-items-end">
+                                <div class="col-md-8">
+                                    <label for="patient_id" class="form-label fw-semibold">
+                                        Patient ID <span class="text-danger">*</span>
+                                    </label>
+                                    <div class="position-relative">
+                                        <input type="text" class="form-control form-control-lg" id="patient_id" name="patient_id" 
+                                               placeholder="Search for patient ID or name..." required autocomplete="off">
+                                        <div id="patientSearchResults" class="dropdown-menu w-100 shadow-lg" style="display: none; max-height: 300px; overflow-y: auto;">
+                                            <!-- Search results will be populated here -->
+                                        </div>
+                                        <div id="searchSpinner" class="position-absolute" style="right: 10px; top: 50%; transform: translateY(-50%); display: none;">
+                                            <i class="fas fa-spinner fa-spin text-muted"></i>
+                                        </div>
+                                    </div>
+                                    <div class="form-text">
+
+                                    </div>
+                                    
+                                    <!-- Patient Preview Section -->
+                                    <div id="patientPreview" class="mt-3 p-3 bg-info bg-opacity-10 border border-info rounded" style="display: none;">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <h6 class="mb-0 text-info">
+                                                <i class="fas fa-user me-2"></i>Selected Patient
+                                            </h6>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="clearPatientSelection">
+                                                <i class="fas fa-times me-1"></i>Clear
+                                            </button>
+                                        </div>
+                                        <div id="patientPreviewContent">
+                                            <!-- Patient details will be shown here -->
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="button" class="btn btn-outline-primary btn-lg w-100" id="generatePatientId">
+                                        <i class="fas fa-plus me-2"></i>Generate New ID
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Basic Information Section -->
+                        <div class="row">
+                            <div class="col-lg-6">
+                                <div class="card border border-primary border-opacity-25 h-100">
+                                    <div class="card-header bg-primary bg-opacity-10 border-0">
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-user text-primary me-2"></i>
+                                            <h6 class="mb-0 text-primary fw-semibold">Basic Information</h6>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                                                                <!-- Name -->
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold" for="Name">
+                                                Full Name
+                                            </label>
+                                            <input type="text" class="form-control" id="Name" name="Name" 
+                                                   placeholder="Enter patient's full name">
+                                        </div>
+
+                                        <!-- Age -->
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold" for="Age (Years)">
+                                                Age (Years) <span class="text-danger">*</span>
+                                            </label>
+                                            <input type="number" class="form-control" id="Age (Years)" name="Age (Years)" 
+                                                   required min="0" max="150" step="0.1">
+                                        </div>
+
+                                        <!-- Gender -->
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold">
+                                                Gender <span class="text-danger">*</span>
+                                            </label>
+                                            <div class="d-flex gap-4 mt-2">
+                                                <div class="form-check form-check-inline">
+                                                    <input class="form-check-input" type="radio" name="Gender" id="Gender_Male" value="Male" required>
+                                                    <label class="form-check-label fw-normal" for="Gender_Male">
+                                                        Male
+                                                    </label>
+                                                </div>
+                                                <div class="form-check form-check-inline">
+                                                    <input class="form-check-input" type="radio" name="Gender" id="Gender_Female" value="Female" required>
+                                                    <label class="form-check-label fw-normal" for="Gender_Female">
+                                                        Female
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Phone Number -->
+                                        <div class="mb-0">
+                                            <label class="form-label fw-semibold" for="Phone Number">
+                                                Phone Number
+                                            </label>
+                                            <input type="text" class="form-control" id="Phone Number" name="Phone Number" 
+                                                   placeholder="Enter phone number">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Location Section -->
+                            <div class="col-lg-6">
+                                <div class="card border border-success border-opacity-25 h-100">
+                                    <div class="card-header bg-success bg-opacity-10 border-0">
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-map-marker-alt text-success me-2"></i>
+                                            <h6 class="mb-0 text-success fw-semibold">Location Information</h6>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <!-- Region -->
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold" for="Region">
+                                                Region <span class="text-danger">*</span>
+                                            </label>
+                                            <select class="form-select location-dropdown choices-select" 
+                                                    id="Region" 
+                                                    name="Region" 
+                                                    data-location-type="region"
+                                                    required>
+                                                <option value="">Select Region</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- District -->
+                                        <div class="mb-3">
+                                            <label class="form-label fw-semibold" for="District">
+                                                District <span class="text-danger">*</span>
+                                            </label>
+                                            <select class="form-select location-dropdown choices-select" 
+                                                    id="District" 
+                                                    name="District" 
+                                                    data-location-type="district"
+                                                    required
+                                                    disabled>
+                                                <option value="">Select District</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- Ward -->
+                                        <div class="mb-0">
+                                            <label class="form-label fw-semibold" for="Ward">
+                                                Ward <span class="text-danger">*</span>
+                                            </label>
+                                            <select class="form-select location-dropdown choices-select" 
+                                                    id="Ward" 
+                                                    name="Ward" 
+                                                    data-location-type="ward"
+                                                    required
+                                                    disabled>
+                                                <option value="">Select Ward</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="d-grid gap-3 d-md-flex justify-content-md-end">
+                                    <a href="{{ url_for('admin_dashboard') if current_user.is_admin else url_for('user_dashboard') }}" class="btn btn-outline-secondary btn-lg px-4">
+                                        <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                                    </a>
+                                    <button type="submit" class="btn btn-primary btn-lg px-5">
+                                        <i class="fas fa-save me-2"></i>Register Patient
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Help Section -->
+            <div class="mt-4 registration-help">
+                <div class="card bg-light border-0">
+                    <div class="card-body py-3 px-4">
+                        <div class="row align-items-center">
+                            <div class="col-md-auto">
+                                <i class="fas fa-lightbulb text-warning fa-lg"></i>
+                            </div>
+                            <div class="col">
+                                <small class="text-muted">
+                                    <strong>Tip:</strong> All required fields are marked with a red asterisk (*). 
+                                    Location fields cascade - select Region first, then District, then Ward.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Include Choices.js CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
+<!-- Include Choices.js JS -->
+<script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+
+<!-- Include locations data -->
+<script src="{{ url_for('static', filename='js/locations.js') }}"></script> 
+
+<style>
+/* Modern Sans-Serif Typography - Registration Form Only */
+#registrationForm, #registrationForm * {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+}
+
+#registrationForm h1, 
+#registrationForm h2, 
+#registrationForm h3, 
+#registrationForm h4, 
+#registrationForm h5, 
+#registrationForm h6,
+.registration-header h2,
+.registration-header p,
+.registration-header small {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.02em;
+}
+
+/* Enhanced form styling with modern typography - Registration Form Only */
+#registrationForm .form-label {
+    font-weight: 500 !important;
+    color: #495057 !important;
+    margin-bottom: 0.5rem !important;
+}
+
+#registrationForm .form-control, 
+#registrationForm .form-select {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    font-size: 0.95rem !important;
+    border: 1.5px solid #e0e0e0 !important;
+    border-radius: 8px !important;
+    padding: 0.75rem 1rem !important;
+    transition: all 0.2s ease !important;
+}
+
+#registrationForm .form-control:focus, 
+#registrationForm .form-select:focus {
+    border-color: #0d6efd !important;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.1) !important;
+}
+
+/* Custom styles for better UI */
+.choices__inner {
+    border: 1.5px solid #e0e0e0 !important;
+    border-radius: 8px !important;
+    min-height: 48px !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+}
+
+.choices__input {
+    padding: 4px !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+}
+
+.choices[data-type*="select-one"] .choices__inner {
+    padding-bottom: 7.5px !important;
+}
+
+.choices__list--dropdown .choices__item {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    font-size: 0.95rem !important;
+}
+
+.form-check-input:checked {
+    background-color: var(--bs-primary) !important;
+    border-color: var(--bs-primary) !important;
+}
+
+.registration-header .card,
+#registrationForm .card {
+    border-radius: 12px !important;
+    border: 1px solid #e9ecef !important;
+}
+
+.registration-header .card-header,
+#registrationForm .card-header {
+    border-bottom: 1px solid rgba(0,0,0,0.1) !important;
+    border-radius: 12px 12px 0 0 !important;
+    font-weight: 600 !important;
+}
+
+/* Button styling with sans-serif - Registration Form Only */
+.registration-header .btn,
+#registrationForm .btn {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    font-weight: 500 !important;
+    border-radius: 8px !important;
+    padding: 0.65rem 1.5rem !important;
+    letter-spacing: 0.01em !important;
+}
+
+.registration-header .btn-lg,
+#registrationForm .btn-lg {
+    padding: 0.8rem 2rem !important;
+    font-size: 1rem !important;
+}
+
+/* Text elements - Registration Form Only */
+.registration-header .text-primary,
+#registrationForm .text-primary {
+    font-weight: 600 !important;
+}
+
+.registration-header .fw-semibold,
+#registrationForm .fw-semibold {
+    font-weight: 600 !important;
+}
+
+.registration-header .fw-bold,
+#registrationForm .fw-bold {
+    font-weight: 700 !important;
+}
+
+/* Form text and small elements - Registration Form Only */
+.registration-header .form-text, 
+.registration-header small,
+#registrationForm .form-text, 
+#registrationForm small {
+    font-size: 0.875rem !important;
+    font-weight: 400 !important;
+}
+
+/* Loading state for dropdowns */
+.choices__inner--loading::after {
+    content: 'Loading...';
+    color: #6c757d;
+    font-size: 0.875rem;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+}
+
+/* Enhanced visual hierarchy - Registration Form Only */
+.registration-header .bg-light,
+#registrationForm .bg-light,
+.registration-help .bg-light {
+    border-radius: 8px !important;
+}
+
+.registration-header .rounded-circle {
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.15) !important;
+}
+
+/* Help section styling */
+.registration-help * {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+}
+
+/* Improved spacing and modern look - Registration Page Only */
+.registration-page .container-fluid {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+</style>
+
+<!-- Patient Search Custom Styles -->
+<style>
+    .search-result-item {
+        cursor: pointer;
+        transition: background-color 0.15s ease-in-out;
+    }
+    
+    .search-result-item:hover {
+        background-color: #f8f9fa !important;
+    }
+    
+    .search-result-item.active {
+        background-color: #e3f2fd !important;
+    }
+    
+    #patientSearchResults {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        z-index: 1000;
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        background-color: white;
+        margin-top: 2px;
+    }
+    
+    #patientSearchResults:empty {
+        display: none !important;
+    }
+    
+    .position-relative {
+        position: relative;
+    }
+    
+    #searchSpinner {
+        pointer-events: none;
+    }
+    
+    /* Patient preview styling */
+    #patientPreview {
+        animation: fadeIn 0.3s ease-in-out;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+</style>
+
+<script>
+// Patient ID generation with improved UX
+document.getElementById('generatePatientId').addEventListener('click', function() {
+    const button = this;
+    const originalText = button.innerHTML;
+    
+    // Show loading state
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Generating...';
+    button.disabled = true;
+    
+    fetch('/api/create_patient_id', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success && data.patient_id) {
+            document.getElementById('patient_id').value = data.patient_id;
+            
+            // Success feedback
+            button.innerHTML = '<i class="fas fa-check me-2"></i>Generated!';
+            button.classList.remove('btn-outline-primary');
+            button.classList.add('btn-success');
+            
+            // Reset after 2 seconds
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.classList.remove('btn-success');
+                button.classList.add('btn-outline-primary');
+                button.disabled = false;
+            }, 2000);
+        } else {
+            throw new Error(data.error || 'Unknown error');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        
+        // Error feedback
+        button.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Error';
+        button.classList.remove('btn-outline-primary');
+        button.classList.add('btn-danger');
+        
+        alert('Error generating patient ID: ' + error.message);
+        
+        // Reset after 3 seconds
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.classList.remove('btn-danger');
+            button.classList.add('btn-outline-primary');
+            button.disabled = false;
+        }, 3000);
+    });
+});
+
+// Enhanced location dropdown functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize Choices.js for all location dropdowns with enhanced config
+    const allDropdowns = document.querySelectorAll('.location-dropdown');
+    const choicesInstances = {};
+    
+    allDropdowns.forEach(el => {
+        try {
+            const choices = new Choices(el, {
+                searchEnabled: true,
+                itemSelectText: '',
+                noChoicesText: 'No options available',
+                shouldSort: false,
+                searchPlaceholderValue: `Search ${el.name.toLowerCase()}...`,
+                classNames: {
+                    containerOuter: 'choices',
+                    containerInner: 'choices__inner',
+                    input: 'choices__input',
+                    inputCloned: 'choices__input--cloned',
+                    list: 'choices__list',
+                    listItems: 'choices__list--multiple',
+                    listSingle: 'choices__list--single',
+                    listDropdown: 'choices__list--dropdown',
+                    item: 'choices__item',
+                    itemSelectable: 'choices__item--selectable',
+                    itemDisabled: 'choices__item--disabled',
+                    itemChoice: 'choices__item--choice',
+                    placeholder: 'choices__placeholder',
+                    group: 'choices__group',
+                    groupHeading: 'choices__heading',
+                    button: 'choices__button',
+                    activeState: 'is-active',
+                    focusState: 'is-focused',
+                    openState: 'is-open',
+                    disabledState: 'is-disabled',
+                    highlightedState: 'is-highlighted',
+                    selectedState: 'is-selected',
+                    flippedState: 'is-flipped',
+                    loadingState: 'is-loading',
+                    noResults: 'has-no-results',
+                    noChoices: 'has-no-choices'
+                }
+            });
+            choicesInstances[el.name] = choices;
+            el.choicesInstance = choices;
+        } catch (error) {
+            console.error('Error initializing Choices.js for', el.name, error);
+        }
+    });
+
+    // Get dropdown elements
+    const regionDropdown = document.getElementById('Region');
+    const districtDropdown = document.getElementById('District');
+    const wardDropdown = document.getElementById('Ward');
+
+    // Helper functions with improved UX
+    function populateDropdown(dropdown, options) {
+        if (!dropdown || !dropdown.choicesInstance) return;
+        
+        // Show loading state briefly
+        dropdown.choicesInstance.setChoices([{value: '', label: 'Loading...', disabled: true}], 'value', 'label', true);
+        
+        setTimeout(() => {
+            dropdown.choicesInstance.clearStore();
+            dropdown.choicesInstance.setChoices(
+                options.map(option => ({ value: option, label: option })),
+                'value',
+                'label',
+                false
+            );
+            dropdown.choicesInstance.enable();
+        }, 150);
+    }
+
+    function resetDropdown(dropdown, placeholder = 'Select option') {
+        if (!dropdown || !dropdown.choicesInstance) return;
+        
+        dropdown.choicesInstance.clearStore();
+        dropdown.choicesInstance.setChoices([{value: '', label: placeholder}], 'value', 'label', true);
+        dropdown.choicesInstance.disable();
+    }
+
+    // Populate initial regions
+    if (regionDropdown && LOCATION_DATA) {
+        const regions = Object.keys(LOCATION_DATA).sort();
+        populateDropdown(regionDropdown, regions);
+    }
+
+    // Region change handler
+    if (regionDropdown && districtDropdown) {
+        regionDropdown.addEventListener('change', function() {
+            resetDropdown(districtDropdown, 'Select District');
+            resetDropdown(wardDropdown, 'Select Ward');
+            
+            const selectedRegion = this.value;
+            if (selectedRegion && LOCATION_DATA[selectedRegion]) {
+                const districts = Object.keys(LOCATION_DATA[selectedRegion]).sort();
+                populateDropdown(districtDropdown, districts);
+            }
+        });
+    }
+
+    // District change handler
+    if (districtDropdown && wardDropdown) {
+        districtDropdown.addEventListener('change', function() {
+            resetDropdown(wardDropdown, 'Select Ward');
+            
+            const selectedRegion = regionDropdown ? regionDropdown.value : null;
+            const selectedDistrict = this.value;
+            
+            if (selectedRegion && selectedDistrict && 
+                LOCATION_DATA[selectedRegion] && 
+                LOCATION_DATA[selectedRegion][selectedDistrict]) {
+                const wards = LOCATION_DATA[selectedRegion][selectedDistrict].sort();
+                populateDropdown(wardDropdown, wards);
+            }
+        });
+    }
+
+    // Initially reset dropdowns with proper placeholders
+    resetDropdown(districtDropdown, 'Select District');
+    resetDropdown(wardDropdown, 'Select Ward');
+
+    // Form validation enhancement
+    const form = document.getElementById('registrationForm');
+    form.addEventListener('submit', function(e) {
+        const requiredFields = form.querySelectorAll('[required]');
+        let isValid = true;
+
+        requiredFields.forEach(field => {
+            if (!field.value.trim()) {
+                isValid = false;
+                field.classList.add('is-invalid');
+            } else {
+                field.classList.remove('is-invalid');
+            }
+        });
+
+        if (!isValid) {
+            e.preventDefault();
+            // Scroll to first invalid field
+            const firstInvalid = form.querySelector('.is-invalid');
+            if (firstInvalid) {
+                firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                firstInvalid.focus();
+            }
+        }
+    });
+
+    // Remove invalid class on input
+    const inputs = form.querySelectorAll('input, select');
+    inputs.forEach(input => {
+        input.addEventListener('input', function() {
+            if (this.classList.contains('is-invalid') && this.value.trim()) {
+                this.classList.remove('is-invalid');
+            }
+        });
+    });
+});
+
+// Patient Search Functionality
+let searchTimeout;
+let selectedPatientData = null;
+
+const patientIdInput = document.getElementById('patient_id');
+const searchResults = document.getElementById('patientSearchResults');
+const searchSpinner = document.getElementById('searchSpinner');
+const patientPreview = document.getElementById('patientPreview');
+const patientPreviewContent = document.getElementById('patientPreviewContent');
+const clearPatientBtn = document.getElementById('clearPatientSelection');
+
+// Debounced search function
+function debounceSearch(func, delay) {
+    return function (...args) {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => func.apply(this, args), delay);
+    };
+}
+
+// Search for patients
+async function searchPatients(query) {
+    if (query.length < 2) {
+        hideSearchResults();
+        return;
+    }
+
+    showSearchSpinner();
+    
+    try {
+        const response = await fetch(`/api/search_patient_id?q=${encodeURIComponent(query)}`);
+        const patients = await response.json();
+        
+        hideSearchSpinner();
+        displaySearchResults(patients);
+    } catch (error) {
+        console.error('Search error:', error);
+        hideSearchSpinner();
+        hideSearchResults();
+    }
+}
+
+// Display search results in dropdown
+function displaySearchResults(patients) {
+    if (!patients || patients.length === 0) {
+        searchResults.innerHTML = '<div class="px-3 py-2 text-muted"><i class="fas fa-search me-2"></i>No patients found</div>';
+        searchResults.style.display = 'block';
+        return;
+    }
+
+    const resultsHtml = patients.map(patient => {
+        const displayName = patient.display_name || 'Unknown Name';
+        const patientId = patient.patient_id;
+        const createdDate = patient.created_at ? new Date(patient.created_at).toLocaleDateString() : 'Unknown';
+        
+        return `
+            <div class="search-result-item px-3 py-2 cursor-pointer border-bottom" 
+                 data-patient-id="${patientId}" 
+                 data-patient-data='${JSON.stringify(patient)}'>
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="fw-semibold text-primary">${patientId}</div>
+                        ${displayName !== 'Unknown Name' ? `<div class="text-muted small">${displayName}</div>` : ''}
+                    </div>
+                    <small class="text-muted">Reg: ${createdDate}</small>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    searchResults.innerHTML = resultsHtml;
+    searchResults.style.display = 'block';
+
+    // Add click handlers for results
+    searchResults.querySelectorAll('.search-result-item').forEach(item => {
+        item.addEventListener('click', function() {
+            const patientId = this.dataset.patientId;
+            const patientData = JSON.parse(this.dataset.patientData);
+            selectPatient(patientId, patientData);
+        });
+        
+        // Hover effect
+        item.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = '#f8f9fa';
+        });
+        item.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = '';
+        });
+    });
+}
+
+// Select a patient from search results
+function selectPatient(patientId, patientData) {
+    patientIdInput.value = patientId;
+    selectedPatientData = patientData;
+    hideSearchResults();
+    showPatientPreview(patientData);
+}
+
+// Show patient preview
+function showPatientPreview(patientData) {
+    const displayName = patientData.display_name || 'Unknown Name';
+    const createdDate = patientData.created_at ? new Date(patientData.created_at).toLocaleDateString() : 'Unknown';
+    
+    // Get some basic info from patient data if available
+    let additionalInfo = '';
+    if (patientData.data && patientData.data.registration) {
+        const reg = patientData.data.registration;
+        const infoItems = [];
+        
+        if (reg.Age) infoItems.push(`Age: ${reg.Age}`);
+        if (reg.Gender) infoItems.push(`Gender: ${reg.Gender}`);
+        if (reg.Region) infoItems.push(`Region: ${reg.Region}`);
+        
+        if (infoItems.length > 0) {
+            additionalInfo = `<div class="small text-muted mt-1">${infoItems.join(' • ')}</div>`;
+        }
+    }
+
+    patientPreviewContent.innerHTML = `
+        <div class="d-flex justify-content-between align-items-start">
+            <div>
+                <div class="fw-semibold">${patientData.patient_id}</div>
+                ${displayName !== 'Unknown Name' ? `<div class="text-muted">${displayName}</div>` : ''}
+                ${additionalInfo}
+            </div>
+            <small class="text-muted">Registered: ${createdDate}</small>
+        </div>
+    `;
+    
+    patientPreview.style.display = 'block';
+}
+
+// Hide search results
+function hideSearchResults() {
+    searchResults.style.display = 'none';
+}
+
+// Show/hide search spinner
+function showSearchSpinner() {
+    searchSpinner.style.display = 'block';
+}
+
+function hideSearchSpinner() {
+    searchSpinner.style.display = 'none';
+}
+
+// Clear patient selection
+function clearPatientSelection() {
+    patientIdInput.value = '';
+    selectedPatientData = null;
+    patientPreview.style.display = 'none';
+    hideSearchResults();
+    patientIdInput.focus();
+}
+
+// Event listeners for patient search
+patientIdInput.addEventListener('input', debounceSearch(function(e) {
+    const query = e.target.value.trim();
+    
+    // Clear preview if input is manually changed
+    if (selectedPatientData && query !== selectedPatientData.patient_id) {
+        selectedPatientData = null;
+        patientPreview.style.display = 'none';
+    }
+    
+    if (query.length >= 2) {
+        searchPatients(query);
+    } else {
+        hideSearchResults();
+    }
+}, 300));
+
+patientIdInput.addEventListener('focus', function() {
+    const query = this.value.trim();
+    if (query.length >= 2) {
+        searchPatients(query);
+    }
+});
+
+// Hide results when clicking outside
+document.addEventListener('click', function(e) {
+    if (!patientIdInput.contains(e.target) && !searchResults.contains(e.target)) {
+        hideSearchResults();
+    }
+});
+
+// Clear patient selection button
+clearPatientBtn.addEventListener('click', clearPatientSelection);
+
+// Handle keyboard navigation
+patientIdInput.addEventListener('keydown', function(e) {
+    const results = searchResults.querySelectorAll('.search-result-item');
+    let currentActive = searchResults.querySelector('.search-result-item.active');
+    
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!currentActive) {
+            if (results.length > 0) {
+                results[0].classList.add('active');
+                results[0].style.backgroundColor = '#e3f2fd';
+            }
+        } else {
+            currentActive.classList.remove('active');
+            currentActive.style.backgroundColor = '';
+            const next = currentActive.nextElementSibling;
+            if (next) {
+                next.classList.add('active');
+                next.style.backgroundColor = '#e3f2fd';
+            } else {
+                results[0].classList.add('active');
+                results[0].style.backgroundColor = '#e3f2fd';
+            }
+        }
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!currentActive) {
+            if (results.length > 0) {
+                results[results.length - 1].classList.add('active');
+                results[results.length - 1].style.backgroundColor = '#e3f2fd';
+            }
+        } else {
+            currentActive.classList.remove('active');
+            currentActive.style.backgroundColor = '';
+            const prev = currentActive.previousElementSibling;
+            if (prev) {
+                prev.classList.add('active');
+                prev.style.backgroundColor = '#e3f2fd';
+            } else {
+                results[results.length - 1].classList.add('active');
+                results[results.length - 1].style.backgroundColor = '#e3f2fd';
+            }
+        }
+    } else if (e.key === 'Enter') {
+        if (currentActive) {
+            e.preventDefault();
+            currentActive.click();
+        }
+    } else if (e.key === 'Escape') {
+        hideSearchResults();
+    }
+});
+</script>
+{% endblock %} 

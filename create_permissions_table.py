@@ -24,6 +24,13 @@ def create_permissions_table():
         UNIQUE(form_id, user_id)
     );
     
+    CREATE TABLE IF NOT EXISTS public.registration_permissions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id)
+    );
+    
     -- Add foreign key constraints if they don't exist
     DO $$ 
     BEGIN
@@ -46,28 +53,39 @@ def create_permissions_table():
             REFERENCES public.users(id)
             ON DELETE CASCADE;
         END IF;
+        
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'registration_permissions_user_id_fkey'
+        ) THEN
+            ALTER TABLE public.registration_permissions
+            ADD CONSTRAINT registration_permissions_user_id_fkey
+            FOREIGN KEY (user_id)
+            REFERENCES public.users(id)
+            ON DELETE CASCADE;
+        END IF;
     END $$;
     """
     
     # Execute the SQL through Supabase
     try:
         # We need to use the PostgreSQL REST API directly
-        print("Executing SQL to create form_permissions table...")
+        print("Executing SQL to create permissions tables...")
         # Try using a raw SQL query
         response = supabase.table("form_permissions").select("*").limit(1).execute()
-        print("Table already exists.")
+        reg_response = supabase.table("registration_permissions").select("*").limit(1).execute()
+        print("Tables already exist.")
     except Exception as e:
         print(f"Caught exception: {str(e)}")
         
         # If the table doesn't exist, try to create it manually in the Supabase UI
-        print("\nIMPORTANT: The form_permissions table doesn't exist.")
-        print("Please create it manually in the Supabase dashboard SQL editor:")
+        print("\nIMPORTANT: The permissions tables don't exist.")
+        print("Please create them manually in the Supabase dashboard SQL editor:")
         print("\n1. Login to your Supabase dashboard")
         print("2. Go to the SQL Editor")
         print("3. Copy and paste the SQL below:")
         print("\n" + sql)
         print("\n4. Execute the SQL query")
-        print("5. Restart your Flask application after creating the table")
+        print("5. Restart your Flask application after creating the tables")
 
 if __name__ == "__main__":
     create_permissions_table() 

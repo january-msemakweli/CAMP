@@ -143,7 +143,7 @@ def check_database_structure():
     try:
         # Only check if tables exist but don't create them
         tables_to_check = ['users', 'projects', 'forms', 'form_submissions', 
-                          'form_permissions', 'log_activities', 'patients']
+                          'form_permissions', 'registration_permissions', 'log_activities', 'patients']
         
         for table in tables_to_check:
             try:
@@ -357,6 +357,98 @@ def register():
         return redirect(url_for('login'))
     
     return render_template('register.html')
+
+@app.route('/register_patient')
+@login_required
+def register_patient_form():
+    """Display the centralized patient registration form"""
+    # Check if user has registration access (admins always have access)
+    if not current_user.is_admin:
+        access_response = supabase.table('registration_permissions').select('*').eq('user_id', current_user.id).execute()
+        if not access_response.data:
+            flash('You do not have access to patient registration', 'danger')
+            return redirect(url_for('user_dashboard'))
+    
+    return render_template('register_patient.html')
+
+@app.route('/register_patient', methods=['POST'])
+@login_required 
+def submit_patient_registration():
+    """Handle centralized patient registration submission"""
+    # Check if user has registration access (admins always have access)
+    if not current_user.is_admin:
+        access_response = supabase.table('registration_permissions').select('*').eq('user_id', current_user.id).execute()
+        if not access_response.data:
+            flash('You do not have permission to register patients', 'danger')
+            return redirect(url_for('user_dashboard'))
+    
+    try:
+        # Get patient ID from form
+        patient_id = request.form.get('patient_id')
+        if not patient_id:
+            flash('Patient ID is required', 'danger')
+            return redirect(url_for('register_patient_form'))
+
+        # Define exact registration fields as specified
+        registration_fields = [
+            {'label': 'Name', 'type': 'text', 'required': False},
+            {'label': 'Age (Years)', 'type': 'number', 'required': True},
+            {'label': 'Gender', 'type': 'radio', 'required': True},
+            {'label': 'Region', 'type': 'dropdown', 'required': True},
+            {'label': 'District', 'type': 'dropdown', 'required': True},
+            {'label': 'Ward', 'type': 'dropdown', 'required': True},
+            {'label': 'Phone Number', 'type': 'text', 'required': False}
+        ]
+        
+        # Collect registration data
+        registration_data = {}
+        validation_errors = []
+        
+        for field in registration_fields:
+            field_label = field['label']
+            field_value = request.form.get(field_label, '').strip()
+            
+            # Validate required fields
+            if field['required'] and not field_value:
+                validation_errors.append(f"{field_label} is required")
+            
+            # Store the value (empty string converted to None for consistency)
+            registration_data[field_label] = field_value if field_value else None
+        
+        if validation_errors:
+            for error in validation_errors:
+                flash(error, 'danger')
+            return redirect(url_for('register_patient_form'))
+
+        # Check if patient already exists
+        patient_response = supabase.table('patients').select('*').eq('patient_id', patient_id).execute()
+        
+        if patient_response.data:
+            # Patient exists, update registration data
+            patient_record = patient_response.data[0]
+            patient_data = patient_record.get('data', {})
+            patient_data['registration'] = registration_data
+            
+            supabase.table('patients').update({'data': patient_data}).eq('patient_id', patient_id).execute()
+            flash(f'Registration updated for patient {patient_id}', 'success')
+        else:
+            # Create new patient record with registration data
+            new_patient = {
+                'patient_id': patient_id,
+                'data': {'registration': registration_data}
+            }
+            supabase.table('patients').insert(new_patient).execute()
+            flash(f'Patient {patient_id} registered successfully', 'success')
+        
+        # Log the registration
+        log_activity('register', 'patient', patient_id, f"Patient registration: {registration_data.get('Name', 'Unknown')}")
+        
+        return redirect(url_for('register_patient_form'))
+        
+    except Exception as e:
+        print(f"Error in patient registration: {str(e)}")
+        flash(f'Error registering patient: {str(e)}', 'danger')
+        return redirect(url_for('register_patient_form'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -978,6 +1070,105 @@ def revoke_form_access(form_id, permission_id):
     flash('User access revoked successfully')
     return redirect(url_for('view_form', form_id=form_id))
 
+@app.route('/admin/registration_permissions')
+@login_required
+def manage_registration_permissions():
+    """Admin interface to manage patient registration permissions"""
+    if not current_user.is_admin:
+        flash('Admin access required.', 'danger')
+        return redirect(url_for('index'))
+    
+    # Get all approved users
+    users_response = supabase.table('users').select('*').eq('is_approved', True).execute()
+    all_users = users_response.data or []
+    
+    # Get users with registration permissions
+    permissions_response = supabase.table('registration_permissions').select('*').execute()
+    permissions = permissions_response.data or []
+    
+    # Add user data to each permission
+    user_permissions = []
+    for permission in permissions:
+        user_response = supabase.table('users').select('username, id').eq('id', permission['user_id']).execute()
+        if user_response.data:
+            permission['user'] = user_response.data[0]
+            user_permissions.append(permission)
+    
+    # Filter out users who already have permissions and admins
+    users_without_access = []
+    permission_user_ids = {p['user_id'] for p in permissions}
+    
+    for user in all_users:
+        if user['id'] not in permission_user_ids and not user['is_admin']:
+            users_without_access.append(user)
+    
+    return render_template('registration_permissions.html', 
+                           user_permissions=user_permissions, 
+                           available_users=users_without_access)
+
+@app.route('/admin/registration_permissions/grant', methods=['POST'])
+@login_required
+def grant_registration_access():
+    """Grant registration access to a user"""
+    if not current_user.is_admin:
+        flash('Admin access required.', 'danger')
+        return redirect(url_for('index'))
+    
+    user_id = request.form.get('user_id')
+    if not user_id:
+        flash('No user selected', 'danger')
+        return redirect(url_for('manage_registration_permissions'))
+    
+    # Check if permission already exists
+    check_response = supabase.table('registration_permissions').select('*').eq('user_id', user_id).execute()
+    if check_response.data:
+        flash('User already has registration access', 'warning')
+        return redirect(url_for('manage_registration_permissions'))
+    
+    # Get user name for logging
+    user_response = supabase.table('users').select('username').eq('id', user_id).execute()
+    username = user_response.data[0]['username'] if user_response.data else "Unknown user"
+    
+    # Add permission
+    permission = {
+        'id': str(uuid.uuid4()),
+        'user_id': user_id
+    }
+    
+    supabase.table('registration_permissions').insert(permission).execute()
+    
+    # Log access grant
+    log_activity('grant_access', 'registration_permission', permission['id'], f"Granted registration access to {username}")
+    
+    flash(f'Registration access granted to {username}', 'success')
+    return redirect(url_for('manage_registration_permissions'))
+
+@app.route('/admin/registration_permissions/revoke/<permission_id>', methods=['POST'])
+@login_required
+def revoke_registration_access(permission_id):
+    """Revoke registration access from a user"""
+    if not current_user.is_admin:
+        flash('Admin access required.', 'danger')
+        return redirect(url_for('index'))
+    
+    # Get permission details for logging
+    permission_response = supabase.table('registration_permissions').select('*').eq('id', permission_id).execute()
+    if permission_response.data:
+        user_id = permission_response.data[0]['user_id']
+        user_response = supabase.table('users').select('username').eq('id', user_id).execute()
+        username = user_response.data[0]['username'] if user_response.data else "Unknown user"
+        
+        # Log revoke action
+        log_activity('revoke_access', 'registration_permission', permission_id, f"Revoked registration access from {username}")
+        
+        # Delete permission
+        supabase.table('registration_permissions').delete().eq('id', permission_id).execute()
+        flash(f'Registration access revoked from {username}', 'success')
+    else:
+        flash('Permission not found', 'danger')
+    
+    return redirect(url_for('manage_registration_permissions'))
+
 def evaluate_field_visibility(field, form_data):
     """
     Evaluate whether a field should be visible based on its conditional logic.
@@ -1027,6 +1218,18 @@ def evaluate_field_visibility(field, form_data):
         result = expected_value.lower().strip() in actual_value.lower().strip()
     elif operator == 'not_contains':
         result = expected_value.lower().strip() not in actual_value.lower().strip()
+    elif operator == 'in_list':
+        # Parse comma-separated expected values and check if actual value matches any of them
+        expected_values = [val.strip().lower() for val in expected_value.split(',') if val.strip()]
+        
+        # Handle multiple selected values (like from checkboxes)
+        if ',' in actual_value:
+            # Multiple values selected - check if ANY selected value is in the expected list
+            actual_values = [val.strip().lower() for val in actual_value.split(',') if val.strip()]
+            result = any(val in expected_values for val in actual_values)
+        else:
+            # Single value - check if it's in the expected list
+            result = actual_value.lower().strip() in expected_values
     elif operator == 'is_empty':
         result = actual_value.strip() == ''
     elif operator == 'is_not_empty':
@@ -1255,7 +1458,16 @@ def user_dashboard():
                     form['project_name'] = project_response.data[0]['name']
                     accessible_forms.append(form)
     
-    return render_template('user_dashboard.html', projects=accessible_projects, accessible_forms=accessible_forms)
+    # Check if user has registration access
+    has_registration_access = False
+    registration_response = supabase.table('registration_permissions').select('*').eq('user_id', current_user.id).execute()
+    if registration_response.data:
+        has_registration_access = True
+    
+    return render_template('user_dashboard.html', 
+                           projects=accessible_projects, 
+                           accessible_forms=accessible_forms,
+                           has_registration_access=has_registration_access)
 
 @app.route('/programs')
 @login_required
@@ -1370,6 +1582,26 @@ def dataset_view():
 
     # Track which fields come from first/registration forms for proper display
     registration_form_fields = set()
+    
+    # ALWAYS include centralized registration fields first, regardless of project forms
+    centralized_registration_fields = [
+        'Name',
+        'Age (Years)', 
+        'Gender',
+        'Region',
+        'District', 
+        'Ward',
+        'Phone Number'
+    ]
+    
+    for field_label in centralized_registration_fields:
+        normalized_label = field_label.lower().strip().replace(' ', '_')
+        if normalized_label not in seen_normalized_fields:
+            ordered_fields.append(field_label)
+            seen_normalized_fields.add(normalized_label)
+            field_label_map[normalized_label] = field_label
+            registration_form_fields.add(normalized_label)
+            print(f"Added centralized registration field: {field_label}")
 
     for form in ordered_forms_data:
         # Check if this is a registration form and log it
@@ -1404,77 +1636,13 @@ def dataset_view():
                             registration_form_fields.add(normalized_label)
                             pass  # Added registration field
 
-    # Also collect fields from all registration forms in the database
-    # This ensures we show registration data even if the registration form isn't in the current project
-    # We need to add registration form fields to the BEGINNING of ordered_fields to maintain proper ordering
-    if project_id:
-        print("Looking for registration forms in other projects for cross-program data display")
-        # Get all form IDs that are first/registration forms in the system
-        registration_form_ids = []
-        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
-        for form in all_forms_response.data:
-            form_id = form.get('id')
-            if form_id and get_form_is_first(form_id) and form.get('project_id') != project_id:
-                registration_form_ids.append(form_id)
-                print(f"Found external registration form: {form_id} in project {form.get('project_id')}")
-        
-        # Collect external registration fields first, then we'll prepend them to ordered_fields
-        external_registration_fields = []
-        for reg_form_id in registration_form_ids:
-            reg_form_response = supabase.table('forms').select('fields').eq('id', reg_form_id).execute()
-            if reg_form_response.data:
-                reg_form = reg_form_response.data[0]
-                reg_fields_json = reg_form.get('fields', '[]')
-                try:
-                    if isinstance(reg_fields_json, str):
-                        reg_parsed_fields = json.loads(reg_fields_json)
-                    else:
-                        reg_parsed_fields = reg_fields_json
-
-                    if isinstance(reg_parsed_fields, list):
-                        for field in reg_parsed_fields:
-                            if isinstance(field, dict) and 'label' in field:
-                                label = field['label']
-                                normalized_label = label.lower().strip().replace(' ', '_')
-                                if normalized_label not in seen_normalized_fields:
-                                    external_registration_fields.append(label)
-                                    seen_normalized_fields.add(normalized_label)
-                                    field_label_map[normalized_label] = label
-                                    registration_form_fields.add(normalized_label)
-                                    pass  # Added external registration field
-                except Exception as e:
-                    print(f"Error processing registration form fields: {str(e)}")
-        
-        # Prepend external registration fields to the beginning of ordered_fields
-        # This ensures registration fields always come first
-        ordered_fields = external_registration_fields + ordered_fields
-                    
-    # Now continue with rest of function using modified ordered_fields
+    # With centralized registration, we no longer need to pull registration fields from other projects
 
     # 3. Get all submissions based on filters (project or form)
     submissions = []
     submission_form_ids = [f['id'] for f in ordered_forms_data]
 
-    # If we have a project filter, make sure we also get registration forms from ALL projects
-    # This allows us to pull in registration data from other programs
-    all_registration_form_ids = []
-    if project_id:
-        print("Looking for ALL registration forms across ALL projects for cross-program data")
-        # Query all forms (add limit to ensure all rows are fetched)
-        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
-        
-        for form in all_forms_response.data:
-            form_id = form.get('id')
-            if form_id and get_form_is_first(form_id):
-                # Include registration forms from all projects
-                if form_id not in submission_form_ids:
-                    all_registration_form_ids.append(form_id)
-                    print(f"Including registration form: {form.get('title')} (ID: {form_id}) from project: {form.get('project_id')}")
-        
-        # Expand our submission_form_ids to include registration forms from all projects
-        if all_registration_form_ids:
-            print(f"Adding {len(all_registration_form_ids)} registration forms from other projects")
-            submission_form_ids.extend(all_registration_form_ids)
+    # With centralized registration, we only need submissions from the selected project
 
     # Modified query to get submissions even if no forms match the criteria
     query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
@@ -1647,20 +1815,15 @@ def dataset_view():
             patient_data[patient_id] = {
                 'patient_id': patient_id,
                 'submissions': [],
-                'has_project_submissions': False,  # Flag to track if patient has submissions in this project
-                'has_non_registration_submissions': False  # Flag to track if patient has submissions in non-registration forms
+                'has_project_submissions': False  # Flag to track if patient has submissions in this project
             }
         
         # Only add submissions to the patient record if they're from the selected project or no project filter is active
         patient_data[patient_id]['submissions'].append(submission)
         
-        # Mark if this submission belongs to the selected project
+        # SIMPLIFIED: Mark if this submission belongs to the selected project (regardless of registration status)
         if should_process_fields:
             patient_data[patient_id]['has_project_submissions'] = True
-            
-            # Mark if this is a non-registration form submission
-            if not is_registration_form:
-                patient_data[patient_id]['has_non_registration_submissions'] = True
         
         # Collect all unique field keys from actual data, but only if they belong to the selected project
         if submission.get('data') and should_process_fields:
@@ -1671,44 +1834,19 @@ def dataset_view():
                 if normalized_key not in field_label_map:
                     field_label_map[normalized_key] = key
                     
-    # If a project is selected, filter out patients who don't meet criteria
+    # SIMPLIFIED: If a project is selected, include patients who have ANY submissions from that project
+    # With centralized registration, we don't need complex "first form" logic anymore
     if project_id and project_form_ids:
         filtered_patient_data = {}
         for patient_id, data in patient_data.items():
-            # When there's a search term, we need to be more careful about filtering
-            # The search might only return registration form submissions, but the patient
-            # might have other non-registration forms in the full dataset
-            if search_term:
-                # For search results, check if the patient has non-registration submissions
-                # in the FULL dataset (not just in the search results)
-                full_patient_check = supabase.table('form_submissions').select('form_id').eq('patient_id', patient_id).execute()
-                if full_patient_check.data:
-                    has_non_registration_in_full_dataset = False
-                    for sub in full_patient_check.data:
-                        sub_form_id = sub.get('form_id')
-                        if sub_form_id in project_form_ids and not get_form_is_first(sub_form_id):
-                            has_non_registration_in_full_dataset = True
-                            break
-                    
-                    # Include patient if they have non-registration forms in the full dataset
-                    # even if the search only found registration form matches
-                    if has_non_registration_in_full_dataset:
-                        filtered_patient_data[patient_id] = data
-                    else:
-                        print(f"Filtered out patient {patient_id} because they only have registration form submissions in full dataset")
-                else:
-                    print(f"Filtered out patient {patient_id} because no submissions found in full dataset check")
+            # Include patients who have submissions from this project
+            if data.get('has_project_submissions', False):
+                filtered_patient_data[patient_id] = data
             else:
-                # Original logic for non-search cases
-                # Include patients only if they have both registration data AND non-registration submissions
-                # OR if they only have non-registration submissions in this project
-                if data.get('has_non_registration_submissions', False):
-                    filtered_patient_data[patient_id] = data
-                # Exclude patients who ONLY have registration form submissions
-                else:
-                    print(f"Filtered out patient {patient_id} because they only have registration form submissions")
+                print(f"Filtered out patient {patient_id} because they have no submissions from this project")
         
-        print(f"Filtered out {len(patient_data) - len(filtered_patient_data)} patients with only registration form submissions")
+        print(f"Included {len(filtered_patient_data)} patients with submissions from this project")
+        print(f"Filtered out {len(patient_data) - len(filtered_patient_data)} patients with no submissions from this project")
         patient_data = filtered_patient_data
 
     # 6. Apply field value filtering (if specified) AFTER grouping
@@ -1775,23 +1913,36 @@ def dataset_view():
         # Keep track of the latest submission date for each field
         last_updated = {} 
         
-        # Get all first/registration forms for this patient from any program
+        # Get registration data from centralized patients table
         registration_data = {}
-        first_form_ids = set()
         
-        # Find all first forms submitted by this patient
-        for submission in data['submissions']:
-            form_id = submission.get('form_id')
-            if form_id and get_form_is_first(form_id) and submission.get('data'):
-                first_form_ids.add(form_id)
-                # Add registration form data with priority to newer submissions
-                submission_date = submission.get('created_at', '')
-                for key, value in submission['data'].items():
+        # Fetch patient record from patients table to get centralized registration data
+        try:
+            patient_response = supabase.table('patients').select('data, created_at').eq('patient_id', patient_id).execute()
+            if patient_response.data and patient_response.data[0].get('data', {}).get('registration'):
+                patient_registration = patient_response.data[0]['data']['registration']
+                patient_created_at = patient_response.data[0].get('created_at', '')
+                
+                # Convert registration data to normalized keys
+                for key, value in patient_registration.items():
                     normalized_key = key.lower().strip().replace(' ', '_')
-                    if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
-                        registration_data[normalized_key] = value
-                        if submission_date:
-                            last_updated[normalized_key] = submission_date
+                    registration_data[normalized_key] = value
+                    if patient_created_at:
+                        last_updated[normalized_key] = patient_created_at
+                        
+        except Exception as e:
+            print(f"Error fetching patient registration data for {patient_id}: {str(e)}")
+            # Fallback to old method if centralized registration not available
+            for submission in data['submissions']:
+                form_id = submission.get('form_id')
+                if form_id and get_form_is_first(form_id) and submission.get('data'):
+                    submission_date = submission.get('created_at', '')
+                    for key, value in submission['data'].items():
+                        normalized_key = key.lower().strip().replace(' ', '_')
+                        if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
+                            registration_data[normalized_key] = value
+                            if submission_date:
+                                last_updated[normalized_key] = submission_date
 
         # Sort submissions by date (newest first) to prioritize recent data
         sorted_submissions = sorted(data['submissions'], key=lambda s: s.get('created_at', ''), reverse=True)
@@ -2178,6 +2329,26 @@ def export_dataset():
     seen_normalized_fields = set()
     field_label_map = {}
     registration_form_fields = set()
+    
+    # ALWAYS include centralized registration fields first, regardless of project forms
+    centralized_registration_fields = [
+        'Name',
+        'Age (Years)', 
+        'Gender',
+        'Region',
+        'District', 
+        'Ward',
+        'Phone Number'
+    ]
+    
+    for field_label in centralized_registration_fields:
+        normalized_label = field_label.lower().strip().replace(' ', '_')
+        if normalized_label not in seen_normalized_fields:
+            ordered_fields.append(field_label)
+            seen_normalized_fields.add(normalized_label)
+            field_label_map[normalized_label] = field_label
+            registration_form_fields.add(normalized_label)
+            print(f"Export: Added centralized registration field: {field_label}")
 
     for form in ordered_forms_data:
         # Check if this is a registration form
@@ -2209,62 +2380,13 @@ def export_dataset():
                         if is_first:
                             registration_form_fields.add(normalized_label)
     
-    # Also collect fields from all registration forms in the database
-    if project_id:
-        print("Export: Looking for registration forms in other projects")
-        registration_form_ids = []
-        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
-        for form in all_forms_response.data:
-            form_id = form.get('id')
-            if form_id and get_form_is_first(form_id) and form.get('project_id') != project_id:
-                registration_form_ids.append(form_id)
-                print(f"Export: Found external registration form: {form_id} in project {form.get('project_id')}")
-        
-        for reg_form_id in registration_form_ids:
-            reg_form_response = supabase.table('forms').select('fields').eq('id', reg_form_id).execute()
-            if reg_form_response.data:
-                reg_form = reg_form_response.data[0]
-                reg_fields_json = reg_form.get('fields', '[]')
-                try:
-                    if isinstance(reg_fields_json, str):
-                        reg_parsed_fields = json.loads(reg_fields_json)
-                    else:
-                        reg_parsed_fields = reg_fields_json
-
-                    if isinstance(reg_parsed_fields, list):
-                        for field in reg_parsed_fields:
-                            if isinstance(field, dict) and 'label' in field:
-                                label = field['label']
-                                normalized_label = label.lower().strip().replace(' ', '_')
-                                if normalized_label not in seen_normalized_fields:
-                                    ordered_fields.append(label)
-                                    seen_normalized_fields.add(normalized_label)
-                                    field_label_map[normalized_label] = label
-                                    registration_form_fields.add(normalized_label)
-                                    print(f"Export: Added external registration field: {label}")
-                except Exception as e:
-                    print(f"Export: Error processing registration form fields: {str(e)}")
+    # With centralized registration, we no longer need to pull registration fields from other projects
     
     # 3. Get all submissions based on filters
     submissions = []
     submission_form_ids = [f['id'] for f in ordered_forms_data]
 
-    # Include registration forms from ALL projects
-    all_registration_form_ids = []
-    if project_id:
-        print("Export: Including ALL registration forms across ALL projects")
-        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
-        
-        for form in all_forms_response.data:
-            form_id = form.get('id')
-            if form_id and get_form_is_first(form_id):
-                if form_id not in submission_form_ids:
-                    all_registration_form_ids.append(form_id)
-                    print(f"Export: Including registration form: {form.get('title')} (ID: {form_id})")
-        
-        if all_registration_form_ids:
-            print(f"Export: Adding {len(all_registration_form_ids)} registration forms from other projects")
-            submission_form_ids.extend(all_registration_form_ids)
+    # With centralized registration, we only need submissions from the selected project
 
     # Query to get submissions
     query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
@@ -2417,17 +2539,14 @@ def export_dataset():
             patient_data[patient_id] = {
                 'patient_id': patient_id,
                 'submissions': [],
-                'has_project_submissions': False,
-                'has_non_registration_submissions': False
+                'has_project_submissions': False
             }
         
         patient_data[patient_id]['submissions'].append(submission)
         
+        # SIMPLIFIED: Mark if this submission belongs to the selected project (regardless of registration status)
         if should_process_fields:
             patient_data[patient_id]['has_project_submissions'] = True
-            
-            if not is_registration_form:
-                patient_data[patient_id]['has_non_registration_submissions'] = True
         
         if submission.get('data') and should_process_fields:
             for key in submission['data'].keys():
@@ -2436,16 +2555,19 @@ def export_dataset():
                 if normalized_key not in field_label_map:
                     field_label_map[normalized_key] = key
                     
-    # Filter out patients who only have registration form submissions
+    # SIMPLIFIED: Include patients who have ANY submissions from this project
+    # With centralized registration, we don't need complex "first form" logic anymore
     if project_id and project_form_ids:
         filtered_patient_data = {}
         for patient_id, data in patient_data.items():
-            if data.get('has_non_registration_submissions', False):
+            # Include patients who have submissions from this project
+            if data.get('has_project_submissions', False):
                 filtered_patient_data[patient_id] = data
             else:
-                print(f"Export: Filtered out patient {patient_id} because they only have registration form submissions")
+                print(f"Export: Filtered out patient {patient_id} because they have no submissions from this project")
         
-        print(f"Export: Filtered out {len(patient_data) - len(filtered_patient_data)} patients with only registration form submissions")
+        print(f"Export: Included {len(filtered_patient_data)} patients with submissions from this project")
+        print(f"Export: Filtered out {len(patient_data) - len(filtered_patient_data)} patients with no submissions from this project")
         patient_data = filtered_patient_data
 
     # 6. Apply field value filtering (if specified)
@@ -2484,22 +2606,40 @@ def export_dataset():
         merged_data = {}
         last_updated = {} 
         
-        # Process registration data first
+        # Get registration data from centralized patients table
         registration_data = {}
         
         print(f"Export: Processing registration data for patient: {patient_id}")
-        for submission in data['submissions']:
-            form_id = submission.get('form_id')
-            if form_id and get_form_is_first(form_id) and submission.get('data'):
-                form_title = submission.get('forms', {}).get('title', 'Unknown')
-                print(f"Export: Found registration data from: {form_title} (ID: {form_id})")
-                submission_date = submission.get('created_at', '')
-                for key, value in submission['data'].items():
+        # Fetch patient record from patients table to get centralized registration data
+        try:
+            patient_response = supabase.table('patients').select('data, created_at').eq('patient_id', patient_id).execute()
+            if patient_response.data and patient_response.data[0].get('data', {}).get('registration'):
+                patient_registration = patient_response.data[0]['data']['registration']
+                patient_created_at = patient_response.data[0].get('created_at', '')
+                print(f"Export: Found centralized registration data for patient {patient_id}")
+                
+                # Convert registration data to normalized keys
+                for key, value in patient_registration.items():
                     normalized_key = key.lower().strip().replace(' ', '_')
-                    if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
-                        registration_data[normalized_key] = value
-                        if submission_date:
-                            last_updated[normalized_key] = submission_date
+                    registration_data[normalized_key] = value
+                    if patient_created_at:
+                        last_updated[normalized_key] = patient_created_at
+                        
+        except Exception as e:
+            print(f"Export: Error fetching patient registration data for {patient_id}: {str(e)}")
+            # Fallback to old method if centralized registration not available
+            for submission in data['submissions']:
+                form_id = submission.get('form_id')
+                if form_id and get_form_is_first(form_id) and submission.get('data'):
+                    form_title = submission.get('forms', {}).get('title', 'Unknown')
+                    print(f"Export: Found registration data from: {form_title} (ID: {form_id})")
+                    submission_date = submission.get('created_at', '')
+                    for key, value in submission['data'].items():
+                        normalized_key = key.lower().strip().replace(' ', '_')
+                        if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
+                            registration_data[normalized_key] = value
+                            if submission_date:
+                                last_updated[normalized_key] = submission_date
 
         # Sort submissions by date (newest first)
         sorted_submissions = sorted(data['submissions'], key=lambda s: s.get('created_at', ''), reverse=True)
@@ -2808,6 +2948,25 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
     seen_normalized_fields = set()
     field_label_map = {}
     registration_form_fields = set()
+    
+    # ALWAYS include centralized registration fields first, regardless of project forms
+    centralized_registration_fields = [
+        'Name',
+        'Age (Years)', 
+        'Gender',
+        'Region',
+        'District', 
+        'Ward',
+        'Phone Number'
+    ]
+    
+    for field_label in centralized_registration_fields:
+        normalized_label = field_label.lower().strip().replace(' ', '_')
+        if normalized_label not in seen_normalized_fields:
+            ordered_fields.append(field_label)
+            seen_normalized_fields.add(normalized_label)
+            field_label_map[normalized_label] = field_label
+            registration_form_fields.add(normalized_label)
 
     for form in ordered_forms_data:
         # Check if this is a registration form
@@ -2836,56 +2995,13 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
                         if is_first:
                             registration_form_fields.add(normalized_label)
     
-    # Also collect fields from all registration forms in the database
-    if project_id:
-        registration_form_ids = []
-        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
-        for form in all_forms_response.data:
-            form_id = form.get('id')
-            if form_id and get_form_is_first(form_id) and form.get('project_id') != project_id:
-                registration_form_ids.append(form_id)
-        
-        for reg_form_id in registration_form_ids:
-            reg_form_response = supabase.table('forms').select('fields').eq('id', reg_form_id).execute()
-            if reg_form_response.data:
-                reg_form = reg_form_response.data[0]
-                reg_fields_json = reg_form.get('fields', '[]')
-                try:
-                    if isinstance(reg_fields_json, str):
-                        reg_parsed_fields = json.loads(reg_fields_json)
-                    else:
-                        reg_parsed_fields = reg_fields_json
-
-                    if isinstance(reg_parsed_fields, list):
-                        for field in reg_parsed_fields:
-                            if isinstance(field, dict) and 'label' in field:
-                                label = field['label']
-                                normalized_label = label.lower().strip().replace(' ', '_')
-                                if normalized_label not in seen_normalized_fields:
-                                    ordered_fields.append(label)
-                                    seen_normalized_fields.add(normalized_label)
-                                    field_label_map[normalized_label] = label
-                                    registration_form_fields.add(normalized_label)
-                except Exception as e:
-                    pass
+    # With centralized registration, we no longer need to pull registration fields from other projects
     
     # 3. Get all submissions based on filters
     submissions = []
     submission_form_ids = [f['id'] for f in ordered_forms_data]
 
-    # Include registration forms from ALL projects
-    all_registration_form_ids = []
-    if project_id:
-        all_forms_response = supabase.table('forms').select('id, title, project_id').limit(10000).execute()
-        
-        for form in all_forms_response.data:
-            form_id = form.get('id')
-            if form_id and get_form_is_first(form_id):
-                if form_id not in submission_form_ids:
-                    all_registration_form_ids.append(form_id)
-        
-        if all_registration_form_ids:
-            submission_form_ids.extend(all_registration_form_ids)
+    # With centralized registration, we only need submissions from the selected project
 
     # Query to get submissions
     query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
@@ -2966,17 +3082,14 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
             patient_data[patient_id] = {
                 'patient_id': patient_id,
                 'submissions': [],
-                'has_project_submissions': False,
-                'has_non_registration_submissions': False
+                'has_project_submissions': False
             }
         
         patient_data[patient_id]['submissions'].append(submission)
         
+        # SIMPLIFIED: Mark if this submission belongs to the selected project (regardless of registration status)
         if should_process_fields:
             patient_data[patient_id]['has_project_submissions'] = True
-            
-            if not is_registration_form:
-                patient_data[patient_id]['has_non_registration_submissions'] = True
         
         if submission.get('data') and should_process_fields:
             for key in submission['data'].keys():
@@ -2985,14 +3098,16 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
                 if normalized_key not in field_label_map:
                     field_label_map[normalized_key] = key
     
-    # 5. CRITICAL: Filter out patients who don't have non-registration submissions in this project
-    # This ensures analytics only shows patients who actually participated in the selected program
+    # SIMPLIFIED: Include patients who have ANY submissions from this project
+    # With centralized registration, analytics shows patients who participated in the selected program
     if project_id and project_form_ids:
         filtered_patient_data = {}
         for patient_id, data in patient_data.items():
-            if data.get('has_non_registration_submissions', False):
+            if data.get('has_project_submissions', False):
                 filtered_patient_data[patient_id] = data
         
+        print(f"Analytics: Included {len(filtered_patient_data)} patients with submissions from this project")
+        print(f"Analytics: Filtered out {len(patient_data) - len(filtered_patient_data)} patients with no submissions from this project")
         patient_data = filtered_patient_data
 
     # Find extra fields in submissions that weren't in form definitions
@@ -3007,19 +3122,36 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
         merged_data = {}
         last_updated = {} 
         
-        # Process registration data first
+        # Get registration data from centralized patients table
         registration_data = {}
         
-        for submission in data['submissions']:
-            form_id = submission.get('form_id')
-            if form_id and get_form_is_first(form_id) and submission.get('data'):
-                submission_date = submission.get('created_at', '')
-                for key, value in submission['data'].items():
+        # Fetch patient record from patients table to get centralized registration data
+        try:
+            patient_response = supabase.table('patients').select('data, created_at').eq('patient_id', patient_id).execute()
+            if patient_response.data and patient_response.data[0].get('data', {}).get('registration'):
+                patient_registration = patient_response.data[0]['data']['registration']
+                patient_created_at = patient_response.data[0].get('created_at', '')
+                
+                # Convert registration data to normalized keys
+                for key, value in patient_registration.items():
                     normalized_key = key.lower().strip().replace(' ', '_')
-                    if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
-                        registration_data[normalized_key] = value
-                        if submission_date:
-                            last_updated[normalized_key] = submission_date
+                    registration_data[normalized_key] = value
+                    if patient_created_at:
+                        last_updated[normalized_key] = patient_created_at
+                        
+        except Exception as e:
+            print(f"Analytics: Error fetching patient registration data for {patient_id}: {str(e)}")
+            # Fallback to old method if centralized registration not available
+            for submission in data['submissions']:
+                form_id = submission.get('form_id')
+                if form_id and get_form_is_first(form_id) and submission.get('data'):
+                    submission_date = submission.get('created_at', '')
+                    for key, value in submission['data'].items():
+                        normalized_key = key.lower().strip().replace(' ', '_')
+                        if normalized_key not in registration_data or (submission_date and submission_date > last_updated.get(normalized_key, '')):
+                            registration_data[normalized_key] = value
+                            if submission_date:
+                                last_updated[normalized_key] = submission_date
 
         # Sort submissions by date (newest first)
         sorted_submissions = sorted(data['submissions'], key=lambda s: s.get('created_at', ''), reverse=True)
@@ -4778,8 +4910,15 @@ def get_patient_preview(patient_id):
                 
                 # Create form details entry if we haven't seen this form before
                 if form_id not in result['form_details']:
+                    # Check if this is a registration form (first form in project)
+                    is_registration_form = get_form_is_first(form_id) if form_id else False
+                    
+                    form_title = form.get('title', 'Unknown Form')
+                    if is_registration_form:
+                        form_title = f"{form_title} (Registration)"
+                    
                     result['form_details'][form_id] = {
-                        'title': form.get('title', 'Unknown Form'),
+                        'title': form_title,
                         'field_order': []  # Will populate with field names in the order they appear
                     }
                     
@@ -4823,6 +4962,24 @@ def get_patient_preview(patient_id):
         # Get form details for each form ID in the patient data
         form_ids = patient.get('data', {}).keys()
         for form_id in form_ids:
+            # Handle special case for centralized registration data
+            if form_id == 'registration':
+                # Create synthetic form details for registration data
+                result['form_details']['registration'] = {
+                    'title': 'Patient Registration',
+                    'field_order': [
+                        'Name',
+                        'Age (Years)', 
+                        'Gender',
+                        'Region',
+                        'District', 
+                        'Ward',
+                        'Phone Number'
+                    ]
+                }
+                continue
+            
+            # Handle regular form IDs
             form_response = supabase.table('forms').select('id, title, fields, project_id, projects(name)').eq('id', form_id).execute()
             
             if form_response.data:
@@ -5231,21 +5388,44 @@ def form_waitlist(form_id):
                     last_idx, last_form_id = max(patient_completed_forms, key=lambda x: x[0])
                     last_completed_form = next((f['title'] for f in project_forms if f['id'] == last_form_id), None)
             
-            # Try to get patient name from data
+            # Try to get patient name from centralized registration data first
             if patient.get('data'):
-                for form_data in patient['data'].values():
-                    if isinstance(form_data, dict):
-                        # Look for common name fields
-                        for field in ['Full Name', 'Name', 'Patient Name', 'First Name']:
-                            if field in form_data and form_data[field]:
-                                patient_display_name = form_data[field]
-                                break
-                    if patient_display_name:
-                        break
+                # First priority: centralized registration data
+                registration_data = patient['data'].get('registration', {})
+                if isinstance(registration_data, dict) and registration_data.get('Name'):
+                    patient_display_name = registration_data['Name']
+                else:
+                    # Fallback: look through all form data for name fields
+                    for form_data in patient['data'].values():
+                        if isinstance(form_data, dict):
+                            # Look for common name fields in form data
+                            for field in ['Full Name', 'Name', 'Patient Name', 'First Name']:
+                                if field in form_data and form_data[field]:
+                                    patient_display_name = form_data[field]
+                                    break
+                        if patient_display_name:
+                            break
+            
+            # Get additional patient info from centralized registration
+            age = None
+            gender = None
+            phone = None
+            
+            if patient.get('data'):
+                registration_data = patient['data'].get('registration', {})
+                if isinstance(registration_data, dict):
+                    age = registration_data.get('Age (Years)')
+                    gender = registration_data.get('Gender')
+                    phone = registration_data.get('Phone Number')
+                    
+                    print(f"Waitlist: Patient {patient_id} - Name: {patient_display_name}, Age: {age}, Gender: {gender}")
             
             result.append({
                 'patient_id': patient_id,
                 'display_name': patient_display_name,
+                'age': age,
+                'gender': gender,
+                'phone': phone,
                 'last_form_completed': last_completed_form,
                 'is_eligible': is_eligible
             })
@@ -5778,13 +5958,13 @@ def reports():
     
     return render_template('reports.html', projects=projects)
 
-@app.route('/api/doctors/<programme_id>')
+@app.route('/api/doctors/<project_id>')
 @login_required
-def get_doctors_for_programme(programme_id):
+def get_doctors_for_programme(project_id):
     """Get unique doctor names from a specific programme"""
     try:
         # Get all forms for this programme
-        forms_response = supabase.table('forms').select('id').eq('project_id', programme_id).execute()
+        forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
         if not forms_response.data:
             return jsonify({'doctors': []})
         
@@ -5831,11 +6011,11 @@ def get_doctors_for_programme(programme_id):
 def report_preview():
     """Get preview statistics for the report"""
     try:
-        programme_id = request.form.get('programme')
+        project_id = request.form.get('project_id')
         doctor_name = request.form.get('doctor')
         date_type = request.form.get('dateType', 'today')
         
-        if not programme_id or not doctor_name:
+        if not project_id or not doctor_name:
             return jsonify({'totalPatients': 0})
         
         # Get date range
@@ -5852,11 +6032,11 @@ def report_preview():
                 end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
         
         # Get matching patients
-        patients = get_patients_for_report(programme_id, doctor_name, start_date, end_date)
+        patients = get_patients_for_report(project_id, doctor_name, start_date, end_date)
         
         return jsonify({
             'totalPatients': len(patients),
-            'programme': programme_id,
+            'programme': project_id,
             'doctor': doctor_name,
             'startDate': start_date.isoformat() if start_date else None,
             'endDate': end_date.isoformat() if end_date else None
@@ -5871,11 +6051,11 @@ def report_preview():
 def generate_report():
     """Generate PDF report"""
     try:
-        programme_id = request.form.get('programme')
+        project_id = request.form.get('project_id')
         doctor_name = request.form.get('doctor')
         date_type = request.form.get('dateType', 'today')
         
-        if not programme_id or not doctor_name:
+        if not project_id or not doctor_name:
             flash('Programme and doctor are required', 'danger')
             return redirect(url_for('reports'))
         
@@ -5893,17 +6073,17 @@ def generate_report():
                 end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
         
         # Get programme name
-        programme_response = supabase.table('projects').select('name').eq('id', programme_id).execute()
+        programme_response = supabase.table('projects').select('name').eq('id', project_id).execute()
         programme_name = programme_response.data[0]['name'] if programme_response.data else 'Unknown Programme'
         
         # Get patients data
-        patients = get_patients_for_report(programme_id, doctor_name, start_date, end_date)
+        patients = get_patients_for_report(project_id, doctor_name, start_date, end_date)
         
         # Generate PDF
-        pdf_buffer = generate_pdf_report(patients, programme_name, doctor_name, start_date, end_date)
+        pdf_buffer = generate_pdf_report(patients, programme_name, doctor_name, start_date, end_date, project_id)
         
         # Log activity
-        log_activity('generate', 'report', programme_id, f"Generated report for {doctor_name} in {programme_name}")
+        log_activity('generate', 'report', project_id, f"Generated report for {doctor_name} in {programme_name}")
         
         # Return PDF as response
         from flask import make_response
@@ -5925,13 +6105,13 @@ def generate_report():
         flash('Error generating report. Please try again.', 'danger')
         return redirect(url_for('reports'))
 
-def get_patients_for_report(programme_id, doctor_name, start_date, end_date):
+def get_patients_for_report(project_id, doctor_name, start_date, end_date):
     """Get patients data for the report based on filters"""
     try:
         from datetime import timedelta
         
         # Get all forms for this programme
-        forms_response = supabase.table('forms').select('id').eq('project_id', programme_id).execute()
+        forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
         if not forms_response.data:
             return []
         
@@ -5987,19 +6167,44 @@ def get_patients_for_report(programme_id, doctor_name, start_date, end_date):
                         patients_with_doctor.add(patient_id)
                         break
         
+        # Now fetch centralized registration data for all patients and merge it
+        print(f"Report: Fetching centralized registration data for {len(all_patient_data)} patients")
+        for patient_id, patient_info in all_patient_data.items():
+            try:
+                # Get registration data from centralized patients table
+                patient_response = supabase.table('patients').select('data, created_at').eq('patient_id', patient_id).execute()
+                if patient_response.data and patient_response.data[0].get('data', {}).get('registration'):
+                    registration_data = patient_response.data[0]['data']['registration']
+                    
+                    # Merge registration data with form data (registration data takes priority)
+                    merged_data = {}
+                    merged_data.update(patient_info['data'])  # Form data first
+                    merged_data.update(registration_data)     # Registration data overwrites/adds
+                    
+                    patient_info['data'] = merged_data
+                    print(f"Report: Added centralized registration data for patient {patient_id}")
+                else:
+                    print(f"Report: No centralized registration data found for patient {patient_id}")
+                    
+            except Exception as e:
+                print(f"Report: Error fetching registration data for patient {patient_id}: {str(e)}")
+                # Continue with form data only
+                pass
+        
         # Filter to only include patients who have been seen by the specified doctor (or all if ALL DOCTORS)
         filtered_patient_data = []
         for patient_id, patient_info in all_patient_data.items():
             if patient_id in patients_with_doctor:
                 filtered_patient_data.append(patient_info)
         
+        print(f"Report: Returning {len(filtered_patient_data)} patients for report generation")
         return filtered_patient_data
         
     except Exception as e:
         print(f"Error getting patients for report: {str(e)}")
         return []
 
-def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_date):
+def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_date, project_id):
     """Generate PDF report using reportlab"""
     from reportlab.lib.pagesizes import letter, A4, landscape
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
@@ -6139,8 +6344,11 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
             # Build treatment plan based on priority: Surgical Procedure > Eyedrops & Tabs > Reading Glasses
             treatment_plan = build_treatment_plan(patient_data)
             
-            # Physical address (use Ward field)
-            address = get_field_value(patient_data, ['ward', 'physical address', 'address'])
+            # Physical address (use Ward field from registration or form data)
+            address = get_field_value(patient_data, [
+                'Ward', 'ward', 'physical address', 'address', 'Address', 'WARD', 
+                'Physical Address', 'PHYSICAL ADDRESS'
+            ])
             
             # Phone number
             phone = get_field_value(patient_data, [
@@ -6260,14 +6468,14 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
         elements.append(table)
         
         # Add summary statistics with total percentages
-        add_summary_statistics(elements, patients, styles, programme_id, start_date, end_date)
+        add_summary_statistics(elements, patients, styles, project_id, start_date, end_date)
     
     # Build PDF
     doc.build(elements)
     buffer.seek(0)
     return buffer
 
-def add_summary_statistics(elements, patients, styles, programme_id, start_date, end_date):
+def add_summary_statistics(elements, patients, styles, project_id, start_date, end_date):
     """Add clean summary statistics to PDF with total percentages"""
     from reportlab.platypus import Spacer, Table, TableStyle, Paragraph
     from reportlab.lib import colors
@@ -6330,7 +6538,7 @@ def add_summary_statistics(elements, patients, styles, programme_id, start_date,
             surgical_referrals += 1
     
     # Get total statistics across ALL doctors for percentage calculation
-    all_doctors_patients = get_patients_for_report(programme_id, "ALL DOCTORS", start_date, end_date)
+    all_doctors_patients = get_patients_for_report(project_id, "ALL DOCTORS", start_date, end_date)
     total_all_patients = len(all_doctors_patients)
     total_all_cataracts = 0
     total_all_immature_cataracts = 0
@@ -6372,38 +6580,98 @@ def add_summary_statistics(elements, patients, styles, programme_id, start_date,
     def safe_percentage(count, total):
         return f"{count/total*100:.1f}%" if total > 0 else "0%"
     
-    # Create summary table with total percentages
+    # Create summary table with Paragraph objects for better text wrapping
+    from reportlab.lib.styles import ParagraphStyle
+    
+    # Define cell text styles for better wrapping
+    header_cell_style = ParagraphStyle(
+        'HeaderCell',
+        parent=styles['Normal'],
+        fontSize=10,
+        fontName='Times-Bold',
+        alignment=1,  # Center
+        textColor=colors.black,
+        leading=12
+    )
+    
+    metric_cell_style = ParagraphStyle(
+        'MetricCell', 
+        parent=styles['Normal'],
+        fontSize=9,
+        fontName='Times-Bold',
+        alignment=0,  # Left
+        textColor=colors.black,
+        leading=11,
+        leftIndent=6,
+        rightIndent=6
+    )
+    
+    data_cell_style = ParagraphStyle(
+        'DataCell',
+        parent=styles['Normal'], 
+        fontSize=9,
+        fontName='Times-Roman',
+        alignment=1,  # Center
+        textColor=colors.black,
+        leading=11
+    )
+    
+    # Create summary table data with Paragraph objects for proper text wrapping
     summary_data = [
-        ['METRIC', 'COUNT', 'PERCENTAGE', 'TOTAL PERCENTAGE'],
-        ['Total Patients', str(total_patients), '100.0%', safe_percentage(total_patients, total_all_patients)],
-        ['Cataract Cases', str(cataract_patients), safe_percentage(cataract_patients, total_patients), safe_percentage(cataract_patients, total_all_cataracts)],
-        ['Immature Cataract Cases', str(immature_cataract_patients), safe_percentage(immature_cataract_patients, total_patients), safe_percentage(immature_cataract_patients, total_all_immature_cataracts)],
-        ['Reading Glasses Prescribed', str(reading_glasses_count), safe_percentage(reading_glasses_count, total_patients), safe_percentage(reading_glasses_count, total_all_reading_glasses)],
-        ['Surgical Referrals', str(surgical_referrals), safe_percentage(surgical_referrals, total_patients), safe_percentage(surgical_referrals, total_all_surgical_referrals)]
+        # Header row
+        [
+            Paragraph('METRIC', header_cell_style),
+            Paragraph('COUNT', header_cell_style), 
+            Paragraph('PERCENTAGE', header_cell_style),
+            Paragraph('TOTAL<br/>PERCENTAGE', header_cell_style)
+        ],
+        # Data rows with wrapped text
+        [
+            Paragraph('Total Patients', metric_cell_style),
+            Paragraph(str(total_patients), data_cell_style),
+            Paragraph('100.0%', data_cell_style),
+            Paragraph(safe_percentage(total_patients, total_all_patients), data_cell_style)
+        ],
+        [
+            Paragraph('Cataract Cases', metric_cell_style),
+            Paragraph(str(cataract_patients), data_cell_style),
+            Paragraph(safe_percentage(cataract_patients, total_patients), data_cell_style),
+            Paragraph(safe_percentage(cataract_patients, total_all_cataracts), data_cell_style)
+        ],
+        [
+            Paragraph('Immature Cataract Cases', metric_cell_style),
+            Paragraph(str(immature_cataract_patients), data_cell_style),
+            Paragraph(safe_percentage(immature_cataract_patients, total_patients), data_cell_style),
+            Paragraph(safe_percentage(immature_cataract_patients, total_all_immature_cataracts), data_cell_style)
+        ],
+        [
+            Paragraph('Reading Glasses Prescribed', metric_cell_style),
+            Paragraph(str(reading_glasses_count), data_cell_style),
+            Paragraph(safe_percentage(reading_glasses_count, total_patients), data_cell_style),
+            Paragraph(safe_percentage(reading_glasses_count, total_all_reading_glasses), data_cell_style)
+        ],
+        [
+            Paragraph('Surgical Referrals', metric_cell_style),
+            Paragraph(str(surgical_referrals), data_cell_style),
+            Paragraph(safe_percentage(surgical_referrals, total_patients), data_cell_style),
+            Paragraph(safe_percentage(surgical_referrals, total_all_surgical_referrals), data_cell_style)
+        ]
     ]
     
-    # Create summary table with clean black and white styling
-    summary_table = Table(summary_data, colWidths=[2.8*inch, 1.2*inch, 1.3*inch, 1.3*inch])
+    # Create summary table with optimized column widths for better text containment
+    summary_table = Table(summary_data, colWidths=[3.2*inch, 1.0*inch, 1.1*inch, 1.3*inch])
     summary_table.setStyle(TableStyle([
         # Header row styling
-        ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('TOPPADDING', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+        ('TOPPADDING', (0, 0), (-1, 0), 10),
         
-        # Data rows styling
-        ('FONTNAME', (0, 1), (0, -1), 'Times-Bold'),  # First column bold
-        ('FONTNAME', (1, 1), (-1, -1), 'Times-Roman'),      # Other columns regular
-        ('FONTSIZE', (0, 1), (-1, -1), 9),
-        ('ALIGN', (0, 1), (0, -1), 'LEFT'),               # Metric names left-aligned
-        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),            # Numbers centered
-        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+        # Data rows styling  
+        ('VALIGN', (0, 1), (-1, -1), 'TOP'),  # Top align for better text flow
         ('TOPPADDING', (0, 1), (-1, -1), 8),
         ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
-        ('LEFTPADDING', (0, 1), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 1), (-1, -1), 8),
+        ('LEFTPADDING', (0, 1), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 1), (-1, -1), 4),
         
         # Grid and borders - simple black lines
         ('GRID', (0, 0), (-1, -1), 1, colors.black),

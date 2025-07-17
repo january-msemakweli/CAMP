@@ -37,17 +37,17 @@
                             </a>
                         </div>
                         <div class="col-md-3 mb-3">
-                            <a href="{{ url_for('activity_logs') }}" class="btn btn-outline-info w-100 h-100 d-flex flex-column align-items-center justify-content-center p-3">
-                                <i class="fas fa-history fa-2x mb-2" style="color: var(--accent-color);"></i>
-                                <strong>Activity Logs</strong>
-                                <small class="text-muted">View system activity</small>
-                            </a>
-                        </div>
-                        <div class="col-md-3 mb-3">
                             <a href="{{ url_for('program_list') }}" class="btn btn-outline-warning w-100 h-100 d-flex flex-column align-items-center justify-content-center p-3">
                                 <i class="fas fa-database fa-2x mb-2" style="color: var(--accent-color);"></i>
                                 <strong>View All Data</strong>
                                 <small class="text-muted">Browse all program data</small>
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <a href="{{ url_for('register_patient_form') }}" class="btn btn-outline-primary w-100 h-100 d-flex flex-column align-items-center justify-content-center p-3">
+                                <i class="fas fa-user-plus fa-2x mb-2" style="color: var(--accent-color);"></i>
+                                <strong>Patient Registration</strong>
+                                <small class="text-muted">Register new patients centrally</small>
                             </a>
                         </div>
                     </div>
@@ -348,6 +348,26 @@
                             <p class="text-muted mb-0">No pending user approvals at this time</p>
                         </div>
                     {% endif %}
+                </div>
+            </div>
+            
+            <!-- Registration Permissions Section -->
+            <div class="card border-0 shadow mt-4">
+                <div class="card-header py-3" style="background-color: var(--primary-color); color: white;">
+                    <h5 class="mb-0">
+                        <i class="fas fa-user-shield me-2" style="color: var(--gold-color);"></i>Access Management
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('manage_registration_permissions') }}" class="btn btn-outline-primary w-100 d-flex align-items-center justify-content-center p-3">
+                            <i class="fas fa-user-cog fa-lg me-2" style="color: var(--accent-color);"></i>
+                            <div class="text-start">
+                                <strong>Registration Permissions</strong>
+                                <small class="d-block text-muted">Manage patient registration access</small>
+                            </div>
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

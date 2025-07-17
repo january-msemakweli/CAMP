@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Registration Permissions{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2 class="fw-bold text-primary mb-1">
+                        <i class="fas fa-user-shield me-2"></i>Patient Registration Permissions
+                    </h2>
+                    <p class="text-muted mb-0">Manage who can access the patient registration system</p>
+                </div>
+                <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+                </a>
+            </div>
+
+            <div class="row">
+                <!-- Current Permissions -->
+                <div class="col-md-8 mb-4">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0">
+                                <i class="fas fa-users me-2"></i>Users with Registration Access
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            {% if user_permissions %}
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th><i class="fas fa-user me-1"></i>Username</th>
+                                            <th><i class="fas fa-calendar me-1"></i>Access Granted</th>
+                                            <th><i class="fas fa-cog me-1"></i>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for permission in user_permissions %}
+                                        <tr>
+                                            <td>
+                                                <span class="fw-semibold">{{ permission.user.username }}</span>
+                                            </td>
+                                            <td>
+                                                <small class="text-muted">
+                                                    {{ permission.created_at|default('Unknown', true) }}
+                                                </small>
+                                            </td>
+                                            <td>
+                                                <form method="POST" action="{{ url_for('revoke_registration_access', permission_id=permission.id) }}" 
+                                                    class="d-inline" onsubmit="return confirm('Are you sure you want to revoke registration access for {{ permission.user.username }}?')">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                        <i class="fas fa-user-times me-1"></i>Revoke Access
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% else %}
+                            <div class="alert alert-info mb-0">
+                                <i class="fas fa-info-circle me-2"></i>
+                                No users have been granted registration access yet. Only administrators can currently access patient registration.
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Grant Access -->
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0">
+                                <i class="fas fa-user-plus me-2"></i>Grant Registration Access
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            {% if available_users %}
+                            <form method="POST" action="{{ url_for('grant_registration_access') }}">
+                                <div class="mb-3">
+                                    <label for="user_id" class="form-label fw-semibold">
+                                        Select User
+                                    </label>
+                                    <select class="form-select" id="user_id" name="user_id" required>
+                                        <option value="">Choose a user...</option>
+                                        {% for user in available_users %}
+                                        <option value="{{ user.id }}">{{ user.username }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="d-grid">
+                                    <button type="submit" class="btn btn-success">
+                                        <i class="fas fa-check me-2"></i>Grant Access
+                                    </button>
+                                </div>
+                            </form>
+                            {% else %}
+                            <div class="alert alert-warning mb-0">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                All approved users already have registration access or are administrators.
+                            </div>
+                            {% endif %}
+
+                            <!-- Info Box -->
+                            <div class="mt-4 p-3 bg-light rounded">
+                                <h6 class="fw-semibold mb-2">
+                                    <i class="fas fa-info-circle me-1 text-info"></i>Access Information
+                                </h6>
+                                <ul class="list-unstyled small mb-0">
+                                    <li class="mb-1">• Administrators have automatic access</li>
+                                    <li class="mb-1">• Only approved users can be granted access</li>
+                                    <li class="mb-1">• Users need registration access to use the centralized patient registration system</li>
+                                    <li>• Access can be revoked at any time</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Help Section -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card bg-light border-0">
+                        <div class="card-body py-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-auto">
+                                    <i class="fas fa-lightbulb text-warning fa-lg"></i>
+                                </div>
+                                <div class="col">
+                                    <small class="text-muted">
+                                        <strong>Note:</strong> The patient registration system allows users to register new patients 
+                                        and update existing patient information in a centralized database that works across all programs. 
+                                        Only grant access to users who need to perform patient registration tasks.
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
