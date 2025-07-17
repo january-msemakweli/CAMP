@@ -5571,64 +5571,46 @@ def admin_statistics():
         print(f"Error fetching patient IDs created: {str(e)}")
         total_patient_ids_created = 0
     
-    # 2. Get Total Registered Patients (patients with registration form submissions)
-    # First get all registration form IDs using pagination
-    all_forms_data = fetch_all_pages(supabase.table('forms').select('id'), debug_name="all_forms_for_stats")
-    registration_form_ids = []
-    if all_forms_data:
-        for form in all_forms_data:
-            if get_form_is_first(form.get('id')):
-                registration_form_ids.append(form.get('id'))
-    
-    print(f"Found {len(registration_form_ids)} registration forms")
-    
-    # Get unique patients who submitted registration forms
+    # 2. Get Total Registered Patients (patients with centralized registration data)
     registered_patients = set()
-    if registration_form_ids:
-        registration_query = supabase.table('form_submissions').select('patient_id, created_at').in_('form_id', registration_form_ids)
-        if date_filter.get('start'):
-            registration_query = registration_query.gte('created_at', date_filter['start'])
-        if date_filter.get('end'):
-            registration_query = registration_query.lt('created_at', date_filter['end'])
-        
-        try:
-            registration_data = fetch_all_pages(registration_query, debug_name="registration_submissions")
-            for submission in registration_data:
-                if submission.get('patient_id'):
-                    registered_patients.add(submission['patient_id'])
-        except Exception as e:
-            print(f"Error fetching registration submissions: {str(e)}")
+    registered_patients_query = supabase.table('patients').select('patient_id, created_at, data')
+    if date_filter.get('start'):
+        registered_patients_query = registered_patients_query.gte('created_at', date_filter['start'])
+    if date_filter.get('end'):
+        registered_patients_query = registered_patients_query.lt('created_at', date_filter['end'])
+    
+    try:
+        registered_patients_data = fetch_all_pages(registered_patients_query, debug_name="registered_patients")
+        for patient in registered_patients_data:
+            # Check if patient has registration data in the centralized system
+            if (patient.get('data') and 
+                patient['data'].get('registration') and 
+                patient.get('patient_id')):
+                registered_patients.add(patient['patient_id'])
+    except Exception as e:
+        print(f"Error fetching registered patients: {str(e)}")
     
     total_registered_patients = len(registered_patients)
+    print(f"Found {total_registered_patients} patients with centralized registration data")
     
-    # 3. Get Patients Attended (patients with non-registration form submissions)
-    # Get all non-registration form IDs
-    non_registration_form_ids = []
-    if all_forms_data:
-        for form in all_forms_data:
-            if not get_form_is_first(form.get('id')):
-                non_registration_form_ids.append(form.get('id'))
-    
-    print(f"Found {len(non_registration_form_ids)} non-registration forms")
-    
-    # Get unique patients who submitted non-registration forms
+    # 3. Get Patients Attended (patients with ANY project form submissions - all forms are now medical care)
     attended_patients = set()
-    if non_registration_form_ids:
-        attended_query = supabase.table('form_submissions').select('patient_id, created_at').in_('form_id', non_registration_form_ids)
-        if date_filter.get('start'):
-            attended_query = attended_query.gte('created_at', date_filter['start'])
-        if date_filter.get('end'):
-            attended_query = attended_query.lt('created_at', date_filter['end'])
-        
-        try:
-            attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
-            for submission in attended_data:
-                if submission.get('patient_id'):
-                    attended_patients.add(submission['patient_id'])
-        except Exception as e:
-            print(f"Error fetching attended submissions: {str(e)}")
+    attended_query = supabase.table('form_submissions').select('patient_id, created_at')
+    if date_filter.get('start'):
+        attended_query = attended_query.gte('created_at', date_filter['start'])
+    if date_filter.get('end'):
+        attended_query = attended_query.lt('created_at', date_filter['end'])
+    
+    try:
+        attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
+        for submission in attended_data:
+            if submission.get('patient_id'):
+                attended_patients.add(submission['patient_id'])
+    except Exception as e:
+        print(f"Error fetching attended submissions: {str(e)}")
     
     total_patients_attended = len(attended_patients)
+    print(f"Found {total_patients_attended} patients who received medical care (form submissions)")
     
     # 4. Calculate Difference (registered but not attended)
     registered_but_not_attended = registered_patients - attended_patients
@@ -5651,6 +5633,58 @@ def admin_statistics():
     print(f"  - Attendance Rate: {attendance_rate:.1f}%")
     print(f"  - Registration Rate: {registration_rate:.1f}%")
     
+    # 5. Get Project-Based Statistics
+    project_statistics = []
+    try:
+        # Get all projects
+        all_projects_data = fetch_all_pages(
+            supabase.table('projects').select('*').order('name'),
+            debug_name="projects_for_statistics"
+        )
+        
+        for project in all_projects_data:
+            project_id = project['id']
+            project_name = project['name']
+            
+            # Get all forms for this project
+            project_forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
+            if not project_forms_response.data:
+                continue
+                
+            project_form_ids = [form['id'] for form in project_forms_response.data]
+            
+            # Get unique patients who had submissions in this project
+            project_query = supabase.table('form_submissions').select('patient_id, created_at').in_('form_id', project_form_ids)
+            if date_filter.get('start'):
+                project_query = project_query.gte('created_at', date_filter['start'])
+            if date_filter.get('end'):
+                project_query = project_query.lt('created_at', date_filter['end'])
+            
+            project_submissions = fetch_all_pages(project_query, debug_name=f"project_{project_id}_submissions")
+            project_patients = set()
+            for submission in project_submissions:
+                if submission.get('patient_id'):
+                    project_patients.add(submission['patient_id'])
+            
+            patients_seen_count = len(project_patients)
+            
+            # Calculate percentage of total attended patients
+            percentage_of_attended = 0
+            if total_patients_attended > 0:
+                percentage_of_attended = (patients_seen_count / total_patients_attended) * 100
+            
+            project_statistics.append({
+                'name': project_name,
+                'patients_seen': patients_seen_count,
+                'percentage': percentage_of_attended
+            })
+            
+            print(f"  - {project_name}: {patients_seen_count} patients seen ({percentage_of_attended:.1f}% of total)")
+            
+    except Exception as e:
+        print(f"Error calculating project statistics: {str(e)}")
+        project_statistics = []
+    
     # Get all camps for filter dropdown
     camps_data = fetch_all_pages(
         supabase.table('camps').select('*').order('start_date', desc=True),
@@ -5664,6 +5698,7 @@ def admin_statistics():
                          difference=difference,
                          attendance_rate=attendance_rate,
                          registration_rate=registration_rate,
+                         project_statistics=project_statistics,
                          camps=camps_data,
                          selected_camp=camp_id,
                          selected_camp_name=selected_camp['name'] if selected_camp else None,
