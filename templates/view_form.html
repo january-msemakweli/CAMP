@@ -144,6 +144,59 @@
             min-width: 38px;
         }
     }
+    
+    /* Checkbox search styles */
+    .checkbox-search-container {
+        position: relative;
+    }
+    
+    .checkbox-search {
+        border-radius: 0.375rem;
+        border: 1px solid #ced4da;
+        padding: 0.375rem 0.75rem;
+        font-size: 0.875rem;
+    }
+    
+    .checkbox-search:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+        outline: 0;
+    }
+    
+    .checkbox-options-container {
+        max-height: none;
+        overflow: visible;
+    }
+    
+    .checkbox-option {
+        transition: opacity 0.2s ease;
+    }
+    
+    .checkbox-option.hidden {
+        display: none !important;
+    }
+    
+    .no-results-message {
+        text-align: center;
+        color: #6c757d;
+        font-style: italic;
+        padding: 1rem;
+        background-color: #f8f9fa;
+        border-radius: 0.375rem;
+        margin: 0.5rem 0;
+    }
+    
+    .large-options-message {
+        border: 2px dashed #dee2e6;
+        border-radius: 0.375rem;
+        margin: 0.5rem 0;
+    }
+    
+    .large-options-message .text-muted {
+        background-color: #f8f9fa;
+        border-radius: 0.25rem;
+        font-size: 0.875rem;
+    }
 </style>
 
 <!-- Search results container moved into the search container -->
@@ -265,25 +318,45 @@
                                 </label>
                                 {% endif %}
                             </div>
-                        {% elif field.type == 'checkbox' %}
-                            <div class="custom-options-group">
-                                {% for option in field.options %}
-                                <label class="custom-option-card" for="field-{{ loop.index }}-{{ loop.index0 }}">
-                                    <input class="form-check-input" type="checkbox" name="{{ field.label }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}">
-                                    <span class="checkmark"></span>
-                                    <span>{{ option }}</span>
-                                </label>
-                                {% endfor %}
-                                {% if field.allow_other %}
-                                <!-- Other (specify) option -->
-                                <label class="custom-option-card" for="field-{{ loop.index }}-other">
-                                    <input class="form-check-input other-checkbox" type="checkbox" name="{{ field.label }}" id="field-{{ loop.index }}-other" value="__other__">
-                                    <span class="checkmark"></span>
-                                    <span>Other (specify)</span>
-                                    <input type="text" class="form-control ms-2 other-input" style="display:none; max-width:200px;" placeholder="Please specify" name="{{ field.label }}_other">
-                                </label>
-                                {% endif %}
-                            </div>
+                                {% elif field.type == 'checkbox' %}
+            <div class="custom-options-group" data-field-index="{{ loop.index }}" data-total-options="{{ field.options|length }}">
+                {% if field.options|length > 3 %}
+                <!-- Search box for checkbox options -->
+                <div class="checkbox-search-container mb-3">
+                    <input type="text" class="form-control checkbox-search" placeholder="{% if field.options|length >= 30 %}Type to search and show options...{% else %}Search options...{% endif %}" data-field-index="{{ loop.index }}">
+                    <small class="text-muted">{% if field.options|length >= 30 %}{{ field.options|length }} options available - start typing to see choices{% else %}Search to filter options{% endif %}</small>
+                </div>
+                {% endif %}
+                
+                <div class="checkbox-options-container" data-field-index="{{ loop.index }}" {% if field.options|length >= 30 %}style="display: none;"{% endif %}>
+                    {% for option in field.options %}
+                    <label class="custom-option-card checkbox-option" for="field-{{ loop.index }}-{{ loop.index0 }}" data-option-text="{{ option|lower }}">
+                        <input class="form-check-input" type="checkbox" name="{{ field.label }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}">
+                        <span class="checkmark"></span>
+                        <span>{{ option }}</span>
+                    </label>
+                    {% endfor %}
+                    {% if field.allow_other %}
+                    <!-- Other (specify) option -->
+                    <label class="custom-option-card checkbox-option" for="field-{{ loop.index }}-other" data-option-text="other specify">
+                        <input class="form-check-input other-checkbox" type="checkbox" name="{{ field.label }}" id="field-{{ loop.index }}-other" value="__other__">
+                        <span class="checkmark"></span>
+                        <span>Other (specify)</span>
+                        <input type="text" class="form-control ms-2 other-input" style="display:none; max-width:200px;" placeholder="Please specify" name="{{ field.label }}_other">
+                    </label>
+                    {% endif %}
+                </div>
+                
+                {% if field.options|length >= 30 %}
+                <!-- Message for large option sets -->
+                <div class="large-options-message" data-field-index="{{ loop.index }}">
+                    <div class="text-center text-muted p-3">
+                        <i class="fas fa-search me-2"></i>
+                        Start typing in the search box above to see available options
+                    </div>
+                </div>
+                {% endif %}
+            </div>
                         {% endif %}
                     </div>
                     {% endfor %}
@@ -1475,6 +1548,159 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Checkbox Search Functionality
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCheckboxSearch();
+    initializeValidationStates();
+});
+
+function initializeValidationStates() {
+    // Initialize validation for all checkbox groups
+    const checkboxGroups = document.querySelectorAll('.custom-options-group');
+    
+    checkboxGroups.forEach(group => {
+        const totalOptions = parseInt(group.getAttribute('data-total-options')) || 0;
+        const optionsContainer = group.querySelector('.checkbox-options-container');
+        
+        if (totalOptions >= 30 && optionsContainer) {
+            // For large option sets, disable validation initially since options are hidden
+            disableValidationForHiddenOptions(optionsContainer);
+        }
+    });
+}
+
+function initializeCheckboxSearch() {
+    const searchInputs = document.querySelectorAll('.checkbox-search');
+    
+    searchInputs.forEach(searchInput => {
+        try {
+            const fieldIndex = searchInput.getAttribute('data-field-index');
+            const group = document.querySelector(`.custom-options-group[data-field-index="${fieldIndex}"]`);
+            
+            // Skip if no group found
+            if (!group) {
+                console.log('No checkbox group found for field index:', fieldIndex);
+                return;
+            }
+            
+            const optionsContainer = group.querySelector('.checkbox-options-container');
+            const largeOptionsMessage = group.querySelector('.large-options-message');
+            const totalOptions = parseInt(group.getAttribute('data-total-options')) || 0;
+            
+            // Skip if no options container found
+            if (!optionsContainer) {
+                console.log('No options container found for field index:', fieldIndex);
+                return;
+            }
+            
+            searchInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase().trim();
+                
+                if (totalOptions >= 30) {
+                    // For large option sets (30+)
+                    if (searchTerm.length > 0) {
+                        // Show options container and hide message when searching
+                        optionsContainer.style.display = 'block';
+                        if (largeOptionsMessage) {
+                            largeOptionsMessage.style.display = 'none';
+                        }
+                        filterCheckboxOptions(optionsContainer, searchTerm);
+                        // Re-enable validation for visible options
+                        enableValidationForVisibleOptions(optionsContainer);
+                    } else {
+                        // Hide options container and show message when not searching
+                        optionsContainer.style.display = 'none';
+                        if (largeOptionsMessage) {
+                            largeOptionsMessage.style.display = 'block';
+                        }
+                        // Clear any no-results messages
+                        const noResultsMsg = group.querySelector('.no-results-message');
+                        if (noResultsMsg) {
+                            noResultsMsg.style.display = 'none';
+                        }
+                        // Disable validation for hidden options
+                        disableValidationForHiddenOptions(optionsContainer);
+                    }
+                } else {
+                    // For smaller option sets (< 30) - normal behavior
+                    filterCheckboxOptions(optionsContainer, searchTerm);
+                    enableValidationForVisibleOptions(optionsContainer);
+                }
+            });
+        } catch (error) {
+            console.log('Error initializing checkbox search for input:', error);
+        }
+    });
+}
+
+function filterCheckboxOptions(container, searchTerm) {
+    if (!container) {
+        console.log('Container is null in filterCheckboxOptions');
+        return;
+    }
+    
+    const options = container.querySelectorAll('.checkbox-option');
+    let visibleCount = 0;
+    
+    options.forEach(option => {
+        const optionText = option.getAttribute('data-option-text') || '';
+        if (searchTerm === '' || optionText.includes(searchTerm)) {
+            option.classList.remove('hidden');
+            visibleCount++;
+        } else {
+            option.classList.add('hidden');
+        }
+    });
+    
+    // Add or remove "no results" message
+    if (container.parentNode) {
+        let noResultsMsg = container.parentNode.querySelector('.no-results-message');
+        if (visibleCount === 0 && searchTerm !== '') {
+            if (!noResultsMsg) {
+                noResultsMsg = document.createElement('div');
+                noResultsMsg.className = 'no-results-message';
+                noResultsMsg.textContent = 'No options found matching your search.';
+                container.parentNode.insertBefore(noResultsMsg, container.nextSibling);
+            }
+            noResultsMsg.style.display = 'block';
+        } else if (noResultsMsg) {
+            noResultsMsg.style.display = 'none';
+        }
+    }
+}
+
+function disableValidationForHiddenOptions(container) {
+    if (!container) return;
+    
+    const allInputs = container.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+    allInputs.forEach(input => {
+        // Store original required state
+        if (input.hasAttribute('required')) {
+            input.setAttribute('data-originally-required', 'true');
+        }
+        // Remove required attribute to prevent validation errors
+        input.removeAttribute('required');
+    });
+}
+
+function enableValidationForVisibleOptions(container) {
+    if (!container) return;
+    
+    const visibleInputs = container.querySelectorAll('.checkbox-option:not(.hidden) input[type="checkbox"], .checkbox-option:not(.hidden) input[type="radio"]');
+    visibleInputs.forEach(input => {
+        // Restore required attribute if it was originally required
+        if (input.getAttribute('data-originally-required') === 'true') {
+            input.setAttribute('required', '');
+        }
+    });
+    
+    // Also disable validation for hidden options
+    const hiddenInputs = container.querySelectorAll('.checkbox-option.hidden input[type="checkbox"], .checkbox-option.hidden input[type="radio"]');
+    hiddenInputs.forEach(input => {
+        input.removeAttribute('required');
+    });
+}
+
 // Conditional Fields Functionality
 document.addEventListener('DOMContentLoaded', function() {
     initializeConditionalFields();
@@ -1530,6 +1756,8 @@ function checkConditionalFields() {
             // Show or hide the field based on the condition
             if (conditionMet) {
                 field.style.display = 'block';
+                // Restore validation for fields that become visible
+                restoreValidationForVisibleField(field);
             } else {
                 field.style.display = 'none';
                 // Clear the value of hidden fields
@@ -1599,6 +1827,13 @@ function clearFieldValue(fieldContainer) {
     inputs.forEach(input => {
         if (input.type === 'radio' || input.type === 'checkbox') {
             input.checked = false;
+            // Remove required attribute from hidden fields to prevent validation errors
+            if (fieldContainer.style.display === 'none') {
+                if (input.hasAttribute('required')) {
+                    input.setAttribute('data-originally-required', 'true');
+                }
+                input.removeAttribute('required');
+            }
             // Update custom option card styling
             const card = input.closest('.custom-option-card');
             if (card) {
@@ -1606,10 +1841,27 @@ function clearFieldValue(fieldContainer) {
             }
         } else {
             input.value = '';
+            // Remove required attribute from hidden fields to prevent validation errors
+            if (fieldContainer.style.display === 'none') {
+                if (input.hasAttribute('required')) {
+                    input.setAttribute('data-originally-required', 'true');
+                }
+                input.removeAttribute('required');
+            }
             // For Choices.js dropdowns
             if (input.choicesInstance) {
                 input.choicesInstance.setChoiceByValue('');
             }
+        }
+    });
+}
+
+function restoreValidationForVisibleField(fieldContainer) {
+    // Restore required attributes for fields that become visible
+    const inputs = fieldContainer.querySelectorAll('input, select, textarea');
+    inputs.forEach(input => {
+        if (input.getAttribute('data-originally-required') === 'true') {
+            input.setAttribute('required', '');
         }
     });
 }
