@@ -6243,7 +6243,7 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
 def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_date, project_id):
     """Generate PDF report using reportlab"""
     from reportlab.lib.pagesizes import letter, A4, landscape
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageTemplate, Frame, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
     from reportlab.lib import colors
@@ -6257,6 +6257,36 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
     # Container for the 'Flowable' objects
     elements = []
     
+    # Check if we need to generate individual reports for all doctors
+    if doctor_name == "ALL DOCTORS":
+        # Get all unique doctors for this project/date range
+        all_doctors = get_unique_doctors_for_project(project_id, start_date, end_date)
+        
+        if not all_doctors:
+            # If no doctors found, create empty report
+            elements = create_empty_report_elements(programme_name, doctor_name, start_date, end_date)
+        else:
+            # Generate individual report for each doctor
+            for i, individual_doctor in enumerate(all_doctors):
+                # Get patients for this specific doctor
+                doctor_patients = get_patients_for_report(project_id, individual_doctor, start_date, end_date)
+                
+                # Add page break before each doctor's report (except the first one)
+                if i > 0:
+                    elements.append(PageBreak())
+                
+                # Generate individual doctor report elements
+                doctor_elements = create_individual_doctor_report_elements(
+                    doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
+                )
+                elements.extend(doctor_elements)
+        
+        # Build PDF and return
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer
+    
+    # Original single doctor report logic below
     # Add MDF logo at the very top with minimal spacing
     logo_path = os.path.join(os.path.dirname(__file__), 'MDF.png')
     if os.path.exists(logo_path):
@@ -6510,6 +6540,358 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
     doc.build(elements)
     buffer.seek(0)
     return buffer
+
+def get_unique_doctors_for_project(project_id, start_date, end_date):
+    """Get all unique doctors for a specific project and date range"""
+    try:
+        from datetime import timedelta
+        
+        # Get all forms for this programme
+        forms_query = supabase.table('forms').select('id').eq('project_id', project_id)
+        forms_data = fetch_all_pages(forms_query, debug_name=f"unique_doctors_project_{project_id}_forms")
+        if not forms_data:
+            return []
+        
+        form_ids = [form['id'] for form in forms_data]
+        
+        # Get all submissions for these forms within date range
+        query = supabase.table('form_submissions').select('data').in_('form_id', form_ids)
+        
+        if start_date:
+            query = query.gte('created_at', start_date.isoformat())
+        if end_date:
+            # Add one day to end_date to include all of that day
+            end_date_plus_one = end_date + timedelta(days=1)
+            query = query.lt('created_at', end_date_plus_one.isoformat())
+        
+        # Use pagination to fetch ALL submissions
+        all_submissions = fetch_all_pages(query, debug_name="unique_doctors_submissions")
+        
+        doctors = set()
+        for submission in all_submissions:
+            if submission.get('data'):
+                # Look for doctor's name field (case insensitive)
+                for key, value in submission['data'].items():
+                    if key.lower().replace(' ', '').replace("'", '') in ['doctorsname', 'doctorname', 'doctor']:
+                        if value and isinstance(value, str) and value.strip():
+                            doctors.add(value.strip())
+        
+        # Also check patient records (with pagination)
+        patients_query = supabase.table('patients').select('data')
+        all_patients = fetch_all_pages(patients_query, debug_name="unique_doctors_patients")
+        for patient in all_patients:
+            if patient.get('data'):
+                for form_id, form_data in patient['data'].items():
+                    if form_id in form_ids and isinstance(form_data, dict):
+                        for key, value in form_data.items():
+                            if key.lower().replace(' ', '').replace("'", '') in ['doctorsname', 'doctorname', 'doctor']:
+                                if value and isinstance(value, str) and value.strip():
+                                    doctors.add(value.strip())
+        
+        # Return sorted list of doctors
+        return sorted(list(doctors))
+        
+    except Exception as e:
+        print(f"Error getting unique doctors: {str(e)}")
+        return []
+
+def create_empty_report_elements(programme_name, doctor_name, start_date, end_date):
+    """Create elements for empty report when no doctors found"""
+    from reportlab.platypus import Paragraph, Spacer, Image
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    import os
+    
+    elements = []
+    
+    # Add MDF logo
+    logo_path = os.path.join(os.path.dirname(__file__), 'MDF.png')
+    if os.path.exists(logo_path):
+        try:
+            logo = Image(logo_path, width=1.0*inch, height=0.8*inch, kind='proportional')
+            logo.hAlign = 'CENTER'
+            elements.append(logo)
+            elements.append(Spacer(1, 15))
+        except Exception as e:
+            print(f"Could not load logo: {str(e)}")
+    
+    styles = getSampleStyleSheet()
+    
+    # Title
+    title_style = ParagraphStyle(
+        'ReportTitle', 
+        parent=styles['Heading1'], 
+        fontSize=18, 
+        alignment=1,
+        textColor=colors.black,
+        fontName='Times-Bold',
+        spaceAfter=20
+    )
+    
+    title = Paragraph(f"MEDICAL CAMP REPORT<br/><font size='14'>{programme_name}</font>", title_style)
+    elements.append(title)
+    
+    # No data message
+    no_data_style = ParagraphStyle(
+        'NoData', 
+        parent=styles['Normal'], 
+        fontSize=12, 
+        alignment=1,
+        textColor=colors.black,
+        fontName='Times-Italic',
+        spaceAfter=20
+    )
+    no_data = Paragraph("No doctors found for the selected criteria.", no_data_style)
+    elements.append(no_data)
+    
+    return elements
+
+def create_individual_doctor_report_elements(patients, programme_name, doctor_name, start_date, end_date, project_id):
+    """Create report elements for an individual doctor (similar to original single doctor report)"""
+    from reportlab.platypus import Paragraph, Spacer, Image, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    import datetime
+    import os
+    
+    elements = []
+    
+    # Add MDF logo for each doctor's report
+    logo_path = os.path.join(os.path.dirname(__file__), 'MDF.png')
+    if os.path.exists(logo_path):
+        try:
+            logo = Image(logo_path, width=1.0*inch, height=0.8*inch, kind='proportional')
+            logo.hAlign = 'CENTER'
+            elements.append(logo)
+            elements.append(Spacer(1, 15))
+        except Exception as e:
+            print(f"Could not load logo: {str(e)}")
+    
+    # Get styles
+    styles = getSampleStyleSheet()
+    
+    # Title styling
+    title_style = ParagraphStyle(
+        'ReportTitle', 
+        parent=styles['Heading1'], 
+        fontSize=18, 
+        alignment=1,
+        textColor=colors.black,
+        fontName='Times-Bold',
+        spaceAfter=20
+    )
+    
+    # Main title
+    title = Paragraph(f"MEDICAL CAMP REPORT<br/><font size='14'>{programme_name}</font>", title_style)
+    elements.append(title)
+    
+    # Report details
+    if start_date == end_date:
+        date_str = start_date.strftime('%B %d, %Y')
+    else:
+        date_str = f"{start_date.strftime('%B %d, %Y')} - {end_date.strftime('%B %d, %Y')}"
+    
+    # Create header info table
+    generated_at = datetime.datetime.now(EAT).strftime('%B %d, %Y at %I:%M %p EAT')
+    header_data = [
+        ['Doctor:', doctor_name],
+        ['Date:', date_str],
+        ['Total Patients:', str(len(patients))],
+        ['Generated:', generated_at]
+    ]
+    
+    header_table = Table(header_data, colWidths=[2*inch, 4*inch])
+    header_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Times-Bold'),
+        ('FONTNAME', (1, 0), (1, -1), 'Times-Roman'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+    ]))
+    
+    elements.append(header_table)
+    elements.append(Spacer(1, 30))
+    
+    if not patients:
+        no_data_style = ParagraphStyle(
+            'NoData', 
+            parent=styles['Normal'], 
+            fontSize=12, 
+            alignment=1,
+            textColor=colors.black,
+            fontName='Times-Italic',
+            spaceAfter=20
+        )
+        no_data = Paragraph("No patients found for this doctor.", no_data_style)
+        elements.append(no_data)
+    else:
+        # Create table data (same as original)
+        headers = ['Patient ID', 'Name', 'Gender', 'Age', 'VA RE', 'VA LE', 'Diagnosis', 'Treatment Plan', 'Address', 'Phone']
+        data = [headers]
+        
+        for patient in patients:
+            patient_data = patient.get('data', {})
+            
+            # Extract required fields with various possible field names
+            patient_id = patient.get('patient_id', '')
+            name = get_field_value(patient_data, [
+                'Name', 'name', 'patient name', 'full name', 'patient_name', 'full_name', 
+                'Patient Name', 'Full Name', 'NAME'
+            ])
+            gender = get_field_value(patient_data, [
+                'Gender', 'gender', 'sex', 'Sex', 'GENDER', 'SEX'
+            ])
+            age = get_field_value(patient_data, [
+                'Age (Years)', 'age (years)', 'age', 'age years', 'Age', 'AGE', 
+                'age_years', 'Age Years', 'age(years)', 'Age(Years)'
+            ])
+            va_re = get_field_value(patient_data, [
+                'va re', 'visual acuity re', 'right eye', 'va right', 'VA RE', 'Visual Acuity RE',
+                'va_re', 'visual_acuity_re', 'Right Eye', 'VA Right'
+            ])
+            va_le = get_field_value(patient_data, [
+                'va le', 'visual acuity le', 'left eye', 'va left', 'VA LE', 'Visual Acuity LE',
+                'va_le', 'visual_acuity_le', 'Left Eye', 'VA Left'
+            ])
+            diagnosis = get_field_value(patient_data, [
+                'diagnosis', 'diagnoses', 'Diagnosis', 'Diagnoses', 'DIAGNOSIS', 
+                'Diagnose', 'diagnose'
+            ])
+            
+            # Build treatment plan
+            treatment_plan = build_treatment_plan(patient_data)
+            
+            # Physical address
+            address = get_field_value(patient_data, [
+                'Ward', 'ward', 'physical address', 'address', 'Address', 'WARD', 
+                'Physical Address', 'PHYSICAL ADDRESS'
+            ])
+            
+            # Phone number
+            phone = get_field_value(patient_data, [
+                'Phone Number', 'phone number', 'phone', 'Phone', 'PHONE NUMBER', 
+                'PHONE', 'mobile', 'Mobile', 'contact number', 'Contact Number'
+            ])
+            
+            row = [
+                patient_id,
+                name or '',
+                gender or '',
+                age or '',
+                va_re or '',
+                va_le or '',
+                diagnosis or '',
+                treatment_plan or '',
+                address or '',
+                phone or ''
+            ]
+            data.append(row)
+        
+        # Create table with optimized column widths
+        col_widths = [
+            0.9 * inch,  # Patient ID
+            1.3 * inch,  # Name
+            0.6 * inch,  # Gender
+            0.6 * inch,  # Age
+            0.7 * inch,  # VA RE
+            0.7 * inch,  # VA LE
+            1.4 * inch,  # Diagnosis
+            1.5 * inch,  # Treatment Plan
+            1.0 * inch,  # Address
+            1.0 * inch,  # Phone
+        ]
+        
+        # Add table title
+        table_title_style = ParagraphStyle(
+            'TableTitle',
+            parent=styles['Heading2'],
+            fontSize=14,
+            alignment=1,
+            textColor=colors.black,
+            fontName='Times-Bold',
+            spaceAfter=15
+        )
+        table_title = Paragraph("PATIENT DATA", table_title_style)
+        elements.append(table_title)
+        
+        # Process data for proper text wrapping
+        processed_data = []
+        for i, row in enumerate(data):
+            if i == 0:  # Header row
+                processed_data.append(row)
+            else:
+                processed_row = []
+                for j, cell in enumerate(row):
+                    if j in [1, 6, 7, 8, 9]:  # Name, Diagnosis, Treatment, Address, Phone columns
+                        if cell and len(str(cell)) > 15:
+                            # Create paragraph for long text
+                            cell_style = ParagraphStyle(
+                                'CellText',
+                                parent=styles['Normal'],
+                                fontName='Times-Roman',
+                                fontSize=8,
+                                leading=10
+                            )
+                            processed_row.append(Paragraph(str(cell), cell_style))
+                        else:
+                            processed_row.append(cell or '')
+                    else:
+                        processed_row.append(cell or '')
+                processed_data.append(processed_row)
+        
+        table = Table(processed_data, repeatRows=1, colWidths=col_widths)
+        table.setStyle(TableStyle([
+            # Header styling
+            ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            
+            # Data rows styling
+            ('FONTNAME', (0, 1), (-1, -1), 'Times-Roman'),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            
+            # Alignment
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Patient ID centered
+            ('ALIGN', (1, 1), (1, -1), 'LEFT'),    # Name left-aligned
+            ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # Gender centered
+            ('ALIGN', (3, 1), (3, -1), 'CENTER'),  # Age centered
+            ('ALIGN', (4, 1), (5, -1), 'CENTER'),  # VA fields centered
+            ('ALIGN', (6, 1), (6, -1), 'LEFT'),    # Diagnosis left-aligned
+            ('ALIGN', (7, 1), (7, -1), 'LEFT'),    # Treatment left-aligned
+            ('ALIGN', (8, 1), (8, -1), 'LEFT'),    # Address left-aligned
+            ('ALIGN', (9, 1), (9, -1), 'LEFT'),    # Phone left-aligned
+            
+            # Vertical alignment
+            ('VALIGN', (0, 1), (-1, -1), 'TOP'),
+            
+            # Padding
+            ('TOPPADDING', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+            ('LEFTPADDING', (0, 1), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 1), (-1, -1), 6),
+            
+            # Grid and borders
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
+        ]))
+        
+        elements.append(table)
+        
+        # Add summary statistics
+        add_summary_statistics(elements, patients, styles, project_id, start_date, end_date)
+    
+    return elements
 
 def add_summary_statistics(elements, patients, styles, project_id, start_date, end_date):
     """Add clean summary statistics to PDF with total percentages"""
