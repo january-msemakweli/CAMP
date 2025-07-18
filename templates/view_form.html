@@ -934,6 +934,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (formId && patientId) {
             fetchAndPrefillAnswers(formId, patientId);
         }
+        
+        // Check conditional fields after form is activated
+        setTimeout(() => {
+            checkConditionalFields();
+        }, 100);
     }
 
     // Function to reset the workflow UI
@@ -1676,13 +1681,21 @@ function initializeConditionalFields() {
     const dataEntryForm = document.getElementById('dataEntryForm');
     if (dataEntryForm) {
         dataEntryForm.addEventListener('change', function(event) {
+            console.log('Form change detected, checking conditional fields');
             checkConditionalFields();
         });
         
         dataEntryForm.addEventListener('input', function(event) {
+            console.log('Form input detected, checking conditional fields');
             checkConditionalFields();
         });
     }
+    
+    // Check conditional fields immediately after initialization
+    setTimeout(() => {
+        console.log('Initial conditional fields check');
+        checkConditionalFields();
+    }, 200);
 }
 
 function checkConditionalFields() {
@@ -1694,30 +1707,78 @@ function checkConditionalFields() {
         
         try {
             const condition = JSON.parse(conditionStr);
-            const dependentField = condition.dependent_field;
-            const operator = condition.operator;
-            const expectedValue = condition.value;
+            let conditionMet = false;
             
-            // Find the dependent field input
-            const dependentInput = findFieldInput(dependentField);
-            if (!dependentInput) {
+            // Handle new format with multiple conditions
+            if (condition.logic && condition.rules && Array.isArray(condition.rules)) {
+                console.log('Processing multiple conditions for field:', field.getAttribute('data-field-label'));
+                console.log('Condition:', condition);
+                
+                const logic = condition.logic; // 'OR' or 'AND'
+                const rules = condition.rules;
+                
+                // Evaluate each rule
+                const ruleResults = [];
+                for (const rule of rules) {
+                    const dependentInput = findFieldInput(rule.dependent_field);
+                    if (!dependentInput) {
+                        console.log('Dependent field not found:', rule.dependent_field);
+                        ruleResults.push(false);
+                        continue;
+                    }
+                    
+                    const currentValue = getFieldValue(dependentInput);
+                    const ruleMet = evaluateCondition(currentValue, rule.operator, rule.value);
+                    
+                    console.log(`Rule: ${rule.dependent_field} ${rule.operator} "${rule.value}" | Current: "${currentValue}" | Met: ${ruleMet}`);
+                    ruleResults.push(ruleMet);
+                }
+                
+                // Apply logic
+                if (logic === 'AND') {
+                    conditionMet = ruleResults.every(result => result === true);
+                } else { // OR (default)
+                    conditionMet = ruleResults.some(result => result === true);
+                }
+                
+                console.log(`Final result with ${logic} logic:`, conditionMet);
+            }
+            // Handle backward compatibility - single condition format
+            else if (condition.dependent_field) {
+                console.log('Processing single condition for field:', field.getAttribute('data-field-label'));
+                const dependentField = condition.dependent_field;
+                const operator = condition.operator;
+                const expectedValue = condition.value;
+                
+                // Find the dependent field input
+                const dependentInput = findFieldInput(dependentField);
+                if (!dependentInput) {
+                    field.style.display = 'none';
+                    return;
+                }
+                
+                // Get the current value of the dependent field
+                const currentValue = getFieldValue(dependentInput);
+                
+                // Check if the condition is met
+                conditionMet = evaluateCondition(currentValue, operator, expectedValue);
+                
+                console.log(`Single condition: ${dependentField} ${operator} "${expectedValue}" | Current: "${currentValue}" | Met: ${conditionMet}`);
+            } else {
+                console.log('Invalid condition format:', condition);
                 field.style.display = 'none';
                 return;
             }
             
-            // Get the current value of the dependent field
-            const currentValue = getFieldValue(dependentInput);
-            
-            // Check if the condition is met
-            const conditionMet = evaluateCondition(currentValue, operator, expectedValue);
-            
             // Show or hide the field based on the condition
             if (conditionMet) {
                 field.style.display = 'block';
+                console.log('Showing field:', field.getAttribute('data-field-label'));
                 // Restore validation for fields that become visible
                 restoreValidationForVisibleField(field);
             } else {
                 field.style.display = 'none';
+                console.log('Hiding field:', field.getAttribute('data-field-label'));
                 // Clear the value of hidden fields
                 clearFieldValue(field);
             }
@@ -1764,6 +1825,14 @@ function evaluateCondition(currentValue, operator, expectedValue) {
             return current === expected;
         case 'not_equals':
             return current !== expected;
+        case 'is_empty':
+            return current === '';
+        case 'is_not_empty':
+            return current !== '';
+        case 'starts_with':
+            return current.toLowerCase().startsWith(expected.toLowerCase());
+        case 'ends_with':
+            return current.toLowerCase().endsWith(expected.toLowerCase());
         case 'contains':
             if (Array.isArray(currentValue)) {
                 return currentValue.some(val => String(val).toLowerCase().includes(expected.toLowerCase()));

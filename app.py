@@ -834,16 +834,34 @@ def create_form(project_id):
         condition_fields = request.form.getlist('condition_field[]')
         condition_operators = request.form.getlist('condition_operator[]')
         condition_values = request.form.getlist('condition_value[]')
+        condition_logic = request.form.getlist('condition_logic[]')
         
         # Debug conditional fields data
+        print(f"🔍 FORM SUBMISSION DEBUG:")
         print(f"DEBUG - Total fields: {len(labels)}")
+        print(f"DEBUG - Labels: {labels}")
         print(f"DEBUG - is_conditional_fields: {is_conditional_fields}")
         print(f"DEBUG - condition_fields: {condition_fields}")
         print(f"DEBUG - condition_operators: {condition_operators}")
         print(f"DEBUG - condition_values: {condition_values}")
-        print(f"DEBUG - field labels: {labels}")
+        print(f"DEBUG - condition_logic: {condition_logic}")
         print(f"DEBUG - required_fields: {required_fields}")
         print(f"DEBUG - allow_other_fields: {allow_other_fields}")
+        
+        # Debug: show exactly which fields should have conditions
+        for i, conditional_field_idx in enumerate(is_conditional_fields):
+            if conditional_field_idx and int(conditional_field_idx) < len(labels):
+                field_name = labels[int(conditional_field_idx)]
+                print(f"🎯 Conditional field #{conditional_field_idx}: '{field_name}'")
+                if i < len(condition_fields):
+                    print(f"   ➜ Should depend on: '{condition_fields[i]}'")
+                if i < len(condition_operators):
+                    print(f"   ➜ Operator: '{condition_operators[i]}'")
+                if i < len(condition_values):
+                    print(f"   ➜ Value: '{condition_values[i]}'")
+                if i < len(condition_logic):
+                    print(f"   ➜ Logic: '{condition_logic[i]}'")
+                print()
         if not title:
             flash('Form title is required.', 'danger')
             return redirect(url_for('project_detail', project_id=project_id))
@@ -871,23 +889,91 @@ def create_form(project_id):
             
             # Add conditional logic if this field is conditional
             is_in_conditional = str(i) in is_conditional_fields
-            has_condition_field = i < len(condition_fields) and condition_fields[i].strip() if i < len(condition_fields) else False
             
             print(f"DEBUG - Field {i} ({labels[i]}):")
             print(f"  - str(i) = '{str(i)}'")
             print(f"  - is_conditional_fields = {is_conditional_fields}")
             print(f"  - is '{str(i)}' in conditional list? {is_in_conditional}")
-            print(f"  - condition_fields[{i}] = '{condition_fields[i] if i < len(condition_fields) else 'N/A'}'")
-            print(f"  - has valid condition field? {has_condition_field}")
             
-            if is_in_conditional and has_condition_field:
-                condition_data = {
-                    'dependent_field': condition_fields[i].strip(),
-                    'operator': condition_operators[i] if i < len(condition_operators) else 'equals',
-                    'value': condition_values[i] if i < len(condition_values) else ''
-                }
-                field['condition'] = condition_data
-                print(f"  - RESULT: Field {i} is conditional: {condition_data}")
+            if is_in_conditional:
+                # Collect ALL conditions for this field (multiple conditions support)
+                field_conditions = []
+                field_logic = 'OR'  # Default logic
+                
+                print(f"  - Collecting all conditions for field {i}")
+                
+                # Strategy: collect conditions starting from field index and continuing 
+                # until we hit a condition that belongs to the next conditional field
+                
+                # Find the position of this field in the conditional fields list
+                try:
+                    current_field_position = is_conditional_fields.index(str(i))
+                    print(f"  - Field {i} is at conditional position {current_field_position}")
+                    
+                    # Find the next conditional field to know where to stop
+                    next_conditional_field = None
+                    if current_field_position + 1 < len(is_conditional_fields):
+                        next_conditional_field = int(is_conditional_fields[current_field_position + 1])
+                        print(f"  - Next conditional field is {next_conditional_field}")
+                    
+                    # Start collecting conditions from current field index
+                    condition_idx = i
+                    while condition_idx < len(condition_fields):
+                        # Stop if we've reached the next conditional field's index
+                        if next_conditional_field is not None and condition_idx >= next_conditional_field:
+                            print(f"  - Stopping at index {condition_idx} (reached next field {next_conditional_field})")
+                            break
+                            
+                        # Check if this position has valid condition data
+                        if (condition_idx < len(condition_fields) and 
+                            condition_idx < len(condition_operators) and 
+                            condition_idx < len(condition_values)):
+                            
+                            dependent_field = condition_fields[condition_idx].strip()
+                            operator = condition_operators[condition_idx] if condition_idx < len(condition_operators) else 'equals'
+                            value = condition_values[condition_idx] if condition_idx < len(condition_values) else ''
+                            
+                            # Skip empty conditions
+                            if not dependent_field:
+                                condition_idx += 1
+                                continue
+                                
+                            # Add this condition to the field
+                            condition_rule = {
+                                'dependent_field': dependent_field,
+                                'operator': operator,
+                                'value': value
+                            }
+                            field_conditions.append(condition_rule)
+                            print(f"  - Added condition {len(field_conditions)}: {condition_rule}")
+                            
+                            # Get logic for this field (use the first logic we encounter)
+                            if condition_idx < len(condition_logic) and len(field_conditions) == 1:
+                                field_logic = condition_logic[condition_idx]
+                                print(f"  - Using logic: {field_logic}")
+                        
+                        condition_idx += 1
+                    
+                    # Create the final condition structure
+                    if field_conditions:
+                        if len(field_conditions) == 1:
+                            # Single condition - use backward compatible format
+                            field['condition'] = field_conditions[0]
+                            print(f"  - RESULT: Field {i} has single condition: {field['condition']}")
+                        else:
+                            # Multiple conditions - use new format with logic
+                            field['condition'] = {
+                                'logic': field_logic,
+                                'rules': field_conditions
+                            }
+                            print(f"  - RESULT: Field {i} has {len(field_conditions)} conditions with {field_logic} logic: {field['condition']}")
+                    else:
+                        field['condition'] = None
+                        print(f"  - RESULT: Field {i} marked conditional but no valid conditions found")
+                        
+                except ValueError:
+                    field['condition'] = None
+                    print(f"  - ERROR: Field {i} not found in conditional fields list!")
             else:
                 field['condition'] = None
                 print(f"  - RESULT: Field {i} is NOT conditional (condition set to null)")
@@ -1175,20 +1261,49 @@ def evaluate_field_visibility(field, form_data):
     """
     Evaluate whether a field should be visible based on its conditional logic.
     Returns True if the field should be visible, False if it should be hidden.
-    Handles complex nested conditional logic with multiple levels of dependencies.
+    Handles both single conditions (backward compatibility) and multiple conditions with AND/OR logic.
     """
     # If field has no condition, it's always visible
     if not field.get('condition'):
         return True
     
     condition = field['condition']
+    
+    # Handle new format with multiple conditions
+    if isinstance(condition, dict) and 'rules' in condition:
+        logic = condition.get('logic', 'OR')
+        rules = condition.get('rules', [])
+        
+        if not rules:
+            return True
+        
+        # Evaluate each rule
+        rule_results = []
+        for rule in rules:
+            result = evaluate_single_condition(rule, form_data)
+            rule_results.append(result)
+        
+        # Apply logic
+        if logic == 'AND':
+            return all(rule_results)
+        else:  # OR (default)
+            return any(rule_results)
+    
+    # Handle backward compatibility - single condition format
+    else:
+        return evaluate_single_condition(condition, form_data)
+
+def evaluate_single_condition(condition, form_data):
+    """
+    Evaluate a single condition rule.
+    """
     dependent_field = condition.get('dependent_field')
     operator = condition.get('operator', 'equals')
     expected_value = condition.get('value', '')
     
     # Safety check for dependent field
     if not dependent_field:
-        print(f"Warning: Field '{field.get('label', 'unknown')}' has condition but no dependent_field")
+        print(f"Warning: Condition has no dependent_field: {condition}")
         return True
     
     # Get the actual value from form data
@@ -1206,7 +1321,7 @@ def evaluate_field_visibility(field, form_data):
     expected_value = str(expected_value)
     
     # Debug logging for conditional logic
-    print(f"Evaluating visibility for field '{field.get('label', 'unknown')}': "
+    print(f"Evaluating condition: "
           f"dependent_field='{dependent_field}', operator='{operator}', "
           f"expected='{expected_value}', actual='{actual_value}'")
     
@@ -1244,7 +1359,7 @@ def evaluate_field_visibility(field, form_data):
         # Default to equals for unknown operators
         result = actual_value.lower().strip() == expected_value.lower().strip()
     
-    print(f"Field '{field.get('label', 'unknown')}' visibility result: {result}")
+    print(f"Condition evaluation result: {result}")
     return result
 
 @app.route('/form/<form_id>/submit', methods=['POST'])
@@ -4583,6 +4698,33 @@ def edit_form(form_id):
         condition_fields = request.form.getlist('condition_field[]')
         condition_operators = request.form.getlist('condition_operator[]')
         condition_values = request.form.getlist('condition_value[]')
+        condition_logic = request.form.getlist('condition_logic[]')
+        
+        # Debug conditional fields data for EDIT
+        print(f"🔍 EDIT FORM SUBMISSION DEBUG:")
+        print(f"DEBUG EDIT - Total fields: {len(labels)}")
+        print(f"DEBUG EDIT - Labels: {labels}")
+        print(f"DEBUG EDIT - is_conditional_fields: {is_conditional_fields}")
+        print(f"DEBUG EDIT - condition_fields: {condition_fields}")
+        print(f"DEBUG EDIT - condition_operators: {condition_operators}")
+        print(f"DEBUG EDIT - condition_values: {condition_values}")
+        print(f"DEBUG EDIT - condition_logic: {condition_logic}")
+        
+        # Debug: show exactly which fields should have conditions
+        for i, conditional_field_idx in enumerate(is_conditional_fields):
+            if conditional_field_idx and int(conditional_field_idx) < len(labels):
+                field_name = labels[int(conditional_field_idx)]
+                print(f"🎯 EDIT Conditional field #{conditional_field_idx}: '{field_name}'")
+                if i < len(condition_fields):
+                    print(f"   ➜ Should depend on: '{condition_fields[i]}'")
+                if i < len(condition_operators):
+                    print(f"   ➜ Operator: '{condition_operators[i]}'")
+                if i < len(condition_values):
+                    print(f"   ➜ Value: '{condition_values[i]}'")
+                if i < len(condition_logic):
+                    print(f"   ➜ Logic: '{condition_logic[i]}'")
+                print()
+        
         if not title:
             flash('Form title is required.', 'danger')
             return redirect(url_for('project_detail', project_id=project_id))
@@ -4609,14 +4751,95 @@ def edit_form(form_id):
                 field['location_field_identifier'] = None
             
             # Add conditional logic if this field is conditional
-            if str(i) in is_conditional_fields and i < len(condition_fields) and condition_fields[i].strip():
-                field['condition'] = {
-                    'dependent_field': condition_fields[i].strip(),
-                    'operator': condition_operators[i] if i < len(condition_operators) else 'equals',
-                    'value': condition_values[i] if i < len(condition_values) else ''
-                }
+            is_in_conditional = str(i) in is_conditional_fields
+            
+            print(f"DEBUG EDIT - Field {i} ({labels[i]}):")
+            print(f"  - str(i) = '{str(i)}'")
+            print(f"  - is_conditional_fields = {is_conditional_fields}")
+            print(f"  - is '{str(i)}' in conditional list? {is_in_conditional}")
+            
+            if is_in_conditional:
+                # Collect ALL conditions for this field (multiple conditions support)
+                field_conditions = []
+                field_logic = 'OR'  # Default logic
+                
+                print(f"  - Collecting all conditions for field {i}")
+                
+                # Strategy: collect conditions starting from field index and continuing 
+                # until we hit a condition that belongs to the next conditional field
+                
+                # Find the position of this field in the conditional fields list
+                try:
+                    current_field_position = is_conditional_fields.index(str(i))
+                    print(f"  - Field {i} is at conditional position {current_field_position}")
+                    
+                    # Find the next conditional field to know where to stop
+                    next_conditional_field = None
+                    if current_field_position + 1 < len(is_conditional_fields):
+                        next_conditional_field = int(is_conditional_fields[current_field_position + 1])
+                        print(f"  - Next conditional field is {next_conditional_field}")
+                    
+                    # Start collecting conditions from current field index
+                    condition_idx = i
+                    while condition_idx < len(condition_fields):
+                        # Stop if we've reached the next conditional field's index
+                        if next_conditional_field is not None and condition_idx >= next_conditional_field:
+                            print(f"  - Stopping at index {condition_idx} (reached next field {next_conditional_field})")
+                            break
+                            
+                        # Check if this position has valid condition data
+                        if (condition_idx < len(condition_fields) and 
+                            condition_idx < len(condition_operators) and 
+                            condition_idx < len(condition_values)):
+                            
+                            dependent_field = condition_fields[condition_idx].strip()
+                            operator = condition_operators[condition_idx] if condition_idx < len(condition_operators) else 'equals'
+                            value = condition_values[condition_idx] if condition_idx < len(condition_values) else ''
+                            
+                            # Skip empty conditions
+                            if not dependent_field:
+                                condition_idx += 1
+                                continue
+                                
+                            # Add this condition to the field
+                            condition_rule = {
+                                'dependent_field': dependent_field,
+                                'operator': operator,
+                                'value': value
+                            }
+                            field_conditions.append(condition_rule)
+                            print(f"  - Added condition {len(field_conditions)}: {condition_rule}")
+                            
+                            # Get logic for this field (use the first logic we encounter)
+                            if condition_idx < len(condition_logic) and len(field_conditions) == 1:
+                                field_logic = condition_logic[condition_idx]
+                                print(f"  - Using logic: {field_logic}")
+                        
+                        condition_idx += 1
+                    
+                    # Create the final condition structure
+                    if field_conditions:
+                        if len(field_conditions) == 1:
+                            # Single condition - use backward compatible format
+                            field['condition'] = field_conditions[0]
+                            print(f"  - RESULT: Field {i} has single condition: {field['condition']}")
+                        else:
+                            # Multiple conditions - use new format with logic
+                            field['condition'] = {
+                                'logic': field_logic,
+                                'rules': field_conditions
+                            }
+                            print(f"  - RESULT: Field {i} has {len(field_conditions)} conditions with {field_logic} logic: {field['condition']}")
+                    else:
+                        field['condition'] = None
+                        print(f"  - RESULT: Field {i} marked conditional but no valid conditions found")
+                        
+                except ValueError:
+                    field['condition'] = None
+                    print(f"  - ERROR: Field {i} not found in conditional fields list!")
             else:
                 field['condition'] = None
+                print(f"  - RESULT: Field {i} is NOT conditional (condition set to null)")
                 
             fields.append(field)
         serialized_fields = json.dumps(fields)

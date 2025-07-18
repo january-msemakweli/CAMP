@@ -197,29 +197,57 @@
                                             <label class="form-check-label">Show this field only when another field meets a condition</label>
                                         </div>
                                         <div class="conditional-settings" style="display: none;">
-                                            <div class="row g-2">
-                                                <div class="col-md-4">
-                                                    <label class="form-label small">Dependent Field</label>
-                                                    <select class="form-select form-select-sm dependent-field-select" name="condition_field[]">
-                                                        <option value="">Select a field...</option>
-                                                        <!-- Options will be populated by JavaScript -->
-                                                    </select>
+                                            <div class="mb-2">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <label class="form-label small mb-0">Conditions</label>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <small class="text-muted">Logic:</small>
+                                                        <select class="form-select form-select-sm w-auto condition-logic-select" name="condition_logic[]" title="How multiple conditions should be evaluated">
+                                                            <option value="OR">Any condition (OR)</option>
+                                                            <option value="AND">All conditions (AND)</option>
+                                                        </select>
+                                                        <button type="button" class="btn btn-sm btn-outline-primary add-condition-btn" title="Add another condition">
+                                                            <i class="fas fa-plus"></i>
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div class="col-md-3">
-                                                    <label class="form-label small">Condition</label>
-                                                    <select class="form-select form-select-sm" name="condition_operator[]">
-                                                        <option value="equals">Equals</option>
-                                                        <option value="not_equals">Not Equals</option>
-                                                        <option value="contains">Contains</option>
-                                                        <option value="not_contains">Does Not Contain</option>
-                                                        <option value="in_list">In List (comma-separated)</option>
-                                                    </select>
+                                                <div class="conditions-container">
+                                                    <div class="condition-rule mb-2">
+                                                        <div class="row g-2 align-items-end">
+                                                            <div class="col-md-4">
+                                                                <label class="form-label small">Dependent Field</label>
+                                                                <select class="form-select form-select-sm dependent-field-select" name="condition_field[]">
+                                                                    <option value="">Select a field...</option>
+                                                                    <!-- Options will be populated by JavaScript -->
+                                                                </select>
+                                                            </div>
+                                                            <div class="col-md-3">
+                                                                <label class="form-label small">Condition</label>
+                                                                <select class="form-select form-select-sm" name="condition_operator[]">
+                                                                    <option value="equals">Equals</option>
+                                                                    <option value="not_equals">Not Equals</option>
+                                                                    <option value="is_empty">Is Empty</option>
+                                                                    <option value="is_not_empty">Is Not Empty</option>
+                                                                    <option value="starts_with">Starts With</option>
+                                                                    <option value="ends_with">Ends With</option>
+                                                                    <option value="contains">Contains</option>
+                                                                    <option value="not_contains">Does Not Contain</option>
+                                                                    <option value="in_list">In List (comma-separated)</option>
+                                                                </select>
+                                                            </div>
+                                                            <div class="col-md-4">
+                                                                <label class="form-label small">Value</label>
+                                                                <input type="text" class="form-control form-control-sm condition-value-input" name="condition_value[]" placeholder="Expected value">
+                                                            </div>
+                                                            <div class="col-md-1">
+                                                                <button type="button" class="btn btn-sm btn-outline-danger remove-condition-btn" title="Remove this condition" style="display: none;">
+                                                                    <i class="fas fa-times"></i>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div class="col-md-5">
-                                                    <label class="form-label small">Value</label>
-                                                    <input type="text" class="form-control form-control-sm condition-value-input" name="condition_value[]" placeholder="Expected value">
-                                                    <small class="form-text text-muted condition-help-text" style="display: none;">Enter comma-separated values (e.g., yes,not sure,maybe). Field will show if ANY user selection matches ANY trigger value.</small>
-                                                </div>
+                                                <small class="form-text text-muted condition-help-text" style="display: none;">Enter comma-separated values (e.g., yes,not sure,maybe). Field will show if ANY user selection matches ANY trigger value.</small>
                                             </div>
                                         </div>
                                     </div>
@@ -264,7 +292,7 @@
                     <h5 class="modal-title">Edit Form</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close"></button>
                 </div>
-                <form method="POST" action="" id="editForm">
+                <form method="POST" action="" id="editForm" onsubmit="debugFormSubmission(this)">
                     <div class="modal-body">
                         <input type="hidden" id="editFormId" value="">
                         <div class="mb-3">
@@ -366,28 +394,56 @@ function addFieldRow(containerId, allowRemove) {
                         <label class="form-check-label">Show this field only when another field meets a condition</label>
                     </div>
                     <div class="conditional-settings" style="display: none;">
-                        <div class="row g-2">
-                            <div class="col-md-4">
-                                <label class="form-label small">Dependent Field</label>
-                                <select class="form-select form-select-sm dependent-field-select" name="condition_field[]" title="Select dependent field">
-                                    <option value="">Select a field...</option>
-                                </select>
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label small mb-0">Conditions</label>
+                                <div class="d-flex align-items-center gap-2">
+                                    <small class="text-muted">Logic:</small>
+                                    <select class="form-select form-select-sm w-auto condition-logic-select" name="condition_logic[]" title="How multiple conditions should be evaluated">
+                                        <option value="OR">Any condition (OR)</option>
+                                        <option value="AND">All conditions (AND)</option>
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-outline-primary add-condition-btn" title="Add another condition">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
                             </div>
-                            <div class="col-md-3">
-                                <label class="form-label small">Condition</label>
-                                <select class="form-select form-select-sm" name="condition_operator[]" title="Select condition operator">
-                                    <option value="equals">Equals</option>
-                                    <option value="not_equals">Not Equals</option>
-                                    <option value="contains">Contains</option>
-                                    <option value="not_contains">Does Not Contain</option>
-                                    <option value="in_list">In List (comma-separated)</option>
-                                </select>
+                            <div class="conditions-container">
+                                <div class="condition-rule mb-2">
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-md-4">
+                                            <label class="form-label small">Dependent Field</label>
+                                            <select class="form-select form-select-sm dependent-field-select" name="condition_field[]" title="Select dependent field">
+                                                <option value="">Select a field...</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small">Condition</label>
+                                            <select class="form-select form-select-sm" name="condition_operator[]" title="Select condition operator">
+                                                <option value="equals">Equals</option>
+                                                <option value="not_equals">Not Equals</option>
+                                                <option value="is_empty">Is Empty</option>
+                                                <option value="is_not_empty">Is Not Empty</option>
+                                                <option value="starts_with">Starts With</option>
+                                                <option value="ends_with">Ends With</option>
+                                                <option value="contains">Contains</option>
+                                                <option value="not_contains">Does Not Contain</option>
+                                                <option value="in_list">In List (comma-separated)</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label small">Value</label>
+                                            <input type="text" class="form-control form-control-sm condition-value-input" name="condition_value[]" placeholder="Expected value" title="Expected value for condition">
+                                        </div>
+                                        <div class="col-md-1">
+                                            <button type="button" class="btn btn-sm btn-outline-danger remove-condition-btn" title="Remove this condition" style="display: none;">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="col-md-5">
-                                <label class="form-label small">Value</label>
-                                <input type="text" class="form-control form-control-sm condition-value-input" name="condition_value[]" placeholder="Expected value" title="Expected value for condition">
-                                <small class="form-text text-muted condition-help-text" style="display: none;">Enter comma-separated values (e.g., yes,not sure,maybe). Field will show if ANY user selection matches ANY trigger value.</small>
-                            </div>
+                            <small class="form-text text-muted condition-help-text" style="display: none;">Enter comma-separated values (e.g., yes,not sure,maybe). Field will show if ANY user selection matches ANY trigger value.</small>
                         </div>
                     </div>
                 </div>
@@ -640,44 +696,76 @@ function openEditFormModal(formId) {
                         }
                     }
 
-                    // Set conditional field settings (but don't set dependent field value yet)
+                    // Set conditional field data for ALL field types (handle both old and new formats)
+                    const conditionalContainer = lastRow.querySelector('.conditional-container');
+                    const conditionalCheckbox = conditionalContainer.querySelector('.conditional-checkbox');
+                    const conditionalSettings = conditionalContainer.querySelector('.conditional-settings');
+                    
                     if (field.condition) {
-                        console.log(`Setting up conditional field for: ${field.label}`, field.condition);
-                        const conditionalCheckbox = lastRow.querySelector('input[name="is_conditional[]"]');
-                        const conditionalSettings = lastRow.querySelector('.conditional-settings');
-                        const operatorSelect = lastRow.querySelector('select[name="condition_operator[]"]');
-                        const valueInput = lastRow.querySelector('input[name="condition_value[]"]');
-
-                        if (conditionalCheckbox && conditionalSettings) {
-                            // Check the conditional checkbox
-                            conditionalCheckbox.checked = true;
-                            conditionalCheckbox.value = index; // Set proper index value
+                        console.log(`✅ Setting up conditional field for: ${field.label}`, field.condition);
+                        conditionalCheckbox.checked = true;
+                        conditionalCheckbox.value = index; // Set proper index value
+                        conditionalSettings.style.display = 'block';
+                        
+                        // Handle new format with multiple conditions
+                        if (field.condition.rules && Array.isArray(field.condition.rules)) {
+                            // Multiple conditions format
+                            const logicSelect = conditionalContainer.querySelector('.condition-logic-select');
+                            logicSelect.value = field.condition.logic || 'OR';
                             
-                            // Show the conditional settings
-                            conditionalSettings.style.display = 'block';
-                            
-                            // Populate operator and value (but not dependent field yet - will do after dropdown is populated)
-                            if (operatorSelect && field.condition.operator) {
-                                operatorSelect.value = field.condition.operator;
-                            }
-                            if (valueInput && field.condition.value) {
-                                valueInput.value = field.condition.value;
-                            }
-                            
-                            // Store the dependent field value to set later
-                            lastRow.setAttribute('data-dependent-field', field.condition.dependent_field);
+                            // Load each condition rule
+                            field.condition.rules.forEach((rule, ruleIndex) => {
+                                // Add additional condition rules if needed
+                                if (ruleIndex > 0) {
+                                    addConditionRule(lastRow);
+                                }
+                                
+                                // Get the condition rule container (first one or newly added)
+                                const conditionRules = conditionalContainer.querySelectorAll('.condition-rule');
+                                const currentRule = conditionRules[ruleIndex];
+                                
+                                if (currentRule) {
+                                    const dependentSelect = currentRule.querySelector('.dependent-field-select');
+                                    const operatorSelect = currentRule.querySelector('select[name="condition_operator[]"]');
+                                    const valueInput = currentRule.querySelector('input[name="condition_value[]"]');
+                                    
+                                    operatorSelect.value = rule.operator || 'equals';
+                                    valueInput.value = rule.value || '';
+                                    
+                                    // Set dependent field after updating options
+                                    setTimeout(() => {
+                                        dependentSelect.value = rule.dependent_field;
+                                    }, 100 + (ruleIndex * 50)); // Stagger the timeouts
+                                }
+                            });
                         }
+                        // Handle backward compatibility - single condition format  
+                        else if (field.condition.dependent_field) {
+                            // Single condition format - load into first condition rule
+                            const logicSelect = conditionalContainer.querySelector('.condition-logic-select');
+                            logicSelect.value = 'OR'; // Default for single conditions
+                            
+                            const firstRule = conditionalContainer.querySelector('.condition-rule');
+                            const dependentSelect = firstRule.querySelector('.dependent-field-select');
+                            const operatorSelect = firstRule.querySelector('select[name="condition_operator[]"]');
+                            const valueInput = firstRule.querySelector('input[name="condition_value[]"]');
+                            
+                            operatorSelect.value = field.condition.operator || 'equals';
+                            valueInput.value = field.condition.value || '';
+                            
+                            setTimeout(() => {
+                                dependentSelect.value = field.condition.dependent_field;
+                            }, 100);
+                        }
+                        
+                        // Update dependent field options for all condition rules
+                        updateDependentFieldOptions(lastRow);
+                        updateRemoveButtons(lastRow);
                     } else {
-                        // Ensure conditional settings are hidden for non-conditional fields
-                        const conditionalCheckbox = lastRow.querySelector('input[name="is_conditional[]"]');
-                        const conditionalSettings = lastRow.querySelector('.conditional-settings');
-                        if (conditionalCheckbox) {
-                            conditionalCheckbox.checked = false;
-                            conditionalCheckbox.value = index;
-                        }
-                        if (conditionalSettings) {
-                            conditionalSettings.style.display = 'none';
-                        }
+                        console.log(`❌ NO condition for field: ${field.label} - unchecking conditional checkbox`);
+                        conditionalCheckbox.checked = false;
+                        conditionalCheckbox.value = index;
+                        conditionalSettings.style.display = 'none';
                     }
                 });
 
@@ -777,101 +865,7 @@ if (editAddBtn) {
     editAddBtn.addEventListener('click', () => addStandardAddressFields('#editFormFieldsContainer', '#editAddAddressFieldsBtn'));
 }
 
-// Load edit form
-document.addEventListener('click', function(e) {
-    if (e.target && e.target.classList.contains('edit-form-btn')) {
-        const formId = e.target.getAttribute('data-form-id');
-        const formTitle = e.target.getAttribute('data-form-title');
-        const formFields = JSON.parse(e.target.getAttribute('data-form-fields'));
-        
-        console.log('Loading form data for editing:', formId, formTitle, formFields);
-        
-        // Set form action and ID
-        const editForm = document.getElementById('editForm');
-        editForm.action = `/form/${formId}/edit`;
-        document.getElementById('editFormId').value = formId;
-        document.getElementById('editFormTitle').value = formTitle;
-        
-        // Clear existing fields
-        const fieldsContainer = document.getElementById('editFormFieldsContainer');
-        fieldsContainer.innerHTML = '';
-        
-        // Add fields from the form data
-        formFields.forEach((field, index) => {
-            addFieldRow('editFormFieldsContainer', true);
-            
-            // Get the newly added field row
-            const rows = fieldsContainer.querySelectorAll('.form-field-row');
-            const lastRow = rows[rows.length - 1];
-            
-            // Set the field values
-            lastRow.querySelector('input[name="field_labels[]"]').value = field.label;
-            const typeSelect = lastRow.querySelector('select[name="field_types[]"]');
-            typeSelect.value = field.type;
-            
-            // Set the required checkbox
-            const requiredCheckbox = lastRow.querySelector('input[name="field_required[]"]');
-            if (requiredCheckbox && field.required) {
-                requiredCheckbox.checked = true;
-            }
-            
-            // Handle options for dropdown, radio, checkbox
-            if (['dropdown', 'radio', 'checkbox'].includes(field.type)) {
-                const optionsContainer = lastRow.querySelector('.options-container');
-                const optionsInput = optionsContainer.querySelector('input[name="field_options[]"]');
-                
-                optionsContainer.style.display = 'block';
-                optionsInput.value = field.options.join(', ');
-                
-                // Handle location field identifiers
-                if (field.location_field_identifier) {
-                    const locationInput = optionsContainer.querySelector('input[name="location_field_identifier[]"]');
-                    locationInput.value = field.location_field_identifier;
-                }
-
-                // Set allow_other checkbox state
-                const allowOtherCheck = optionsContainer.querySelector('.allow-other-check input');
-                allowOtherCheck.checked = !!field.allow_other;
-                optionsContainer.querySelector('.allow-other-check').style.display = 'block';
-                
-                // Set conditional field data
-                const conditionalContainer = lastRow.querySelector('.conditional-container');
-                const conditionalCheckbox = conditionalContainer.querySelector('.conditional-checkbox');
-                const conditionalSettings = conditionalContainer.querySelector('.conditional-settings');
-                const dependentSelect = conditionalContainer.querySelector('.dependent-field-select');
-                const operatorSelect = conditionalContainer.querySelector('select[name="condition_operator[]"]');
-                const valueInput = conditionalContainer.querySelector('input[name="condition_value[]"]');
-                
-                if (field.condition && field.condition.dependent_field) {
-                    conditionalCheckbox.checked = true;
-                    conditionalSettings.style.display = 'block';
-                    operatorSelect.value = field.condition.operator || 'equals';
-                    valueInput.value = field.condition.value || '';
-                    
-                    // Update dependent field options and set the value
-                    updateDependentFieldOptions(lastRow);
-                    // Wait a bit for options to be populated, then set the value
-                    setTimeout(() => {
-                        dependentSelect.value = field.condition.dependent_field;
-                    }, 100);
-                } else {
-                    conditionalCheckbox.checked = false;
-                    conditionalSettings.style.display = 'none';
-                }
-            }
-        });
-        
-        // Show all remove buttons in edit mode except for the first field if only one exists
-        const removeButtons = fieldsContainer.querySelectorAll('.remove-field-btn');
-        removeButtons.forEach((btn, idx) => {
-            btn.style.display = (removeButtons.length === 1 && idx === 0) ? 'none' : 'inline-block';
-        });
-        
-        // Show the edit form modal
-        const editFormModal = new bootstrap.Modal(document.getElementById('editFormModal'));
-        editFormModal.show();
-    }
-});
+// The openEditFormModal function above now handles all edit form functionality
 
 document.addEventListener('DOMContentLoaded', function() {
     // Ensure allow-other-check is shown for radio/checkbox on initial field row in Create Form
@@ -907,16 +901,32 @@ function initializeConditionalFields() {
             if (checkbox.checked) {
                 conditionalSettings.style.display = 'block';
                 updateDependentFieldOptions(row);
+                updateRemoveButtons(row);
             } else {
                 conditionalSettings.style.display = 'none';
-                // Clear the conditional settings
-                const dependentSelect = row.querySelector('.dependent-field-select');
-                const operatorSelect = row.querySelector('select[name="condition_operator[]"]');
-                const valueInput = row.querySelector('input[name="condition_value[]"]');
-                if (dependentSelect) dependentSelect.value = '';
-                if (operatorSelect) operatorSelect.value = 'equals';
-                if (valueInput) valueInput.value = '';
+                // Clear all conditional settings
+                clearAllConditions(row);
             }
+        }
+    });
+
+    // Handle add condition button clicks
+    document.addEventListener('click', function(event) {
+        if (event.target && (event.target.classList.contains('add-condition-btn') || event.target.closest('.add-condition-btn'))) {
+            const button = event.target.closest('.add-condition-btn');
+            const row = button.closest('.form-field-row');
+            addConditionRule(row);
+        }
+    });
+
+    // Handle remove condition button clicks  
+    document.addEventListener('click', function(event) {
+        if (event.target && (event.target.classList.contains('remove-condition-btn') || event.target.closest('.remove-condition-btn'))) {
+            const button = event.target.closest('.remove-condition-btn');
+            const conditionRule = button.closest('.condition-rule');
+            const row = button.closest('.form-field-row');
+            conditionRule.remove();
+            updateRemoveButtons(row);
         }
     });
 
@@ -936,27 +946,10 @@ function initializeConditionalFields() {
 }
 
 function updateDependentFieldOptions(targetRow) {
-    const dependentSelect = targetRow.querySelector('.dependent-field-select');
-    if (!dependentSelect) return;
-
-    // Get all field rows that come before this one
-    const container = targetRow.closest('#formFieldsContainer, #editFormFieldsContainer');
-    const allRows = Array.from(container.querySelectorAll('.form-field-row'));
-    const targetIndex = allRows.indexOf(targetRow);
-    const previousRows = allRows.slice(0, targetIndex);
-
-    // Clear existing options except the first one
-    dependentSelect.innerHTML = '<option value="">Select a field...</option>';
-
-    // Add options from previous fields
-    previousRows.forEach((row, index) => {
-        const labelInput = row.querySelector('input[name="field_labels[]"]');
-        if (labelInput && labelInput.value.trim()) {
-            const option = document.createElement('option');
-            option.value = labelInput.value.trim();
-            option.textContent = labelInput.value.trim();
-            dependentSelect.appendChild(option);
-        }
+    // Update all dependent field selects in this row (there might be multiple now)
+    const dependentSelects = targetRow.querySelectorAll('.dependent-field-select');
+    dependentSelects.forEach(select => {
+        populateDependentFieldOptions(select, targetRow);
     });
 }
 
@@ -979,6 +972,115 @@ function updateDependentFieldDropdowns(containerSelector) {
     });
 }
 
+// Helper functions for multiple conditions
+function addConditionRule(targetRow) {
+    const conditionsContainer = targetRow.querySelector('.conditions-container');
+    const conditionRule = document.createElement('div');
+    conditionRule.className = 'condition-rule mb-2';
+    
+    conditionRule.innerHTML = `
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small">Dependent Field</label>
+                <select class="form-select form-select-sm dependent-field-select" name="condition_field[]">
+                    <option value="">Select a field...</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Condition</label>
+                <select class="form-select form-select-sm" name="condition_operator[]">
+                    <option value="equals">Equals</option>
+                    <option value="not_equals">Not Equals</option>
+                    <option value="is_empty">Is Empty</option>
+                    <option value="is_not_empty">Is Not Empty</option>
+                    <option value="starts_with">Starts With</option>
+                    <option value="ends_with">Ends With</option>
+                    <option value="contains">Contains</option>
+                    <option value="not_contains">Does Not Contain</option>
+                    <option value="in_list">In List (comma-separated)</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small">Value</label>
+                <input type="text" class="form-control form-control-sm condition-value-input" name="condition_value[]" placeholder="Expected value">
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-sm btn-outline-danger remove-condition-btn" title="Remove this condition">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    
+    conditionsContainer.appendChild(conditionRule);
+    
+    // Update dependent field options for the new rule
+    const newDependentSelect = conditionRule.querySelector('.dependent-field-select');
+    populateDependentFieldOptions(newDependentSelect, targetRow);
+    
+    updateRemoveButtons(targetRow);
+}
+
+function updateRemoveButtons(targetRow) {
+    const conditionRules = targetRow.querySelectorAll('.condition-rule');
+    const removeButtons = targetRow.querySelectorAll('.remove-condition-btn');
+    
+    // Show remove buttons only if there are multiple conditions
+    removeButtons.forEach(btn => {
+        btn.style.display = conditionRules.length > 1 ? 'block' : 'none';
+    });
+}
+
+function clearAllConditions(targetRow) {
+    const conditionsContainer = targetRow.querySelector('.conditions-container');
+    const conditionRules = conditionsContainer.querySelectorAll('.condition-rule');
+    
+    // Remove all but the first condition rule
+    for (let i = 1; i < conditionRules.length; i++) {
+        conditionRules[i].remove();
+    }
+    
+    // Clear the first condition rule
+    const firstRule = conditionsContainer.querySelector('.condition-rule');
+    if (firstRule) {
+        const dependentSelect = firstRule.querySelector('.dependent-field-select');
+        const operatorSelect = firstRule.querySelector('select[name="condition_operator[]"]');
+        const valueInput = firstRule.querySelector('input[name="condition_value[]"]');
+        const logicSelect = targetRow.querySelector('.condition-logic-select');
+        
+        if (dependentSelect) dependentSelect.value = '';
+        if (operatorSelect) operatorSelect.value = 'equals';
+        if (valueInput) valueInput.value = '';
+        if (logicSelect) logicSelect.value = 'OR';
+    }
+    
+    updateRemoveButtons(targetRow);
+}
+
+function populateDependentFieldOptions(selectElement, targetRow) {
+    if (!selectElement) return;
+
+    // Get all field rows that come before this one
+    const container = targetRow.closest('#formFieldsContainer, #editFormFieldsContainer');
+    const allRows = Array.from(container.querySelectorAll('.form-field-row'));
+    const targetIndex = allRows.indexOf(targetRow);
+    const previousRows = allRows.slice(0, targetIndex);
+
+    // Clear existing options except the first one
+    selectElement.innerHTML = '<option value="">Select a field...</option>';
+
+    // Add options for each previous field
+    previousRows.forEach(row => {
+        const labelInput = row.querySelector('input[name="field_labels[]"]');
+        if (labelInput && labelInput.value.trim()) {
+            const option = document.createElement('option');
+            option.value = labelInput.value.trim();
+            option.textContent = labelInput.value.trim();
+            selectElement.appendChild(option);
+        }
+    });
+}
+
 // Handle dynamic placeholder and help text for conditional value inputs
 function updateConditionalValuePlaceholder(operatorSelect) {
     const row = operatorSelect.closest('.row, .form-field-row');
@@ -991,9 +1093,16 @@ function updateConditionalValuePlaceholder(operatorSelect) {
     
     if (operator === 'in_list') {
         valueInput.placeholder = 'Enter comma-separated values (e.g., yes,not sure,maybe)';
+        valueInput.disabled = false;
         helpText.style.display = 'block';
+    } else if (operator === 'is_empty' || operator === 'is_not_empty') {
+        valueInput.placeholder = 'No value needed for this condition';
+        valueInput.disabled = true;
+        valueInput.value = '';
+        helpText.style.display = 'none';
     } else {
         valueInput.placeholder = 'Expected value';
+        valueInput.disabled = false;
         helpText.style.display = 'none';
     }
 }
@@ -1030,6 +1139,32 @@ function setDependentFieldValues(containerSelector) {
             row.removeAttribute('data-dependent-field');
         }
     });
+}
+
+function debugFormSubmission(form) {
+    console.log('🔍 FORM SUBMISSION DEBUG:');
+    
+    // Check which conditional checkboxes are checked
+    const conditionalCheckboxes = form.querySelectorAll('input[name="is_conditional[]"]');
+    console.log(`Total conditional checkboxes found: ${conditionalCheckboxes.length}`);
+    
+    conditionalCheckboxes.forEach((checkbox, index) => {
+        const row = checkbox.closest('.form-field-row');
+        const fieldLabel = row.querySelector('input[name="field_labels[]"]').value;
+        
+        console.log(`Field ${index}: "${fieldLabel}" - Checkbox value: "${checkbox.value}" - Checked: ${checkbox.checked}`);
+        
+        if (checkbox.checked) {
+            // Get the condition data for this field
+            const dependentField = row.querySelector('select[name="condition_field[]"]')?.value || '';
+            const operator = row.querySelector('select[name="condition_operator[]"]')?.value || '';
+            const value = row.querySelector('input[name="condition_value[]"]')?.value || '';
+            
+            console.log(`  ➜ Condition data: dependent="${dependentField}", operator="${operator}", value="${value}"`);
+        }
+    });
+    
+    return true; // Allow form submission to continue
 }
 
 </script>
