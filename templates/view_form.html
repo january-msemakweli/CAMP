@@ -301,15 +301,15 @@
                             </div>
                                 {% elif field.type == 'checkbox' %}
             <div class="custom-options-group" data-field-index="{{ loop.index }}" data-total-options="{{ field.options|length }}">
-                {% if field.options|length > 3 %}
-                <!-- Search box for checkbox options -->
+                {% if field.options|length >= 40 %}
+                <!-- Search box for checkbox options (only for 40+ options) -->
                 <div class="checkbox-search-container mb-3">
-                                                    <input type="text" class="form-control checkbox-search" placeholder="{% if field.options|length >= 40 %}Type to search and show options...{% else %}Search options...{% endif %}" data-field-index="{{ loop.index }}">
-                    <small class="text-muted">{% if field.options|length >= 40 %}{{ field.options|length }} options available - start typing to see choices{% else %}Search to filter options{% endif %}</small>
+                    <input type="text" class="form-control checkbox-search" placeholder="Type to search and show options..." data-field-index="{{ loop.index }}">
+                    <small class="text-muted">{{ field.options|length }} options available - start typing to see choices</small>
                 </div>
                 {% endif %}
                 
-                <div class="checkbox-options-container" data-field-index="{{ loop.index }}" {% if field.options|length >= 30 %}style="display: none;"{% endif %}>
+                <div class="checkbox-options-container" data-field-index="{{ loop.index }}" {% if field.options|length >= 40 %}style="display: none;"{% endif %}>
                     {% for option in field.options %}
                     <label class="custom-option-card checkbox-option" for="field-{{ loop.index }}-{{ loop.index0 }}" data-option-text="{{ option|lower }}">
                         <input class="form-check-input" type="checkbox" name="{{ field.label }}" id="field-{{ loop.index }}-{{ loop.index0 }}" value="{{ option }}">
@@ -328,7 +328,7 @@
                     {% endif %}
                 </div>
                 
-                {% if field.options|length >= 30 %}
+                {% if field.options|length >= 40 %}
                 <!-- Message for large option sets -->
                 <div class="large-options-message" data-field-index="{{ loop.index }}">
                     <div class="text-center text-muted p-3">
