@@ -892,9 +892,9 @@ def create_form(project_id):
                 return redirect(url_for('project_detail', project_id=project_id))
         # Validation for old approach  
         else:
-            if not labels:
-                flash('At least one field is required.', 'danger')
-                return redirect(url_for('project_detail', project_id=project_id))
+        if not labels:
+            flash('At least one field is required.', 'danger')
+            return redirect(url_for('project_detail', project_id=project_id))
             
         # Process fields based on approach
         if fields_data_json:
@@ -902,32 +902,32 @@ def create_form(project_id):
             print(f"✅ CREATE: Using structured fields directly")
         else:
             # OLD APPROACH: build fields from arrays
-            fields = []
-            location_idx = 0
-            for i in range(len(labels)):
-                field = {
-                    'label': labels[i].strip(),
-                    'type': types[i],
-                    'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
-                    'required': str(i) in required_fields
-                }
-                if types[i] in ['radio', 'checkbox']:
-                    field['allow_other'] = str(i) in allow_other_fields
-                if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers):
-                    field['location_field_identifier'] = location_identifiers[location_idx]
-                    field['type'] = 'dropdown'
-                    field['options'] = []
-                    location_idx += 1
-                else:
-                    field['location_field_identifier'] = None
-                
-                # Add conditional logic if this field is conditional
-                is_in_conditional = str(i) in is_conditional_fields
-                
-                print(f"DEBUG - Field {i} ({labels[i]}):")
-                print(f"  - str(i) = '{str(i)}'")
-                print(f"  - is_conditional_fields = {is_conditional_fields}")
-                print(f"  - is '{str(i)}' in conditional list? {is_in_conditional}")
+        fields = []
+        location_idx = 0
+        for i in range(len(labels)):
+            field = {
+                'label': labels[i].strip(),
+                'type': types[i],
+                'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
+                'required': str(i) in required_fields
+            }
+            if types[i] in ['radio', 'checkbox']:
+                field['allow_other'] = str(i) in allow_other_fields
+            if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers):
+                field['location_field_identifier'] = location_identifiers[location_idx]
+                field['type'] = 'dropdown'
+                field['options'] = []
+                location_idx += 1
+            else:
+                field['location_field_identifier'] = None
+            
+            # Add conditional logic if this field is conditional
+            is_in_conditional = str(i) in is_conditional_fields
+            
+            print(f"DEBUG - Field {i} ({labels[i]}):")
+            print(f"  - str(i) = '{str(i)}'")
+            print(f"  - is_conditional_fields = {is_conditional_fields}")
+            print(f"  - is '{str(i)}' in conditional list? {is_in_conditional}")
                 
                 if is_in_conditional:
                     # Collect ALL conditions for this field (multiple conditions support)
@@ -1003,11 +1003,11 @@ def create_form(project_id):
                     except ValueError:
                         field['condition'] = None
                         print(f"  - ERROR: Field {i} not found in conditional fields list!")
-                else:
-                    field['condition'] = None
-                    print(f"  - RESULT: Field {i} is NOT conditional (condition set to null)")
-                    
-                fields.append(field)
+            else:
+                field['condition'] = None
+                print(f"  - RESULT: Field {i} is NOT conditional (condition set to null)")
+                
+            fields.append(field)
                 
         # Serialize fields (works for both new and old approaches)
         serialized_fields = json.dumps(fields)
@@ -1988,8 +1988,8 @@ def dataset_view():
         for patient_id, data in patient_data.items():
             # Include patients who have submissions from this project
             if data.get('has_project_submissions', False):
-                filtered_patient_data[patient_id] = data
-            else:
+                        filtered_patient_data[patient_id] = data
+                    else:
                 print(f"Filtered out patient {patient_id} because they have no submissions from this project")
         
         print(f"Included {len(filtered_patient_data)} patients with submissions from this project")
@@ -3087,11 +3087,11 @@ def activity_logs():
             log['created_at_eat'] = None
     
     return render_template('activity_logs.html',
-                           logs=logs,
-                           page=page,
-                           total_pages=total_pages,
-                           has_prev=has_prev,
-                           has_next=has_next)
+                          logs=logs,
+                          page=page,
+                          total_pages=total_pages,
+                          has_prev=has_prev,
+                          has_next=has_next)
 
 @app.route('/admin/create_user', methods=['POST'])
 @login_required
@@ -4340,24 +4340,24 @@ def analytics():
     
     # Render the template with all data
     return render_template('analytics.html',
-                           title=title if title else 'Analytics',
-                           all_projects=all_projects,
-                           forms=forms,
-                           camps=camps_data,
-                           selected_project=project_id,
-                           selected_form=form_id,
-                           selected_camp=camp_id,
-                           selected_camp_name=selected_camp['name'] if selected_camp else None,
-                           start_date=start_date,
-                           end_date=end_date,
-                           fields=all_fields,
-                           selected_analysis=analysis_type,
-                           selected_field1=field1,
-                           selected_field2=field2,
-                           field_types=field_types,
-                           plots=plots,
-                           stats=stats,
-                           correlation_fields=correlation_fields)
+                          title=title if title else 'Analytics',
+                          all_projects=all_projects,
+                          forms=forms,
+                          camps=camps_data,
+                          selected_project=project_id,
+                          selected_form=form_id,
+                          selected_camp=camp_id,
+                          selected_camp_name=selected_camp['name'] if selected_camp else None,
+                          start_date=start_date,
+                          end_date=end_date,
+                          fields=all_fields,
+                          selected_analysis=analysis_type,
+                          selected_field1=field1,
+                          selected_field2=field2,
+                          field_types=field_types,
+                          plots=plots,
+                          stats=stats,
+                          correlation_fields=correlation_fields)
 
 @app.route('/export_analytics')
 @login_required
@@ -4748,18 +4748,18 @@ def edit_form(form_id):
         else:
             print(f"🔄 EDIT: Using OLD array approach (fallback)")
             # Fall back to old approach for compatibility
-            labels = request.form.getlist('field_labels[]')
-            types = request.form.getlist('field_types[]')
-            options_list = request.form.getlist('field_options[]')
-            location_identifiers = request.form.getlist('location_field_identifier[]')
-            required_fields = request.form.getlist('field_required[]')
-            allow_other_fields = request.form.getlist('allow_other[]')
-            
-            # Conditional field data
-            is_conditional_fields = request.form.getlist('is_conditional[]')
-            condition_fields = request.form.getlist('condition_field[]')
-            condition_operators = request.form.getlist('condition_operator[]')
-            condition_values = request.form.getlist('condition_value[]')
+        labels = request.form.getlist('field_labels[]')
+        types = request.form.getlist('field_types[]')
+        options_list = request.form.getlist('field_options[]')
+        location_identifiers = request.form.getlist('location_field_identifier[]')
+        required_fields = request.form.getlist('field_required[]')
+        allow_other_fields = request.form.getlist('allow_other[]')
+        
+        # Conditional field data
+        is_conditional_fields = request.form.getlist('is_conditional[]')
+        condition_fields = request.form.getlist('condition_field[]')
+        condition_operators = request.form.getlist('condition_operator[]')
+        condition_values = request.form.getlist('condition_value[]')
             condition_logic = request.form.getlist('condition_logic[]')
             
             # Debug conditional fields data for EDIT
@@ -4788,31 +4788,31 @@ def edit_form(form_id):
                     print()
             
             # Validate old array data
-            if not labels:
-                flash('At least one field is required.', 'danger')
-                return redirect(url_for('project_detail', project_id=project_id))
+        if not labels:
+            flash('At least one field is required.', 'danger')
+            return redirect(url_for('project_detail', project_id=project_id))
             
             # Process old array data into fields
-            fields = []
-            location_idx = 0
-            for i in range(len(labels)):
-                field = {
-                    'label': labels[i].strip(),
-                    'type': types[i],
-                    'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
-                    'required': str(i) in required_fields
-                }
-                if types[i] in ['radio', 'checkbox']:
-                    field['allow_other'] = str(i) in allow_other_fields
-                if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers):
-                    field['location_field_identifier'] = location_identifiers[location_idx]
-                    field['type'] = 'dropdown'
-                    field['options'] = []
-                    location_idx += 1
-                else:
-                    field['location_field_identifier'] = None
-                
-                # Add conditional logic if this field is conditional
+        fields = []
+        location_idx = 0
+        for i in range(len(labels)):
+            field = {
+                'label': labels[i].strip(),
+                'type': types[i],
+                'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
+                'required': str(i) in required_fields
+            }
+            if types[i] in ['radio', 'checkbox']:
+                field['allow_other'] = str(i) in allow_other_fields
+            if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers):
+                field['location_field_identifier'] = location_identifiers[location_idx]
+                field['type'] = 'dropdown'
+                field['options'] = []
+                location_idx += 1
+            else:
+                field['location_field_identifier'] = None
+            
+            # Add conditional logic if this field is conditional
                 is_in_conditional = str(i) in is_conditional_fields
                 
                 print(f"DEBUG EDIT - Field {i} ({labels[i]}):")
@@ -4882,13 +4882,13 @@ def edit_form(form_id):
                                 print(f"  - RESULT: Field {i} has single condition: {field['condition']}")
                             else:
                                 # Multiple conditions - use new format with logic
-                                field['condition'] = {
+                field['condition'] = {
                                     'logic': field_logic,
                                     'rules': field_conditions
-                                }
+                }
                                 print(f"  - RESULT: Field {i} has {len(field_conditions)} conditions with {field_logic} logic: {field['condition']}")
-                        else:
-                            field['condition'] = None
+            else:
+                field['condition'] = None
                             print(f"  - RESULT: Field {i} marked conditional but no valid conditions found")
                             
                     except ValueError:
@@ -4897,8 +4897,8 @@ def edit_form(form_id):
                 else:
                     field['condition'] = None
                     print(f"  - RESULT: Field {i} is NOT conditional (condition set to null)")
-                    
-                fields.append(field)
+                
+            fields.append(field)
         
         # Common validation that applies to both approaches
         if not title:
@@ -5762,15 +5762,15 @@ def form_waitlist(form_id):
                     patient_display_name = registration_data['Name']
                 else:
                     # Fallback: look through all form data for name fields
-                    for form_data in patient['data'].values():
-                        if isinstance(form_data, dict):
+                for form_data in patient['data'].values():
+                    if isinstance(form_data, dict):
                             # Look for common name fields in form data
-                            for field in ['Full Name', 'Name', 'Patient Name', 'First Name']:
-                                if field in form_data and form_data[field]:
-                                    patient_display_name = form_data[field]
-                                    break
-                        if patient_display_name:
-                            break
+                        for field in ['Full Name', 'Name', 'Patient Name', 'First Name']:
+                            if field in form_data and form_data[field]:
+                                patient_display_name = form_data[field]
+                                break
+                    if patient_display_name:
+                        break
             
             # Get additional patient info from centralized registration
             age = None
@@ -5940,9 +5940,9 @@ def admin_statistics():
     # 2. Get Total Registered Patients (patients with centralized registration data)
     registered_patients = set()
     registered_patients_query = supabase.table('patients').select('patient_id, created_at, data')
-    if date_filter.get('start'):
+        if date_filter.get('start'):
         registered_patients_query = registered_patients_query.gte('created_at', date_filter['start'])
-    if date_filter.get('end'):
+        if date_filter.get('end'):
         registered_patients_query = registered_patients_query.lt('created_at', date_filter['end'])
     
     try:
@@ -5953,7 +5953,7 @@ def admin_statistics():
                 patient['data'].get('registration') and 
                 patient.get('patient_id')):
                 registered_patients.add(patient['patient_id'])
-    except Exception as e:
+        except Exception as e:
         print(f"Error fetching registered patients: {str(e)}")
     
     total_registered_patients = len(registered_patients)
@@ -5962,18 +5962,18 @@ def admin_statistics():
     # 3. Get Patients Attended (patients with ANY project form submissions - all forms are now medical care)
     attended_patients = set()
     attended_query = supabase.table('form_submissions').select('patient_id, created_at')
-    if date_filter.get('start'):
-        attended_query = attended_query.gte('created_at', date_filter['start'])
-    if date_filter.get('end'):
-        attended_query = attended_query.lt('created_at', date_filter['end'])
-    
-    try:
-        attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
-        for submission in attended_data:
-            if submission.get('patient_id'):
-                attended_patients.add(submission['patient_id'])
-    except Exception as e:
-        print(f"Error fetching attended submissions: {str(e)}")
+        if date_filter.get('start'):
+            attended_query = attended_query.gte('created_at', date_filter['start'])
+        if date_filter.get('end'):
+            attended_query = attended_query.lt('created_at', date_filter['end'])
+        
+        try:
+            attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
+            for submission in attended_data:
+                if submission.get('patient_id'):
+                    attended_patients.add(submission['patient_id'])
+        except Exception as e:
+            print(f"Error fetching attended submissions: {str(e)}")
     
     total_patients_attended = len(attended_patients)
     print(f"Found {total_patients_attended} patients who received medical care (form submissions)")
