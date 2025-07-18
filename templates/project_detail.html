@@ -154,7 +154,7 @@
                     <h5 class="modal-title">Create New Form for {{ project.name }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" title="Close"></button>
             </div>
-                <form method="POST" action="{{ url_for('create_form', project_id=project.id) }}" id="createForm">
+                                        <form method="POST" action="{{ url_for('create_form', project_id=project.id) }}" id="createForm" onsubmit="debugFormSubmission(this)">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label for="formTitle" class="form-label">Form Title</label>
@@ -758,8 +758,7 @@ function openEditFormModal(formId) {
                             }, 100);
                         }
                         
-                        // Update dependent field options for all condition rules
-                        updateDependentFieldOptions(lastRow);
+                        // Don't update dependent field options yet - wait until all fields are loaded
                         updateRemoveButtons(lastRow);
                     } else {
                         console.log(`❌ NO condition for field: ${field.label} - unchecking conditional checkbox`);
@@ -769,13 +768,15 @@ function openEditFormModal(formId) {
                     }
                 });
 
-                // After all fields are added, update dependent field dropdowns and set values
+                // After ALL fields are loaded, update dependent field dropdowns for all conditional fields
+                console.log('All fields loaded. Now updating dependent field dropdowns...');
                 updateDependentFieldDropdowns('editFormFieldsContainer');
                 
-                // Set dependent field values after dropdowns are populated
+                // Set dependent field values after dropdowns are populated (with longer delay)
                 setTimeout(() => {
-                    setDependentFieldValues('editFormFieldsContainer');
-                }, 100);
+                    console.log('Setting dependent field values...');
+                    setConditionalFieldValues(data.fields);
+                }, 300);
             } else {
                 // If no fields, add one empty row
                  addFieldRow('editFormFieldsContainer', false); // Don't allow remove if it's the only one
@@ -1141,28 +1142,154 @@ function setDependentFieldValues(containerSelector) {
     });
 }
 
-function debugFormSubmission(form) {
-    console.log('🔍 FORM SUBMISSION DEBUG:');
+function setConditionalFieldValues(formFields) {
+    // Set conditional field values based on original form data
+    const container = document.getElementById('editFormFieldsContainer');
+    if (!container || !formFields) return;
     
-    // Check which conditional checkboxes are checked
-    const conditionalCheckboxes = form.querySelectorAll('input[name="is_conditional[]"]');
-    console.log(`Total conditional checkboxes found: ${conditionalCheckboxes.length}`);
+    const fieldRows = Array.from(container.querySelectorAll('.form-field-row'));
     
-    conditionalCheckboxes.forEach((checkbox, index) => {
-        const row = checkbox.closest('.form-field-row');
-        const fieldLabel = row.querySelector('input[name="field_labels[]"]').value;
+    formFields.forEach((fieldData, fieldIndex) => {
+        if (!fieldData.condition) return;
         
-        console.log(`Field ${index}: "${fieldLabel}" - Checkbox value: "${checkbox.value}" - Checked: ${checkbox.checked}`);
+        const fieldRow = fieldRows[fieldIndex];
+        if (!fieldRow) return;
         
-        if (checkbox.checked) {
-            // Get the condition data for this field
-            const dependentField = row.querySelector('select[name="condition_field[]"]')?.value || '';
-            const operator = row.querySelector('select[name="condition_operator[]"]')?.value || '';
-            const value = row.querySelector('input[name="condition_value[]"]')?.value || '';
-            
-            console.log(`  ➜ Condition data: dependent="${dependentField}", operator="${operator}", value="${value}"`);
+        const conditionalContainer = fieldRow.querySelector('.conditional-container');
+        if (!conditionalContainer) return;
+        
+        console.log(`Setting conditional values for field ${fieldIndex}: ${fieldData.label}`, fieldData.condition);
+        
+        // Handle multiple conditions format
+        if (fieldData.condition.rules && Array.isArray(fieldData.condition.rules)) {
+            fieldData.condition.rules.forEach((rule, ruleIndex) => {
+                const conditionRules = conditionalContainer.querySelectorAll('.condition-rule');
+                const currentRule = conditionRules[ruleIndex];
+                
+                if (currentRule) {
+                    const dependentSelect = currentRule.querySelector('.dependent-field-select');
+                    if (dependentSelect && rule.dependent_field) {
+                        dependentSelect.value = rule.dependent_field;
+                        console.log(`Set dependent field: ${rule.dependent_field} for rule ${ruleIndex}`);
+                    }
+                }
+            });
+        }
+        // Handle single condition format
+        else if (fieldData.condition.dependent_field) {
+            const firstRule = conditionalContainer.querySelector('.condition-rule');
+            if (firstRule) {
+                const dependentSelect = firstRule.querySelector('.dependent-field-select');
+                if (dependentSelect) {
+                    dependentSelect.value = fieldData.condition.dependent_field;
+                    console.log(`Set single dependent field: ${fieldData.condition.dependent_field}`);
+                }
+            }
         }
     });
+}
+
+function collectFieldCentricData(form) {
+    console.log('🔍 COLLECTING FIELD-CENTRIC DATA:');
+    
+    const fieldRows = form.querySelectorAll('.form-field-row');
+    const fieldsData = [];
+    
+    fieldRows.forEach((row, index) => {
+        const labelInput = row.querySelector('input[name="field_labels[]"]');
+        const typeSelect = row.querySelector('select[name="field_types[]"]');
+        const optionsInput = row.querySelector('input[name="field_options[]"]');
+        const requiredCheckbox = row.querySelector('input[name="field_required[]"]');
+        const allowOtherCheckbox = row.querySelector('input[name="allow_other[]"]');
+        const locationInput = row.querySelector('input[name="location_field_identifier[]"]');
+        const conditionalCheckbox = row.querySelector('.conditional-checkbox');
+        
+        if (!labelInput || !typeSelect) return; // Skip invalid rows
+        
+        const fieldData = {
+            label: labelInput.value.trim(),
+            type: typeSelect.value,
+            options: optionsInput ? optionsInput.value.split(',').map(opt => opt.trim()).filter(opt => opt) : [],
+            required: requiredCheckbox ? requiredCheckbox.checked : false,
+            allow_other: allowOtherCheckbox ? allowOtherCheckbox.checked : false,
+            location_field_identifier: locationInput ? locationInput.value || null : null,
+            condition: null
+        };
+        
+        // Collect condition data if field is conditional
+        if (conditionalCheckbox && conditionalCheckbox.checked) {
+            const conditionRules = row.querySelectorAll('.condition-rule');
+            const rules = [];
+            let logic = 'OR';
+            
+            // Get logic type
+            const logicSelect = row.querySelector('.condition-logic-select');
+            if (logicSelect) {
+                logic = logicSelect.value || 'OR';
+            }
+            
+            // Collect all condition rules for this field
+            conditionRules.forEach(ruleElement => {
+                const dependentSelect = ruleElement.querySelector('.dependent-field-select');
+                const operatorSelect = ruleElement.querySelector('select[name="condition_operator[]"]');
+                const valueInput = ruleElement.querySelector('input[name="condition_value[]"]');
+                
+                if (dependentSelect && operatorSelect) {
+                    const dependentField = dependentSelect.value.trim();
+                    const operator = operatorSelect.value;
+                    const value = valueInput ? valueInput.value : '';
+                    
+                    // Only add if dependent field is not empty
+                    if (dependentField) {
+                        rules.push({
+                            dependent_field: dependentField,
+                            operator: operator,
+                            value: value
+                        });
+                    }
+                }
+            });
+            
+            // Set condition format based on number of rules
+            if (rules.length === 1) {
+                // Single condition - use simple format for backward compatibility
+                fieldData.condition = rules[0];
+            } else if (rules.length > 1) {
+                // Multiple conditions - use complex format
+                fieldData.condition = {
+                    logic: logic,
+                    rules: rules
+                };
+            }
+            // If no valid rules, condition stays null
+        }
+        
+        fieldsData.push(fieldData);
+        console.log(`Field ${index}: ${fieldData.label}`, fieldData);
+    });
+    
+    return fieldsData;
+}
+
+function debugFormSubmission(form) {
+    console.log('🔍 FORM SUBMISSION DEBUG (OLD METHOD):');
+    
+    // Collect field-centric data
+    const fieldsData = collectFieldCentricData(form);
+    
+    // Add a hidden input with the structured data
+    const existingFieldsInput = form.querySelector('input[name="fields_data"]');
+    if (existingFieldsInput) {
+        existingFieldsInput.remove();
+    }
+    
+    const fieldsDataInput = document.createElement('input');
+    fieldsDataInput.type = 'hidden';
+    fieldsDataInput.name = 'fields_data';
+    fieldsDataInput.value = JSON.stringify(fieldsData);
+    form.appendChild(fieldsDataInput);
+    
+    console.log('✅ Added structured fields_data to form:', fieldsData);
     
     return true; // Allow form submission to continue
 }

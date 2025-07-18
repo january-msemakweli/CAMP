@@ -822,6 +822,24 @@ def create_form(project_id):
         return redirect(url_for('index'))
     try:
         title = request.form.get('title')
+        
+        # Check if we have the new structured fields_data
+        fields_data_json = request.form.get('fields_data')
+        if fields_data_json:
+            print(f"🆕 CREATE: Using NEW field-centric approach")
+            try:
+                fields = json.loads(fields_data_json)
+                print(f"✅ CREATE: Received {len(fields)} structured fields:")
+                for i, field in enumerate(fields):
+                    print(f"  Field {i}: {field['label']} - Condition: {field.get('condition', 'None')}")
+                    
+            except json.JSONDecodeError as e:
+                print(f"❌ CREATE: JSON decode error: {e}")
+                flash('Invalid fields data format.', 'danger')
+                return redirect(url_for('project_detail', project_id=project_id))
+        else:
+            print(f"🔄 CREATE: Using OLD array approach (fallback)")
+            # Fall back to old approach for compatibility
         labels = request.form.getlist('field_labels[]')
         types = request.form.getlist('field_types[]')
         options_list = request.form.getlist('field_options[]')
@@ -836,7 +854,7 @@ def create_form(project_id):
         condition_values = request.form.getlist('condition_value[]')
         condition_logic = request.form.getlist('condition_logic[]')
         
-        # Debug conditional fields data
+        # Debug conditional fields data (OLD APPROACH)
         print(f"🔍 FORM SUBMISSION DEBUG:")
         print(f"DEBUG - Total fields: {len(labels)}")
         print(f"DEBUG - Labels: {labels}")
@@ -850,135 +868,148 @@ def create_form(project_id):
         
         # Debug: show exactly which fields should have conditions
         for i, conditional_field_idx in enumerate(is_conditional_fields):
-            if conditional_field_idx and int(conditional_field_idx) < len(labels):
-                field_name = labels[int(conditional_field_idx)]
-                print(f"🎯 Conditional field #{conditional_field_idx}: '{field_name}'")
-                if i < len(condition_fields):
-                    print(f"   ➜ Should depend on: '{condition_fields[i]}'")
-                if i < len(condition_operators):
-                    print(f"   ➜ Operator: '{condition_operators[i]}'")
-                if i < len(condition_values):
-                    print(f"   ➜ Value: '{condition_values[i]}'")
-                if i < len(condition_logic):
-                    print(f"   ➜ Logic: '{condition_logic[i]}'")
-                print()
+                if conditional_field_idx and int(conditional_field_idx) < len(labels):
+                    field_name = labels[int(conditional_field_idx)]
+                    print(f"🎯 Conditional field #{conditional_field_idx}: '{field_name}'")
+                    if i < len(condition_fields):
+                        print(f"   ➜ Should depend on: '{condition_fields[i]}'")
+                    if i < len(condition_operators):
+                        print(f"   ➜ Operator: '{condition_operators[i]}'")
+                    if i < len(condition_values):
+                        print(f"   ➜ Value: '{condition_values[i]}'")
+                    if i < len(condition_logic):
+                        print(f"   ➜ Logic: '{condition_logic[i]}'")
+                    print()
+                    
         if not title:
             flash('Form title is required.', 'danger')
             return redirect(url_for('project_detail', project_id=project_id))
-        if not labels:
-            flash('At least one field is required.', 'danger')
-            return redirect(url_for('project_detail', project_id=project_id))
-        fields = []
-        location_idx = 0
-        for i in range(len(labels)):
-            field = {
-                'label': labels[i].strip(),
-                'type': types[i],
-                'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
-                'required': str(i) in required_fields
-            }
-            if types[i] in ['radio', 'checkbox']:
-                field['allow_other'] = str(i) in allow_other_fields
-            if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers):
-                field['location_field_identifier'] = location_identifiers[location_idx]
-                field['type'] = 'dropdown'
-                field['options'] = []
-                location_idx += 1
-            else:
-                field['location_field_identifier'] = None
             
-            # Add conditional logic if this field is conditional
-            is_in_conditional = str(i) in is_conditional_fields
+        # Validation for new approach
+        if fields_data_json:
+            if not fields:
+                flash('At least one field is required.', 'danger')
+                return redirect(url_for('project_detail', project_id=project_id))
+        # Validation for old approach  
+        else:
+            if not labels:
+                flash('At least one field is required.', 'danger')
+                return redirect(url_for('project_detail', project_id=project_id))
             
-            print(f"DEBUG - Field {i} ({labels[i]}):")
-            print(f"  - str(i) = '{str(i)}'")
-            print(f"  - is_conditional_fields = {is_conditional_fields}")
-            print(f"  - is '{str(i)}' in conditional list? {is_in_conditional}")
-            
-            if is_in_conditional:
-                # Collect ALL conditions for this field (multiple conditions support)
-                field_conditions = []
-                field_logic = 'OR'  # Default logic
+        # Process fields based on approach
+        if fields_data_json:
+            # NEW APPROACH: fields are already structured and ready
+            print(f"✅ CREATE: Using structured fields directly")
+        else:
+            # OLD APPROACH: build fields from arrays
+            fields = []
+            location_idx = 0
+            for i in range(len(labels)):
+                field = {
+                    'label': labels[i].strip(),
+                    'type': types[i],
+                    'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
+                    'required': str(i) in required_fields
+                }
+                if types[i] in ['radio', 'checkbox']:
+                    field['allow_other'] = str(i) in allow_other_fields
+                if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers):
+                    field['location_field_identifier'] = location_identifiers[location_idx]
+                    field['type'] = 'dropdown'
+                    field['options'] = []
+                    location_idx += 1
+                else:
+                    field['location_field_identifier'] = None
                 
-                print(f"  - Collecting all conditions for field {i}")
+                # Add conditional logic if this field is conditional
+                is_in_conditional = str(i) in is_conditional_fields
                 
-                # Strategy: collect conditions starting from field index and continuing 
-                # until we hit a condition that belongs to the next conditional field
+                print(f"DEBUG - Field {i} ({labels[i]}):")
+                print(f"  - str(i) = '{str(i)}'")
+                print(f"  - is_conditional_fields = {is_conditional_fields}")
+                print(f"  - is '{str(i)}' in conditional list? {is_in_conditional}")
                 
-                # Find the position of this field in the conditional fields list
-                try:
-                    current_field_position = is_conditional_fields.index(str(i))
-                    print(f"  - Field {i} is at conditional position {current_field_position}")
+                if is_in_conditional:
+                    # Collect ALL conditions for this field (multiple conditions support)
+                    field_conditions = []
+                    field_logic = 'OR'  # Default logic
                     
-                    # Find the next conditional field to know where to stop
-                    next_conditional_field = None
-                    if current_field_position + 1 < len(is_conditional_fields):
-                        next_conditional_field = int(is_conditional_fields[current_field_position + 1])
-                        print(f"  - Next conditional field is {next_conditional_field}")
+                    print(f"  - Collecting all conditions for field {i}")
                     
-                    # Start collecting conditions from current field index
-                    condition_idx = i
-                    while condition_idx < len(condition_fields):
-                        # Stop if we've reached the next conditional field's index
-                        if next_conditional_field is not None and condition_idx >= next_conditional_field:
-                            print(f"  - Stopping at index {condition_idx} (reached next field {next_conditional_field})")
-                            break
-                            
-                        # Check if this position has valid condition data
-                        if (condition_idx < len(condition_fields) and 
-                            condition_idx < len(condition_operators) and 
-                            condition_idx < len(condition_values)):
-                            
-                            dependent_field = condition_fields[condition_idx].strip()
-                            operator = condition_operators[condition_idx] if condition_idx < len(condition_operators) else 'equals'
-                            value = condition_values[condition_idx] if condition_idx < len(condition_values) else ''
-                            
-                            # Skip empty conditions
-                            if not dependent_field:
-                                condition_idx += 1
-                                continue
+                    # Strategy: collect conditions starting from conditional field position
+                    
+                    # Find the position of this field in the conditional fields list
+                    try:
+                        current_field_position = is_conditional_fields.index(str(i))
+                        print(f"  - Field {i} is at conditional position {current_field_position}")
+                        
+                        # Find where the next conditional field's conditions start
+                        next_condition_start = len(condition_fields)  # Default to end of array
+                        if current_field_position + 1 < len(is_conditional_fields):
+                            next_field_idx = int(is_conditional_fields[current_field_position + 1])
+                            next_field_position = is_conditional_fields.index(str(next_field_idx))
+                            next_condition_start = next_field_position
+                            print(f"  - Next conditional field {next_field_idx} starts at condition position {next_condition_start}")
+                        
+                        # Collect ALL conditions for this field starting from its position
+                        condition_start_idx = current_field_position
+                        condition_end_idx = next_condition_start
+                        
+                        print(f"  - Collecting conditions from index {condition_start_idx} to {condition_end_idx-1}")
+                        
+                        for condition_idx in range(condition_start_idx, min(condition_end_idx, len(condition_fields))):
+                            if (condition_idx < len(condition_fields) and 
+                                condition_idx < len(condition_operators) and 
+                                condition_idx < len(condition_values)):
                                 
-                            # Add this condition to the field
-                            condition_rule = {
-                                'dependent_field': dependent_field,
-                                'operator': operator,
-                                'value': value
-                            }
-                            field_conditions.append(condition_rule)
-                            print(f"  - Added condition {len(field_conditions)}: {condition_rule}")
-                            
-                            # Get logic for this field (use the first logic we encounter)
-                            if condition_idx < len(condition_logic) and len(field_conditions) == 1:
-                                field_logic = condition_logic[condition_idx]
-                                print(f"  - Using logic: {field_logic}")
+                                dependent_field = condition_fields[condition_idx].strip()
+                                operator = condition_operators[condition_idx] if condition_idx < len(condition_operators) else 'equals'
+                                value = condition_values[condition_idx] if condition_idx < len(condition_values) else ''
+                                
+                                # Only add condition if dependent field is not empty
+                                if dependent_field:
+                                    condition_rule = {
+                                        'dependent_field': dependent_field,
+                                        'operator': operator,
+                                        'value': value
+                                    }
+                                    field_conditions.append(condition_rule)
+                                    print(f"  - Added condition {len(field_conditions)}: {condition_rule}")
+                                    
+                                    # Get logic for this field (use the first logic we encounter)
+                                    if len(field_conditions) == 1 and condition_idx < len(condition_logic):
+                                        field_logic = condition_logic[condition_idx]
+                                        print(f"  - Using logic: {field_logic}")
+                                else:
+                                    print(f"  - Skipping empty condition at index {condition_idx}")
                         
-                        condition_idx += 1
-                    
-                    # Create the final condition structure
-                    if field_conditions:
-                        if len(field_conditions) == 1:
-                            # Single condition - use backward compatible format
-                            field['condition'] = field_conditions[0]
-                            print(f"  - RESULT: Field {i} has single condition: {field['condition']}")
+                        # Create the final condition structure
+                        if field_conditions:
+                            if len(field_conditions) == 1:
+                                # Single condition - use backward compatible format
+                                field['condition'] = field_conditions[0]
+                                print(f"  - RESULT: Field {i} has single condition: {field['condition']}")
+                            else:
+                                # Multiple conditions - use new format with logic
+                                field['condition'] = {
+                                    'logic': field_logic,
+                                    'rules': field_conditions
+                                }
+                                print(f"  - RESULT: Field {i} has {len(field_conditions)} conditions with {field_logic} logic: {field['condition']}")
                         else:
-                            # Multiple conditions - use new format with logic
-                            field['condition'] = {
-                                'logic': field_logic,
-                                'rules': field_conditions
-                            }
-                            print(f"  - RESULT: Field {i} has {len(field_conditions)} conditions with {field_logic} logic: {field['condition']}")
-                    else:
+                            field['condition'] = None
+                            print(f"  - RESULT: Field {i} marked conditional but no valid conditions found")
+                            
+                    except ValueError:
                         field['condition'] = None
-                        print(f"  - RESULT: Field {i} marked conditional but no valid conditions found")
-                        
-                except ValueError:
+                        print(f"  - ERROR: Field {i} not found in conditional fields list!")
+                else:
                     field['condition'] = None
-                    print(f"  - ERROR: Field {i} not found in conditional fields list!")
-            else:
-                field['condition'] = None
-                print(f"  - RESULT: Field {i} is NOT conditional (condition set to null)")
+                    print(f"  - RESULT: Field {i} is NOT conditional (condition set to null)")
+                    
+                fields.append(field)
                 
-            fields.append(field)
+        # Serialize fields (works for both new and old approaches)
         serialized_fields = json.dumps(fields)
         form_id = str(uuid.uuid4())
         form_data = {
@@ -3051,11 +3082,11 @@ def activity_logs():
             log['created_at_eat'] = None
     
     return render_template('activity_logs.html',
-                          logs=logs,
-                          page=page,
-                          total_pages=total_pages,
-                          has_prev=has_prev,
-                          has_next=has_next)
+                           logs=logs,
+                           page=page,
+                           total_pages=total_pages,
+                           has_prev=has_prev,
+                           has_next=has_next)
 
 @app.route('/admin/create_user', methods=['POST'])
 @login_required
@@ -4297,24 +4328,24 @@ def analytics():
     
     # Render the template with all data
     return render_template('analytics.html',
-                          title=title if title else 'Analytics',
-                          all_projects=all_projects,
-                          forms=forms,
-                          camps=camps_data,
-                          selected_project=project_id,
-                          selected_form=form_id,
-                          selected_camp=camp_id,
-                          selected_camp_name=selected_camp['name'] if selected_camp else None,
-                          start_date=start_date,
-                          end_date=end_date,
-                          fields=all_fields,
-                          selected_analysis=analysis_type,
-                          selected_field1=field1,
-                          selected_field2=field2,
-                          field_types=field_types,
-                          plots=plots,
-                          stats=stats,
-                          correlation_fields=correlation_fields)
+                           title=title if title else 'Analytics',
+                           all_projects=all_projects,
+                           forms=forms,
+                           camps=camps_data,
+                           selected_project=project_id,
+                           selected_form=form_id,
+                           selected_camp=camp_id,
+                           selected_camp_name=selected_camp['name'] if selected_camp else None,
+                           start_date=start_date,
+                           end_date=end_date,
+                           fields=all_fields,
+                           selected_analysis=analysis_type,
+                           selected_field1=field1,
+                           selected_field2=field2,
+                           field_types=field_types,
+                           plots=plots,
+                           stats=stats,
+                           correlation_fields=correlation_fields)
 
 @app.route('/export_analytics')
 @login_required
@@ -4686,162 +4717,186 @@ def edit_form(form_id):
 
     try:
         title = request.form.get('title')
-        labels = request.form.getlist('field_labels[]')
-        types = request.form.getlist('field_types[]')
-        options_list = request.form.getlist('field_options[]')
-        location_identifiers = request.form.getlist('location_field_identifier[]')
-        required_fields = request.form.getlist('field_required[]')
-        allow_other_fields = request.form.getlist('allow_other[]')
         
-        # Conditional field data
-        is_conditional_fields = request.form.getlist('is_conditional[]')
-        condition_fields = request.form.getlist('condition_field[]')
-        condition_operators = request.form.getlist('condition_operator[]')
-        condition_values = request.form.getlist('condition_value[]')
-        condition_logic = request.form.getlist('condition_logic[]')
+        # Check if we have the new structured fields_data
+        fields_data_json = request.form.get('fields_data')
+        if fields_data_json:
+            print(f"🆕 EDIT: Using NEW field-centric approach")
+            try:
+                fields = json.loads(fields_data_json)
+                print(f"✅ EDIT: Received {len(fields)} structured fields:")
+                for i, field in enumerate(fields):
+                    print(f"  Field {i}: {field['label']} - Condition: {field.get('condition', 'None')}")
+                print(f"🎯 EDIT: Skipping old array processing, using field-centric data directly")
+                    
+            except json.JSONDecodeError as e:
+                print(f"❌ EDIT: JSON decode error: {e}")
+                flash('Invalid fields data format.', 'danger')
+                return redirect(url_for('view_form', form_id=form_id))
+        else:
+            print(f"🔄 EDIT: Using OLD array approach (fallback)")
+            # Fall back to old approach for compatibility
+            labels = request.form.getlist('field_labels[]')
+            types = request.form.getlist('field_types[]')
+            options_list = request.form.getlist('field_options[]')
+            location_identifiers = request.form.getlist('location_field_identifier[]')
+            required_fields = request.form.getlist('field_required[]')
+            allow_other_fields = request.form.getlist('allow_other[]')
+            
+            # Conditional field data
+            is_conditional_fields = request.form.getlist('is_conditional[]')
+            condition_fields = request.form.getlist('condition_field[]')
+            condition_operators = request.form.getlist('condition_operator[]')
+            condition_values = request.form.getlist('condition_value[]')
+            condition_logic = request.form.getlist('condition_logic[]')
+            
+            # Debug conditional fields data for EDIT
+            print(f"🔍 EDIT FORM SUBMISSION DEBUG:")
+            print(f"DEBUG EDIT - Total fields: {len(labels)}")
+            print(f"DEBUG EDIT - Labels: {labels}")
+            print(f"DEBUG EDIT - is_conditional_fields: {is_conditional_fields}")
+            print(f"DEBUG EDIT - condition_fields: {condition_fields}")
+            print(f"DEBUG EDIT - condition_operators: {condition_operators}")
+            print(f"DEBUG EDIT - condition_values: {condition_values}")
+            print(f"DEBUG EDIT - condition_logic: {condition_logic}")
+            
+            # Debug: show exactly which fields should have conditions
+            for i, conditional_field_idx in enumerate(is_conditional_fields):
+                if conditional_field_idx and int(conditional_field_idx) < len(labels):
+                    field_name = labels[int(conditional_field_idx)]
+                    print(f"🎯 EDIT Conditional field #{conditional_field_idx}: '{field_name}'")
+                    if i < len(condition_fields):
+                        print(f"   ➜ Should depend on: '{condition_fields[i]}'")
+                    if i < len(condition_operators):
+                        print(f"   ➜ Operator: '{condition_operators[i]}'")
+                    if i < len(condition_values):
+                        print(f"   ➜ Value: '{condition_values[i]}'")
+                    if i < len(condition_logic):
+                        print(f"   ➜ Logic: '{condition_logic[i]}'")
+                    print()
+            
+            # Validate old array data
+            if not labels:
+                flash('At least one field is required.', 'danger')
+                return redirect(url_for('project_detail', project_id=project_id))
+            
+            # Process old array data into fields
+            fields = []
+            location_idx = 0
+            for i in range(len(labels)):
+                field = {
+                    'label': labels[i].strip(),
+                    'type': types[i],
+                    'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
+                    'required': str(i) in required_fields
+                }
+                if types[i] in ['radio', 'checkbox']:
+                    field['allow_other'] = str(i) in allow_other_fields
+                if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers):
+                    field['location_field_identifier'] = location_identifiers[location_idx]
+                    field['type'] = 'dropdown'
+                    field['options'] = []
+                    location_idx += 1
+                else:
+                    field['location_field_identifier'] = None
+                
+                # Add conditional logic if this field is conditional
+                is_in_conditional = str(i) in is_conditional_fields
+                
+                print(f"DEBUG EDIT - Field {i} ({labels[i]}):")
+                print(f"  - str(i) = '{str(i)}'")
+                print(f"  - is_conditional_fields = {is_conditional_fields}")
+                print(f"  - is '{str(i)}' in conditional list? {is_in_conditional}")
+                
+                if is_in_conditional:
+                    # Collect ALL conditions for this field (multiple conditions support)
+                    field_conditions = []
+                    field_logic = 'OR'  # Default logic
+                    
+                    print(f"  - Collecting all conditions for field {i}")
+                    
+                    # Strategy: collect conditions starting from conditional field position
+                    
+                    # Find the position of this field in the conditional fields list
+                    try:
+                        current_field_position = is_conditional_fields.index(str(i))
+                        print(f"  - Field {i} is at conditional position {current_field_position}")
+                        
+                        # Find where the next conditional field's conditions start
+                        next_condition_start = len(condition_fields)  # Default to end of array
+                        if current_field_position + 1 < len(is_conditional_fields):
+                            next_field_idx = int(is_conditional_fields[current_field_position + 1])
+                            next_field_position = is_conditional_fields.index(str(next_field_idx))
+                            next_condition_start = next_field_position
+                            print(f"  - Next conditional field {next_field_idx} starts at condition position {next_condition_start}")
+                        
+                        # Collect ALL conditions for this field starting from its position
+                        condition_start_idx = current_field_position
+                        condition_end_idx = next_condition_start
+                        
+                        print(f"  - Collecting conditions from index {condition_start_idx} to {condition_end_idx-1}")
+                        
+                        for condition_idx in range(condition_start_idx, min(condition_end_idx, len(condition_fields))):
+                            if (condition_idx < len(condition_fields) and 
+                                condition_idx < len(condition_operators) and 
+                                condition_idx < len(condition_values)):
+                                
+                                dependent_field = condition_fields[condition_idx].strip()
+                                operator = condition_operators[condition_idx] if condition_idx < len(condition_operators) else 'equals'
+                                value = condition_values[condition_idx] if condition_idx < len(condition_values) else ''
+                                
+                                # Only add condition if dependent field is not empty
+                                if dependent_field:
+                                    condition_rule = {
+                                        'dependent_field': dependent_field,
+                                        'operator': operator,
+                                        'value': value
+                                    }
+                                    field_conditions.append(condition_rule)
+                                    print(f"  - Added condition {len(field_conditions)}: {condition_rule}")
+                                    
+                                    # Get logic for this field (use the first logic we encounter)
+                                    if len(field_conditions) == 1 and condition_idx < len(condition_logic):
+                                        field_logic = condition_logic[condition_idx]
+                                        print(f"  - Using logic: {field_logic}")
+                                else:
+                                    print(f"  - Skipping empty condition at index {condition_idx}")
+                        
+                        # Create the final condition structure
+                        if field_conditions:
+                            if len(field_conditions) == 1:
+                                # Single condition - use backward compatible format
+                                field['condition'] = field_conditions[0]
+                                print(f"  - RESULT: Field {i} has single condition: {field['condition']}")
+                            else:
+                                # Multiple conditions - use new format with logic
+                                field['condition'] = {
+                                    'logic': field_logic,
+                                    'rules': field_conditions
+                                }
+                                print(f"  - RESULT: Field {i} has {len(field_conditions)} conditions with {field_logic} logic: {field['condition']}")
+                        else:
+                            field['condition'] = None
+                            print(f"  - RESULT: Field {i} marked conditional but no valid conditions found")
+                            
+                    except ValueError:
+                        field['condition'] = None
+                        print(f"  - ERROR: Field {i} not found in conditional fields list!")
+                else:
+                    field['condition'] = None
+                    print(f"  - RESULT: Field {i} is NOT conditional (condition set to null)")
+                    
+                fields.append(field)
         
-        # Debug conditional fields data for EDIT
-        print(f"🔍 EDIT FORM SUBMISSION DEBUG:")
-        print(f"DEBUG EDIT - Total fields: {len(labels)}")
-        print(f"DEBUG EDIT - Labels: {labels}")
-        print(f"DEBUG EDIT - is_conditional_fields: {is_conditional_fields}")
-        print(f"DEBUG EDIT - condition_fields: {condition_fields}")
-        print(f"DEBUG EDIT - condition_operators: {condition_operators}")
-        print(f"DEBUG EDIT - condition_values: {condition_values}")
-        print(f"DEBUG EDIT - condition_logic: {condition_logic}")
-        
-        # Debug: show exactly which fields should have conditions
-        for i, conditional_field_idx in enumerate(is_conditional_fields):
-            if conditional_field_idx and int(conditional_field_idx) < len(labels):
-                field_name = labels[int(conditional_field_idx)]
-                print(f"🎯 EDIT Conditional field #{conditional_field_idx}: '{field_name}'")
-                if i < len(condition_fields):
-                    print(f"   ➜ Should depend on: '{condition_fields[i]}'")
-                if i < len(condition_operators):
-                    print(f"   ➜ Operator: '{condition_operators[i]}'")
-                if i < len(condition_values):
-                    print(f"   ➜ Value: '{condition_values[i]}'")
-                if i < len(condition_logic):
-                    print(f"   ➜ Logic: '{condition_logic[i]}'")
-                print()
-        
+        # Common validation that applies to both approaches
         if not title:
             flash('Form title is required.', 'danger')
             return redirect(url_for('project_detail', project_id=project_id))
-        if not labels:
+        if not fields:
             flash('At least one field is required.', 'danger')
             return redirect(url_for('project_detail', project_id=project_id))
-        fields = []
-        location_idx = 0
-        for i in range(len(labels)):
-            field = {
-                'label': labels[i].strip(),
-                'type': types[i],
-                'options': [opt.strip() for opt in options_list[i].split(',') if opt.strip()] if types[i] in ['dropdown', 'radio', 'checkbox'] else [],
-                'required': str(i) in required_fields
-            }
-            if types[i] in ['radio', 'checkbox']:
-                field['allow_other'] = str(i) in allow_other_fields
-            if labels[i] in ['Region', 'District', 'Ward'] and location_idx < len(location_identifiers):
-                field['location_field_identifier'] = location_identifiers[location_idx]
-                field['type'] = 'dropdown'
-                field['options'] = []
-                location_idx += 1
-            else:
-                field['location_field_identifier'] = None
             
-            # Add conditional logic if this field is conditional
-            is_in_conditional = str(i) in is_conditional_fields
-            
-            print(f"DEBUG EDIT - Field {i} ({labels[i]}):")
-            print(f"  - str(i) = '{str(i)}'")
-            print(f"  - is_conditional_fields = {is_conditional_fields}")
-            print(f"  - is '{str(i)}' in conditional list? {is_in_conditional}")
-            
-            if is_in_conditional:
-                # Collect ALL conditions for this field (multiple conditions support)
-                field_conditions = []
-                field_logic = 'OR'  # Default logic
-                
-                print(f"  - Collecting all conditions for field {i}")
-                
-                # Strategy: collect conditions starting from field index and continuing 
-                # until we hit a condition that belongs to the next conditional field
-                
-                # Find the position of this field in the conditional fields list
-                try:
-                    current_field_position = is_conditional_fields.index(str(i))
-                    print(f"  - Field {i} is at conditional position {current_field_position}")
-                    
-                    # Find the next conditional field to know where to stop
-                    next_conditional_field = None
-                    if current_field_position + 1 < len(is_conditional_fields):
-                        next_conditional_field = int(is_conditional_fields[current_field_position + 1])
-                        print(f"  - Next conditional field is {next_conditional_field}")
-                    
-                    # Start collecting conditions from current field index
-                    condition_idx = i
-                    while condition_idx < len(condition_fields):
-                        # Stop if we've reached the next conditional field's index
-                        if next_conditional_field is not None and condition_idx >= next_conditional_field:
-                            print(f"  - Stopping at index {condition_idx} (reached next field {next_conditional_field})")
-                            break
-                            
-                        # Check if this position has valid condition data
-                        if (condition_idx < len(condition_fields) and 
-                            condition_idx < len(condition_operators) and 
-                            condition_idx < len(condition_values)):
-                            
-                            dependent_field = condition_fields[condition_idx].strip()
-                            operator = condition_operators[condition_idx] if condition_idx < len(condition_operators) else 'equals'
-                            value = condition_values[condition_idx] if condition_idx < len(condition_values) else ''
-                            
-                            # Skip empty conditions
-                            if not dependent_field:
-                                condition_idx += 1
-                                continue
-                                
-                            # Add this condition to the field
-                            condition_rule = {
-                                'dependent_field': dependent_field,
-                                'operator': operator,
-                                'value': value
-                            }
-                            field_conditions.append(condition_rule)
-                            print(f"  - Added condition {len(field_conditions)}: {condition_rule}")
-                            
-                            # Get logic for this field (use the first logic we encounter)
-                            if condition_idx < len(condition_logic) and len(field_conditions) == 1:
-                                field_logic = condition_logic[condition_idx]
-                                print(f"  - Using logic: {field_logic}")
-                        
-                        condition_idx += 1
-                    
-                    # Create the final condition structure
-                    if field_conditions:
-                        if len(field_conditions) == 1:
-                            # Single condition - use backward compatible format
-                            field['condition'] = field_conditions[0]
-                            print(f"  - RESULT: Field {i} has single condition: {field['condition']}")
-                        else:
-                            # Multiple conditions - use new format with logic
-                            field['condition'] = {
-                                'logic': field_logic,
-                                'rules': field_conditions
-                            }
-                            print(f"  - RESULT: Field {i} has {len(field_conditions)} conditions with {field_logic} logic: {field['condition']}")
-                    else:
-                        field['condition'] = None
-                        print(f"  - RESULT: Field {i} marked conditional but no valid conditions found")
-                        
-                except ValueError:
-                    field['condition'] = None
-                    print(f"  - ERROR: Field {i} not found in conditional fields list!")
-            else:
-                field['condition'] = None
-                print(f"  - RESULT: Field {i} is NOT conditional (condition set to null)")
-                
-            fields.append(field)
+        # Serialize fields and update database
         serialized_fields = json.dumps(fields)
         update_data = {
             'title': title,
@@ -5899,14 +5954,14 @@ def admin_statistics():
         attended_query = attended_query.gte('created_at', date_filter['start'])
     if date_filter.get('end'):
         attended_query = attended_query.lt('created_at', date_filter['end'])
-        
+    
     try:
-            attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
-            for submission in attended_data:
-                if submission.get('patient_id'):
-                    attended_patients.add(submission['patient_id'])
+        attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
+        for submission in attended_data:
+            if submission.get('patient_id'):
+                attended_patients.add(submission['patient_id'])
     except Exception as e:
-            print(f"Error fetching attended submissions: {str(e)}")
+        print(f"Error fetching attended submissions: {str(e)}")
     
     total_patients_attended = len(attended_patients)
     print(f"Found {total_patients_attended} patients who received medical care (form submissions)")
@@ -7397,68 +7452,6 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
     ]))
     
     elements.append(summary_table)
-
-def get_field_value(data, possible_keys):
-    """Get field value from data using possible key variations"""
-    for key in possible_keys:
-        # Try exact match first
-        if key in data and data[key]:
-            return str(data[key]).strip()
-        
-        # Try case-insensitive match
-        for data_key, value in data.items():
-            if data_key.lower().strip() == key.lower().strip() and value:
-                return str(value).strip()
-        
-        # Try partial match for more flexible matching
-        for data_key, value in data.items():
-            if (key.lower().replace(' ', '').replace('(', '').replace(')', '') in 
-                data_key.lower().replace(' ', '').replace('(', '').replace(')', '') and value):
-                return str(value).strip()
-    
-    return None
-
-def build_treatment_plan(patient_data):
-    """Build treatment plan by collecting ALL available treatments and joining them"""
-    
-    treatments = []
-    
-    # Helper function to check if a value is a valid treatment (not a negative response)
-    def is_valid_treatment(value):
-        if not value or not value.strip():
-            return False
-        value_lower = value.strip().lower()
-        # Filter out negative responses
-        negative_responses = ['no', 'none', 'n/a', 'na', 'nil', 'not applicable', '-', 'not required', 'not needed']
-        return value_lower not in negative_responses
-    
-    # Priority 1: Surgical Procedure (if exists and not "No", add it)
-    surgical_procedure = get_field_value(patient_data, [
-        'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure'
-    ])
-    if is_valid_treatment(surgical_procedure):
-        treatments.append(surgical_procedure.strip())
-    
-    # Priority 2: Eyedrops & Tabs (show actual medicine name)
-    eyedrops_tabs = get_field_value(patient_data, [
-        'Treatment Plan (Eyedrops & Tabs)', 'treatment plan (eyedrops & tabs)', 
-        'eyedrops', 'tablets', 'medication'
-    ])
-    if is_valid_treatment(eyedrops_tabs):
-        treatments.append(eyedrops_tabs.strip())
-    
-    # Priority 3: Reading Glasses (just show "READING GLASS")
-    reading_glasses = get_field_value(patient_data, [
-        'Treatment Plan (Reading Glasses)', 'treatment plan (reading glasses)', 
-        'reading glasses', 'glasses'
-    ])
-    if is_valid_treatment(reading_glasses):
-        treatments.append("READING GLASS")
-    
-    # Join all treatments with " + " separator
-    return " + ".join(treatments) if treatments else ""
-
-# Correctly indented start of the main execution block
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False) # Set debug=False for production
+    app.run(host='0.0.0.0', port=port, debug=False)
