@@ -207,23 +207,7 @@
             </div>
 
             <!-- Help Section -->
-            <div class="mt-4 registration-help">
-                <div class="card bg-light border-0">
-                    <div class="card-body py-3 px-4">
-                        <div class="row align-items-center">
-                            <div class="col-md-auto">
-                                <i class="fas fa-lightbulb text-warning fa-lg"></i>
-                            </div>
-                            <div class="col">
-                                <small class="text-muted">
-                                    <strong>Tip:</strong> All required fields are marked with a red asterisk (*). 
-                                    Location fields cascade - select Region first, then District, then Ward.
-                                </small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+
         </div>
     </div>
 </div>
@@ -319,12 +303,15 @@
     border: 1px solid #dee2e6 !important;
     border-radius: 8px !important;
     box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
-    max-height: 250px !important;
+    max-height: 300px !important;
     overflow-y: auto !important;
     width: 100% !important;
     top: 100% !important;
     left: 0 !important;
     margin-top: 2px !important;
+    /* Ensure smooth scrolling */
+    scroll-behavior: smooth !important;
+    -webkit-overflow-scrolling: touch !important;
 }
 
 .choices.is-open .choices__list--dropdown {
@@ -596,6 +583,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 noChoicesText: 'No options available',
                 shouldSort: false,
                 searchPlaceholderValue: `Search ${el.name.toLowerCase()}...`,
+                removeItemButton: false,
+                duplicateItemsAllowed: false,
+                addItemFilter: null,
                 classNames: {
                     containerOuter: 'choices',
                     containerInner: 'choices__inner',

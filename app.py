@@ -2136,15 +2136,27 @@ def get_patient_data(patient_id):
     try:
         print(f"Fetching data for patient: {patient_id}")
         
-        # Get all submissions for this patient
+        # First, get registration data from centralized patients table
+        patient_response = supabase.table('patients').select('*').eq('patient_id', patient_id).execute()
+        registration_data = None
+        
+        if patient_response.data:
+            patient_record = patient_response.data[0]
+            registration_data = patient_record.get('data', {})
+            print(f"Found registration data for patient {patient_id}")
+        else:
+            print(f"No registration data found in patients table for patient {patient_id}")
+        
+        # Get all form submissions for this patient
         response = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))').eq('patient_id', patient_id).execute()
         
-        if not response.data:
+        # If no registration data and no form submissions, patient doesn't exist
+        if not registration_data and not response.data:
             print(f"No data found for patient {patient_id}")
             return jsonify({'error': 'Patient not found'}), 404
         
-        submissions = response.data
-        print(f"Number of submissions found: {len(submissions)}")
+        submissions = response.data if response.data else []
+        print(f"Number of form submissions found: {len(submissions)}")
         
         # Step 1: Get ordered forms for this patient - keep original order by creation date
         ordered_forms_data = []
@@ -2199,14 +2211,33 @@ def get_patient_data(patient_id):
         last_updated = {}
         
         # Sort submissions by date (newest first) to prioritize recent data
-        sorted_submissions = sorted(submissions, key=lambda s: s.get('created_at', ''), reverse=True)
+        sorted_submissions = sorted(submissions, key=lambda s: s.get('created_at', ''), reverse=True) if submissions else []
         
         for submission in sorted_submissions:
             form_id = submission.get('form_id')
             if submission.get('data') and form_id:
                 submission_date = submission.get('created_at')
+                print(f"DEBUG: Processing submission from form {form_id}, keys: {list(submission['data'].keys())}")
                 
                 for key, value in submission['data'].items():
+                    print(f"DEBUG: Processing field key: '{key}' (type: {type(key)})")
+                    
+                    # Skip the raw "registration" field since we show registration data separately
+                    if str(key).lower().strip() == 'registration':
+                        print(f"DEBUG: Skipping registration field: {key}")
+                        continue
+                    
+                    # Skip form IDs (36 char UUIDs with 4 dashes)    
+                    if len(str(key)) == 36 and str(key).count('-') == 4:
+                        print(f"DEBUG: Skipping form ID: {key}")
+                        continue
+                        
+                    # Double check - don't add registration or form ID fields to tracking
+                    if (str(key).lower().strip() == 'registration' or 
+                        (len(str(key)) == 36 and str(key).count('-') == 4)):
+                        print(f"DEBUG: Double-check skip for field: {key}")
+                        continue
+                        
                     normalized_key = key.lower().strip().replace(' ', '_')
                     all_fields.add(normalized_key)
                     
@@ -2232,6 +2263,38 @@ def get_patient_data(patient_id):
             {"field": "Patient ID", "value": patient_id}
         ]
         
+        # Add registration data first if available
+        if registration_data:
+            print(f"DEBUG: Registration data structure: {registration_data}")
+            
+            # Extract the nested registration fields if they exist
+            actual_registration_fields = registration_data.get('registration', {})
+            print(f"DEBUG: Actual registration fields: {actual_registration_fields}")
+            
+            if actual_registration_fields:
+                # Define the order for registration fields to match registration form
+                registration_field_order = ['Name', 'Age (Years)', 'Gender', 'Region', 'District', 'Ward', 'Phone Number']
+                
+                # Add registration fields in specified order
+                for field_label in registration_field_order:
+                    if field_label in actual_registration_fields and actual_registration_fields[field_label] is not None and actual_registration_fields[field_label] != '':
+                        ordered_data.append({
+                            "field": field_label,
+                            "value": actual_registration_fields[field_label]
+                        })
+                        print(f"DEBUG: Added registration field {field_label}: {actual_registration_fields[field_label]}")
+                
+                # Add any additional registration fields not in the standard order
+                for field_label, field_value in actual_registration_fields.items():
+                    if (field_label not in registration_field_order and 
+                        field_value is not None and 
+                        field_value != ''):
+                        ordered_data.append({
+                            "field": field_label,
+                            "value": field_value
+                        })
+                        print(f"DEBUG: Added additional registration field {field_label}: {field_value}")
+        
         # Process forms in their original order (by creation date)
         for form in ordered_forms_data:
             form_id = form['id']
@@ -2246,6 +2309,13 @@ def get_patient_data(patient_id):
                 for normalized_key in form_fields:
                     if normalized_key in data_by_field:
                         original_label = field_label_map.get(normalized_key, normalized_key)
+                        
+                        # Skip registration field and any field that looks like a form ID
+                        if (str(original_label).lower().strip() == 'registration' or 
+                            len(str(original_label)) == 36 and str(original_label).count('-') == 4):
+                            print(f"DEBUG: Skipping field during display: {original_label}")
+                            continue
+                            
                         ordered_data.append({
                             "field": original_label,
                             "value": data_by_field[normalized_key]
@@ -2256,6 +2326,13 @@ def get_patient_data(patient_id):
         for normalized_key in sorted(unknown_fields):
             if normalized_key in data_by_field:
                 original_label = field_label_map.get(normalized_key, normalized_key)
+                
+                # Skip registration field and any field that looks like a form ID
+                if (str(original_label).lower().strip() == 'registration' or 
+                    len(str(original_label)) == 36 and str(original_label).count('-') == 4):
+                    print(f"DEBUG: Skipping unknown field during display: {original_label}")
+                    continue
+                    
                 ordered_data.append({
                     "field": original_label,
                     "value": data_by_field[normalized_key]
