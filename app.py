@@ -2953,7 +2953,8 @@ def export_dataset():
             project_name = project_response.data[0]['name']
             filename = f"{project_name}_dataset"
     
-    if form_id:
+    # Only add form name to filename when filtering by specific form (no project_id)
+    if form_id and not project_id:
         form_response = supabase.table('forms').select('title').eq('id', form_id).execute()
         if form_response.data:
             form_title = form_response.data[0]['title']
@@ -4423,7 +4424,8 @@ def export_analytics():
             project_name = project_response.data[0]['name']
             filename = f"{project_name}_analytics"
     
-    if form_id:
+    # Only add form name to filename when filtering by specific form (no project_id)
+    if form_id and not project_id:
         form_response = supabase.table('forms').select('title').eq('id', form_id).execute()
         if form_response.data:
             form_title = form_response.data[0]['title']
