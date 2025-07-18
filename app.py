@@ -2537,12 +2537,17 @@ def export_dataset():
     # 1. Fetch Ordered Forms relevant to the filters
     ordered_forms_data = []
     forms_query = supabase.table('forms').select('*')
-    if form_id:
-        forms_query = forms_query.eq('id', form_id)
-    elif project_id:
+    if project_id:
+        # When project_id is provided, export ALL forms in that project (ignore form_id filter)
         forms_query = forms_query.eq('project_id', project_id).order('created_at', desc=False)
+        print(f"Export: Fetching ALL forms for project {project_id}")
+    elif form_id:
+        # Only use form_id filtering when no project_id is specified
+        forms_query = forms_query.eq('id', form_id)
+        print(f"Export: Fetching specific form {form_id}")
     else:
         forms_query = forms_query.order('project_id', desc=False).order('created_at', desc=False)
+        print(f"Export: Fetching all forms from all projects")
     
     ordered_forms_data = fetch_all_pages(forms_query, debug_name="export_forms")
 
@@ -3156,10 +3161,17 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
     # 1. Fetch Ordered Forms relevant to the filters
     ordered_forms_data = []
     forms_query = supabase.table('forms').select('*')
-    if form_id:
-        forms_query = forms_query.eq('id', form_id)
-    elif project_id:
+    if project_id:
+        # When project_id is provided, export ALL forms in that project (ignore form_id filter)
         forms_query = forms_query.eq('project_id', project_id).order('created_at', desc=False)
+        print(f"Export: Fetching ALL forms for project {project_id}")
+    elif form_id:
+        # Only use form_id filtering when no project_id is specified
+        forms_query = forms_query.eq('id', form_id)
+        print(f"Export: Fetching specific form {form_id}")
+    else:
+        forms_query = forms_query.order('project_id', desc=False).order('created_at', desc=False)
+        print(f"Export: Fetching all forms from all projects")
     
     forms_response = forms_query.execute()
     if forms_response.data:
