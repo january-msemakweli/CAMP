@@ -1688,16 +1688,12 @@ def dataset_view():
     
     print(f"Dataset view called with project_id: {project_id}, form_id: {form_id}, search: {search_term}")
     
-    # 1. Fetch Ordered Forms relevant to the filters
-    # We need to ensure registration forms come first, then other forms chronologically
+    # 1. Fetch Ordered Forms for field discovery
+    # ALWAYS get all forms in the project for proper field discovery and ordering
+    # Form filtering will be applied later to patients, not to field discovery
     ordered_forms_data = []
     
-    if form_id: # If a specific form is selected, only fetch that one
-        forms_query = supabase.table('forms').select('*').eq('id', form_id)
-        forms_response = forms_query.execute()
-        if forms_response.data:
-            ordered_forms_data = forms_response.data
-    elif project_id: # If a project is selected, fetch its forms with proper ordering
+    if project_id: # If a project is selected, fetch ALL its forms with proper ordering
         # Get all forms for this project using pagination
         forms_query = supabase.table('forms').select('*').eq('project_id', project_id)
         all_project_forms = fetch_all_pages(forms_query, debug_name=f"dataset_project_{project_id}_forms")
@@ -1718,6 +1714,29 @@ def dataset_view():
             
             # Combine: registration forms first, then other forms
             ordered_forms_data = registration_forms + other_forms
+    elif form_id: # If only form_id is provided without project_id, get that form's project
+        # Get the form to find its project, then get all forms in that project
+        form_query = supabase.table('forms').select('*, projects(*)').eq('id', form_id)
+        form_response = form_query.execute()
+        if form_response.data and form_response.data[0].get('project_id'):
+            form_project_id = form_response.data[0]['project_id']
+            forms_query = supabase.table('forms').select('*').eq('project_id', form_project_id)
+            all_project_forms = fetch_all_pages(forms_query, debug_name=f"dataset_form_project_{form_project_id}_forms")
+            if all_project_forms:
+                # Apply same ordering logic
+                registration_forms = []
+                other_forms = []
+                
+                for form in all_project_forms:
+                    if get_form_is_first(form.get('id')):
+                        registration_forms.append(form)
+                    else:
+                        other_forms.append(form)
+                
+                registration_forms.sort(key=lambda x: x.get('created_at', ''))
+                other_forms.sort(key=lambda x: x.get('created_at', ''))
+                
+                ordered_forms_data = registration_forms + other_forms
     else: # Otherwise fetch all forms, ordered by project then creation
         forms_query = supabase.table('forms').select('*').order('project_id', desc=False).order('created_at', desc=False)
         ordered_forms_data = fetch_all_pages(forms_query, debug_name="dataset_all_forms")
@@ -1791,19 +1810,17 @@ def dataset_view():
 
     # With centralized registration, we only need submissions from the selected project
 
-    # Modified query to get submissions even if no forms match the criteria
+    # Modified query to get submissions - for field discovery, we get ALL project submissions
+    # Form filtering will be applied later to preserve complete field structure
     query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
     
-    if submission_form_ids: 
-        # Filter by the forms we care about if we have matching forms
-        query = query.in_('form_id', submission_form_ids)
-    elif form_id:
-        # If a specific form is requested but not found in the system, use its ID directly
-        query = query.eq('form_id', form_id)
-    elif project_id:
-        # If filtering by project and no forms were found, try to match via the form's project_id in joined data
-        # This works if forms data is accessible via the join
+    if project_id:
+        # Always filter by project first to get all forms in the project for field discovery
         query = query.eq('forms.project_id', project_id)
+    elif submission_form_ids and not form_id: 
+        # Only filter by specific forms if no single form is selected AND we have form IDs
+        query = query.in_('form_id', submission_form_ids)
+    # NOTE: We removed the single form_id filtering here to preserve field discovery
         
     # Apply date filters if present
     if start_date:
@@ -1890,47 +1907,7 @@ def dataset_view():
             print(f"Alternative pagination approach failed: {str(e)}")
             print("Using original pagination results")
 
-    # 4. Filter submissions based on search term (if any)
-    if search_term:
-        try:
-            matching_patient_ids = set()
-            search_lower = search_term.lower()
-            
-            # First pass: find all patient IDs that have matching submissions
-            for sub in submissions:
-                # Check patient_id first
-                if search_lower in str(sub.get('patient_id', '')).lower():
-                    matching_patient_ids.add(sub.get('patient_id'))
-                    continue 
-                
-                # Only search in data if it exists and is a dictionary
-                if sub.get('data') and isinstance(sub['data'], dict):
-                    match_found = False
-                    for value in sub['data'].values():
-                        if isinstance(value, list):
-                            if any(search_lower in str(item).lower() for item in value if item is not None):
-                                match_found = True
-                                break
-                        elif value is not None and search_lower in str(value).lower():
-                            match_found = True
-                            break
-                    
-                    if match_found:
-                        matching_patient_ids.add(sub.get('patient_id'))
-            
-            # Second pass: get ALL submissions for matching patients
-            filtered_submissions = []
-            for sub in submissions:
-                if sub.get('patient_id') in matching_patient_ids:
-                    filtered_submissions.append(sub)
-            
-            submissions = filtered_submissions
-            print(f"Found {len(matching_patient_ids)} patients with matches for '{search_term}'")
-            print(f"Including {len(submissions)} total submissions for those patients")
-        except Exception as e:
-            print(f"Error during search filtering: {str(e)}")
-            # If search fails, fall back to using all submissions before search
-            print(f"Search failed, using all submissions")
+    # 4. Keep all submissions for field discovery (search filtering moved to later step)
     
     # 5. Group submissions by patient_id to build dataset
     patient_data = {}
@@ -2163,27 +2140,130 @@ def dataset_view():
     #         if 'created_at' in submission:
     #             submission['created_at'] = utc_to_eat(submission['created_at']).strftime('%Y-%m-%d %H:%M:%S')
 
+    # 10.5. Apply form filtering to patients (after field discovery, preserve field structure)
+    if form_id:
+        print(f"Applying form filter for form_id: {form_id}")
+        filtered_patient_data = {}
+        for patient_id, data in patient_data.items():
+            # Check if this patient has submissions from the selected form
+            has_form_submission = any(
+                submission.get('form_id') == form_id 
+                for submission in data.get('submissions', [])
+            )
+            if has_form_submission:
+                filtered_patient_data[patient_id] = data
+        
+        patient_data = filtered_patient_data
+        print(f"After form filtering: {len(patient_data)} patients remain (have submissions from selected form)")
+
+    # 10.6. Apply search filtering to patients (after field discovery, before final output)
+    if search_term:
+        try:
+            matching_patient_ids = set()
+            search_lower = search_term.lower()
+            
+            # ENHANCED SEARCH: First search in centralized registration data
+            print(f"Searching centralized registration data for: '{search_term}'")
+            try:
+                # Get all patient IDs that currently exist in our patient_data
+                current_patient_ids = list(patient_data.keys())
+                
+                if current_patient_ids:
+                    # Search through centralized registration data for these patients
+                    patients_query = supabase.table('patients').select('patient_id, data').in_('patient_id', current_patient_ids)
+                    patients_response = patients_query.execute()
+                    
+                    if patients_response.data:
+                        for patient_record in patients_response.data:
+                            patient_id = patient_record.get('patient_id')
+                            
+                            # Check patient_id first
+                            if search_lower in str(patient_id).lower():
+                                matching_patient_ids.add(patient_id)
+                                continue
+                            
+                            # Search in centralized registration data
+                            patient_data_record = patient_record.get('data', {})
+                            registration_data = patient_data_record.get('registration', {})
+                            
+                            if isinstance(registration_data, dict):
+                                match_found = False
+                                for value in registration_data.values():
+                                    if isinstance(value, list):
+                                        if any(search_lower in str(item).lower() for item in value if item is not None):
+                                            match_found = True
+                                            break
+                                    elif value is not None and search_lower in str(value).lower():
+                                        match_found = True
+                                        break
+                                
+                                if match_found:
+                                    matching_patient_ids.add(patient_id)
+                        
+                        print(f"Found {len(matching_patient_ids)} patients with matches in centralized registration data")
+                        
+            except Exception as e:
+                print(f"Error searching centralized registration data: {str(e)}")
+            
+            # Second pass: search in each patient's merged submission data
+            for patient_id, data in patient_data.items():
+                # Skip if already found in registration data
+                if patient_id in matching_patient_ids:
+                    continue
+                
+                # Check patient_id first (in case it wasn't found in centralized data)
+                if search_lower in str(patient_id).lower():
+                    matching_patient_ids.add(patient_id)
+                    continue 
+                
+                # Search in merged submission data
+                merged_data = data.get('merged_data', {})
+                if isinstance(merged_data, dict):
+                    match_found = False
+                    for value in merged_data.values():
+                        if isinstance(value, list):
+                            if any(search_lower in str(item).lower() for item in value if item is not None):
+                                match_found = True
+                                break
+                        elif value is not None and search_lower in str(value).lower():
+                            match_found = True
+                            break
+                    
+                    if match_found:
+                        matching_patient_ids.add(patient_id)
+            
+            # Filter patient_data to only include matching patients
+            filtered_patient_data = {}
+            for patient_id, data in patient_data.items():
+                if patient_id in matching_patient_ids:
+                    filtered_patient_data[patient_id] = data
+            
+            patient_data = filtered_patient_data
+            print(f"Found {len(matching_patient_ids)} patients with matches for '{search_term}'")
+            print(f"After search filtering: {len(patient_data)} patients remain")
+        except Exception as e:
+            print(f"Error during search filtering: {str(e)}")
+            # If search fails, fall back to using all patients
+            print(f"Search failed, keeping all {len(patient_data)} patients")
+
     # 11. Convert patient_data dictionary to patient_data_list for the template
-    # Modify this section to order the fields properly
+    # Respect the proper field ordering established in final_ordered_fields
     patient_data_list = []
     for patient_id, data in patient_data.items():
         if 'merged_data' not in data:
             continue
             
-        # 1. Start with patient ID
+        # Start with patient ID
         patient_row = {'patient_id': patient_id}
         
-        # 2. Add registration form fields first
-        for field in ordered_fields:
+        # Add all fields in their proper order (final_ordered_fields already has correct ordering)
+        for field in final_ordered_fields:
             normalized_key = field.lower().strip().replace(' ', '_')
-            if normalized_key in registration_form_fields and normalized_key in data['merged_data']:
+            if normalized_key in data['merged_data']:
                 patient_row[field] = data['merged_data'][normalized_key]
-        
-        # 3. Add all other fields
-        for field in ordered_fields:
-            normalized_key = field.lower().strip().replace(' ', '_')
-            if normalized_key not in registration_form_fields and normalized_key in data['merged_data']:
-                patient_row[field] = data['merged_data'][normalized_key]
+            else:
+                # Add empty value for fields that don't have data
+                patient_row[field] = ''
         
         patient_data_list.append(patient_row)
 
@@ -2707,37 +2787,7 @@ def export_dataset():
             print(f"Export: Alternative pagination approach failed: {str(e)}")
             print("Export: Using original pagination results")
 
-    # 4. Filter submissions based on search term (if any)
-    if search_term:
-        try:
-            filtered_submissions = []
-            search_lower = search_term.lower()
-            for sub in submissions:
-                if search_lower in str(sub.get('patient_id', '')).lower():
-                    filtered_submissions.append(sub)
-                    continue 
-                
-                # Only search in data if it exists and is a dictionary
-                if sub.get('data') and isinstance(sub['data'], dict):
-                    match_found = False
-                    for value in sub['data'].values():
-                        if isinstance(value, list):
-                            if any(search_lower in str(item).lower() for item in value if item is not None):
-                                match_found = True
-                                break
-                        elif value is not None and search_lower in str(value).lower():
-                            match_found = True
-                            break
-                    
-                    if match_found:
-                        filtered_submissions.append(sub)
-            
-            submissions = filtered_submissions
-            print(f"Export: Found {len(submissions)} submissions after search for '{search_term}'")
-        except Exception as e:
-            print(f"Export: Error during search filtering: {str(e)}")
-            # If search fails, fall back to using all submissions
-            print(f"Export: Search failed, using all {len(submissions)} submissions")
+    # 4. Keep all submissions for field discovery (search filtering moved to later step)
     
     # 5. Group submissions by patient_id
     patient_data = {}
@@ -2891,8 +2941,114 @@ def export_dataset():
         
         data['merged_data'] = merged_data
 
+    # 9.4. Apply form filtering to patients (after field discovery, preserve field structure)
+    if form_id:
+        print(f"Export: Applying form filter for form_id: {form_id}")
+        filtered_patient_data = {}
+        for patient_id, data in patient_data.items():
+            # Check if this patient has submissions from the selected form
+            has_form_submission = any(
+                submission.get('form_id') == form_id 
+                for submission in data.get('submissions', [])
+            )
+            if has_form_submission:
+                filtered_patient_data[patient_id] = data
+        
+        patient_data = filtered_patient_data
+        print(f"Export: After form filtering: {len(patient_data)} patients remain (have submissions from selected form)")
+
+    # 9.5. Apply search filtering to patients (after field discovery, before final export)
+    if search_term:
+        try:
+            matching_patient_ids = set()
+            search_lower = search_term.lower()
+            
+            # ENHANCED SEARCH: First search in centralized registration data
+            print(f"Export: Searching centralized registration data for: '{search_term}'")
+            try:
+                # Get all patient IDs that currently exist in our patient_data
+                current_patient_ids = list(patient_data.keys())
+                
+                if current_patient_ids:
+                    # Search through centralized registration data for these patients
+                    patients_query = supabase.table('patients').select('patient_id, data').in_('patient_id', current_patient_ids)
+                    patients_response = patients_query.execute()
+                    
+                    if patients_response.data:
+                        for patient_record in patients_response.data:
+                            patient_id = patient_record.get('patient_id')
+                            
+                            # Check patient_id first
+                            if search_lower in str(patient_id).lower():
+                                matching_patient_ids.add(patient_id)
+                                continue
+                            
+                            # Search in centralized registration data
+                            patient_data_record = patient_record.get('data', {})
+                            registration_data = patient_data_record.get('registration', {})
+                            
+                            if isinstance(registration_data, dict):
+                                match_found = False
+                                for value in registration_data.values():
+                                    if isinstance(value, list):
+                                        if any(search_lower in str(item).lower() for item in value if item is not None):
+                                            match_found = True
+                                            break
+                                    elif value is not None and search_lower in str(value).lower():
+                                        match_found = True
+                                        break
+                                
+                                if match_found:
+                                    matching_patient_ids.add(patient_id)
+                        
+                        print(f"Export: Found {len(matching_patient_ids)} patients with matches in centralized registration data")
+                        
+            except Exception as e:
+                print(f"Export: Error searching centralized registration data: {str(e)}")
+            
+            # Second pass: search in each patient's merged submission data
+            for patient_id, data in patient_data.items():
+                # Skip if already found in registration data
+                if patient_id in matching_patient_ids:
+                    continue
+                
+                # Check patient_id first (in case it wasn't found in centralized data)
+                if search_lower in str(patient_id).lower():
+                    matching_patient_ids.add(patient_id)
+                    continue 
+                
+                # Search in merged submission data
+                merged_data = data.get('merged_data', {})
+                if isinstance(merged_data, dict):
+                    match_found = False
+                    for value in merged_data.values():
+                        if isinstance(value, list):
+                            if any(search_lower in str(item).lower() for item in value if item is not None):
+                                match_found = True
+                                break
+                        elif value is not None and search_lower in str(value).lower():
+                            match_found = True
+                            break
+                    
+                    if match_found:
+                        matching_patient_ids.add(patient_id)
+            
+            # Filter patient_data to only include matching patients
+            filtered_patient_data = {}
+            for patient_id, data in patient_data.items():
+                if patient_id in matching_patient_ids:
+                    filtered_patient_data[patient_id] = data
+            
+            patient_data = filtered_patient_data
+            print(f"Export: Found {len(matching_patient_ids)} patients with matches for '{search_term}'")
+            print(f"Export: After search filtering: {len(patient_data)} patients remain")
+        except Exception as e:
+            print(f"Export: Error during search filtering: {str(e)}")
+            # If search fails, fall back to using all patients
+            print(f"Export: Search failed, keeping all {len(patient_data)} patients")
+
     # 10. Convert patient_data dictionary to list for export
-    # This follows the exact same pattern as dataset_view
+    # Respect the proper field ordering established in final_ordered_fields
     patient_data_list = []
     for patient_id, data in patient_data.items():
         if 'merged_data' not in data:
@@ -2901,23 +3057,14 @@ def export_dataset():
         # Start with patient ID
         patient_row = {'patient_id': patient_id}
         
-        # Add registration form fields first
-        for field in ordered_fields:
-            normalized_key = field.lower().strip().replace(' ', '_')
-            if normalized_key in registration_form_fields and normalized_key in data['merged_data']:
-                patient_row[field] = data['merged_data'][normalized_key]
-        
-        # Add all other fields
-        for field in ordered_fields:
-            normalized_key = field.lower().strip().replace(' ', '_')
-            if normalized_key not in registration_form_fields and normalized_key in data['merged_data']:
-                patient_row[field] = data['merged_data'][normalized_key]
-                
-        # Add any extra fields not in ordered_fields
-        for field in extra_field_labels:
+        # Add all fields in their proper order (final_ordered_fields already has correct ordering)
+        for field in final_ordered_fields:
             normalized_key = field.lower().strip().replace(' ', '_')
             if normalized_key in data['merged_data']:
                 patient_row[field] = data['merged_data'][normalized_key]
+            else:
+                # Add empty value for fields that don't have data
+                patient_row[field] = ''
         
         patient_data_list.append(patient_row)
     
