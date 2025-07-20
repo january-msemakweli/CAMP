@@ -327,16 +327,6 @@
                     </label>
                     {% endif %}
                 </div>
-                
-                {% if field.options|length >= 40 %}
-                <!-- Message for large option sets -->
-                <div class="large-options-message" data-field-index="{{ loop.index }}">
-                    <div class="text-center text-muted p-3">
-                        <i class="fas fa-search me-2"></i>
-                        Start typing in the search box above to see available options
-                    </div>
-                </div>
-                {% endif %}
             </div>
                         {% endif %}
                     </div>
@@ -1526,8 +1516,10 @@ function initializeValidationStates() {
         const optionsContainer = group.querySelector('.checkbox-options-container');
         
         if (totalOptions >= 30 && optionsContainer) {
-            // For large option sets, disable validation initially since options are hidden
-            disableValidationForHiddenOptions(optionsContainer);
+            // For large option sets, show only selected options initially
+            optionsContainer.style.display = 'block';
+            showSelectedOptionsOnly(optionsContainer);
+            enableValidationForSelectedOptions(optionsContainer);
         }
     });
 }
@@ -1556,33 +1548,31 @@ function initializeCheckboxSearch() {
                 return;
             }
             
+            // Store search input reference for checkbox change handlers
+            const currentSearchInput = searchInput;
+            
             searchInput.addEventListener('input', function() {
                 const searchTerm = this.value.toLowerCase().trim();
                 
                 if (totalOptions >= 30) {
                     // For large option sets (30+)
                     if (searchTerm.length > 0) {
-                        // Show options container and hide message when searching
+                        // Show options container when searching
                         optionsContainer.style.display = 'block';
-                        if (largeOptionsMessage) {
-                            largeOptionsMessage.style.display = 'none';
-                        }
                         filterCheckboxOptions(optionsContainer, searchTerm);
                         // Re-enable validation for visible options
                         enableValidationForVisibleOptions(optionsContainer);
                     } else {
-                        // Hide options container and show message when not searching
-                        optionsContainer.style.display = 'none';
-                        if (largeOptionsMessage) {
-                            largeOptionsMessage.style.display = 'block';
-                        }
+                        // When search is empty, show selected options only
+                        optionsContainer.style.display = 'block';
+                        showSelectedOptionsOnly(optionsContainer);
                         // Clear any no-results messages
                         const noResultsMsg = group.querySelector('.no-results-message');
                         if (noResultsMsg) {
                             noResultsMsg.style.display = 'none';
                         }
-                        // Disable validation for hidden options
-                        disableValidationForHiddenOptions(optionsContainer);
+                        // Enable validation for selected options
+                        enableValidationForSelectedOptions(optionsContainer);
                     }
                 } else {
                     // For smaller option sets (< 30) - normal behavior
@@ -1590,6 +1580,21 @@ function initializeCheckboxSearch() {
                     enableValidationForVisibleOptions(optionsContainer);
                 }
             });
+            
+            // Add change listeners to all checkboxes in this group for large option sets
+            if (totalOptions >= 30) {
+                const checkboxes = optionsContainer.querySelectorAll('input[type="checkbox"]');
+                checkboxes.forEach(checkbox => {
+                    checkbox.addEventListener('change', function() {
+                        // If search box is empty, update the display to show/hide based on selection
+                        const searchTerm = currentSearchInput.value.toLowerCase().trim();
+                        if (searchTerm.length === 0) {
+                            showSelectedOptionsOnly(optionsContainer);
+                            enableValidationForSelectedOptions(optionsContainer);
+                        }
+                    });
+                });
+            }
         } catch (error) {
             console.log('Error initializing checkbox search for input:', error);
         }
@@ -1630,6 +1635,68 @@ function filterCheckboxOptions(container, searchTerm) {
             noResultsMsg.style.display = 'none';
         }
     }
+}
+
+function showSelectedOptionsOnly(container) {
+    if (!container) {
+        console.log('Container is null in showSelectedOptionsOnly');
+        return;
+    }
+    
+    const options = container.querySelectorAll('.checkbox-option');
+    let selectedCount = 0;
+    
+    options.forEach(option => {
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        if (checkbox && checkbox.checked) {
+            option.classList.remove('hidden');
+            selectedCount++;
+        } else {
+            option.classList.add('hidden');
+        }
+    });
+    
+    // Handle "no selected options" message
+    if (container.parentNode) {
+        let noResultsMsg = container.parentNode.querySelector('.no-results-message');
+        if (selectedCount === 0) {
+            if (!noResultsMsg) {
+                noResultsMsg = document.createElement('div');
+                noResultsMsg.className = 'no-results-message';
+                noResultsMsg.textContent = 'No options selected. Start typing to search for options.';
+                container.parentNode.insertBefore(noResultsMsg, container.nextSibling);
+            } else {
+                noResultsMsg.textContent = 'No options selected. Start typing to search for options.';
+            }
+            noResultsMsg.style.display = 'block';
+        } else if (noResultsMsg) {
+            noResultsMsg.style.display = 'none';
+        }
+    }
+}
+
+function enableValidationForSelectedOptions(container) {
+    if (!container) return;
+    
+    // First disable validation for all options
+    const allInputs = container.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+    allInputs.forEach(input => {
+        // Store original required state
+        if (input.hasAttribute('required')) {
+            input.setAttribute('data-originally-required', 'true');
+        }
+        // Remove required attribute to prevent validation errors
+        input.removeAttribute('required');
+    });
+    
+    // Then enable validation for selected options only
+    const selectedInputs = container.querySelectorAll('.checkbox-option:not(.hidden) input[type="checkbox"]:checked, .checkbox-option:not(.hidden) input[type="radio"]:checked');
+    selectedInputs.forEach(input => {
+        // Restore required attribute if it was originally required
+        if (input.getAttribute('data-originally-required') === 'true') {
+            input.setAttribute('required', '');
+        }
+    });
 }
 
 function disableValidationForHiddenOptions(container) {
