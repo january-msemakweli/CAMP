@@ -37,6 +37,12 @@ EAT = timezone(timedelta(hours=3))
 # Load environment variables
 load_dotenv()
 
+# Validate required environment variables
+required_env_vars = ['SECRET_KEY', 'SUPABASE_URL', 'SUPABASE_KEY']
+missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+if missing_vars:
+    raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+
 def fetch_all_pages(query, page_size=1000, debug_name="query"):
     """
     Fetch all pages of data from a Supabase query to handle pagination.
@@ -280,6 +286,10 @@ def load_user(user_id):
         if response.data:
             user_data = response.data[0]
             print(f"User found: {user_data['username']}")
+            # Check if user is still approved
+            if not user_data.get('is_approved', False):
+                print(f"User {user_data['username']} is no longer approved")
+                return None
             return User(
                 id=user_data['id'],
                 username=user_data['username'],
