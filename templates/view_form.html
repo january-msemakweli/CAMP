@@ -817,7 +817,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- ADDED: Function to fetch and pre-fill answers ---
     function fetchAndPrefillAnswers(formId, patientId) {
-        fetch(`/api/form/${formId}/answers/${patientId}`)
+        return fetch(`/api/form/${formId}/answers/${patientId}`)
             .then(response => response.json())
             .then(data => {
                 if (!data || typeof data !== 'object') return;
@@ -904,6 +904,18 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
                 });
+
+                // --- CRITICAL: Check conditional fields after all data is prefilled ---
+                setTimeout(() => {
+                    console.log('🔄 Checking conditional fields after prefilling data...');
+                    checkConditionalFields();
+                    
+                    // Also update checkbox search displays for large option sets
+                    updateCheckboxSearchDisplaysAfterPrefill();
+                }, 200); // Give time for all field updates to complete
+            })
+            .catch(error => {
+                console.error('Error fetching and prefilling answers:', error);
             });
     }
 
@@ -919,16 +931,19 @@ document.addEventListener('DOMContentLoaded', function() {
         searchResultsContainer.innerHTML = '';
         selectedDisplay.style.display = 'flex'; // Ensure display is flex
         selectedValueSpan.textContent = patientId;
+        
         // --- ADDED: Fetch and prefill answers ---
         const formId = dataEntryForm.getAttribute('data-form-id');
         if (formId && patientId) {
-            fetchAndPrefillAnswers(formId, patientId);
+            fetchAndPrefillAnswers(formId, patientId).then(() => {
+                console.log('✅ Prefilling complete, form is ready');
+            });
+        } else {
+            // If no prefilling needed, still check conditional fields
+            setTimeout(() => {
+                checkConditionalFields();
+            }, 100);
         }
-        
-        // Check conditional fields after form is activated
-        setTimeout(() => {
-            checkConditionalFields();
-        }, 100);
     }
 
     // Function to reset the workflow UI
@@ -1695,6 +1710,28 @@ function enableValidationForSelectedOptions(container) {
         // Restore required attribute if it was originally required
         if (input.getAttribute('data-originally-required') === 'true') {
             input.setAttribute('required', '');
+        }
+    });
+}
+
+function updateCheckboxSearchDisplaysAfterPrefill() {
+    // Update all large checkbox option sets to show selected options after prefilling
+    const checkboxGroups = document.querySelectorAll('.custom-options-group');
+    
+    checkboxGroups.forEach(group => {
+        const totalOptions = parseInt(group.getAttribute('data-total-options')) || 0;
+        const optionsContainer = group.querySelector('.checkbox-options-container');
+        const searchInput = group.querySelector('.checkbox-search');
+        
+        // Only update large option sets (30+) that have no search text entered
+        if (totalOptions >= 30 && optionsContainer && searchInput) {
+            const searchTerm = searchInput.value.toLowerCase().trim();
+            
+            // If search box is empty, show only selected options
+            if (searchTerm.length === 0) {
+                showSelectedOptionsOnly(optionsContainer);
+                enableValidationForSelectedOptions(optionsContainer);
+            }
         }
     });
 }
