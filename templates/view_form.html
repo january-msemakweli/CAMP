@@ -266,8 +266,8 @@
                             </select>
                         {% elif field.type == 'text' %}
                             <input type="text" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" {% if field.required %}required{% endif %}>
-                        {% elif field.type == 'number' %}
-                            <input type="number" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" {% if field.required %}required{% endif %}>
+                                {% elif field.type == 'number' %}
+            <input type="number" step="any" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" {% if field.required %}required{% endif %}>
                         {% elif field.type == 'date' %}
                             <input type="date" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" {% if field.required %}required{% endif %}>
                         {% elif field.type == 'dropdown' %}
