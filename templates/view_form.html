@@ -1530,7 +1530,7 @@ function initializeValidationStates() {
         const totalOptions = parseInt(group.getAttribute('data-total-options')) || 0;
         const optionsContainer = group.querySelector('.checkbox-options-container');
         
-        if (totalOptions >= 30 && optionsContainer) {
+        if (totalOptions >= 40 && optionsContainer) {
             // For large option sets, show only selected options initially
             optionsContainer.style.display = 'block';
             showSelectedOptionsOnly(optionsContainer);
@@ -1569,8 +1569,8 @@ function initializeCheckboxSearch() {
             searchInput.addEventListener('input', function() {
                 const searchTerm = this.value.toLowerCase().trim();
                 
-                if (totalOptions >= 30) {
-                    // For large option sets (30+)
+                if (totalOptions >= 40) {
+                    // For large option sets (40+)
                     if (searchTerm.length > 0) {
                         // Show options container when searching
                         optionsContainer.style.display = 'block';
@@ -1597,7 +1597,7 @@ function initializeCheckboxSearch() {
             });
             
             // Add change listeners to all checkboxes in this group for large option sets
-            if (totalOptions >= 30) {
+            if (totalOptions >= 40) {
                 const checkboxes = optionsContainer.querySelectorAll('input[type="checkbox"]');
                 checkboxes.forEach(checkbox => {
                     checkbox.addEventListener('change', function() {
@@ -1723,8 +1723,8 @@ function updateCheckboxSearchDisplaysAfterPrefill() {
         const optionsContainer = group.querySelector('.checkbox-options-container');
         const searchInput = group.querySelector('.checkbox-search');
         
-        // Only update large option sets (30+) that have no search text entered
-        if (totalOptions >= 30 && optionsContainer && searchInput) {
+        // Only update large option sets (40+) that have no search text entered
+        if (totalOptions >= 40 && optionsContainer && searchInput) {
             const searchTerm = searchInput.value.toLowerCase().trim();
             
             // If search box is empty, show only selected options
