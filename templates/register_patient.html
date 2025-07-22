@@ -306,12 +306,25 @@
     max-height: 300px !important;
     overflow-y: auto !important;
     width: 100% !important;
-    top: 100% !important;
     left: 0 !important;
-    margin-top: 2px !important;
     /* Ensure smooth scrolling */
     scroll-behavior: smooth !important;
     -webkit-overflow-scrolling: touch !important;
+}
+
+/* Dropdown positioning - default (downward) */
+.choices:not(.is-flipped) .choices__list--dropdown {
+    top: 100% !important;
+    margin-top: 2px !important;
+    margin-bottom: 0 !important;
+}
+
+/* Dropdown positioning - flipped (upward) */
+.choices.is-flipped .choices__list--dropdown {
+    bottom: 100% !important;
+    top: auto !important;
+    margin-top: 0 !important;
+    margin-bottom: 2px !important;
 }
 
 .choices.is-open .choices__list--dropdown {
@@ -349,6 +362,27 @@
 
 .row {
     overflow: visible !important;
+}
+
+/* Specific fixes for registration page containers */
+.registration-page .container-fluid,
+.registration-page .row,
+.registration-page .col-xl-8,
+.registration-page .col-lg-10 {
+    overflow: visible !important;
+}
+
+/* Ensure location section doesn't clip upward dropdowns */
+.card.border-success .card-body {
+    position: relative !important;
+    overflow: visible !important;
+    padding-bottom: 1.5rem !important; /* Extra space for flipped dropdowns */
+}
+
+.card.border-success {
+    position: relative !important;
+    overflow: visible !important;
+    margin-bottom: 2rem !important; /* Extra margin to accommodate upward dropdowns */
 }
 
 /* Additional stacking context fixes */
@@ -586,6 +620,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 removeItemButton: false,
                 duplicateItemsAllowed: false,
                 addItemFilter: null,
+                position: 'auto', // Automatically flip dropdown direction based on available space
+                flip: true, // Allow flipping when there's insufficient space
                 classNames: {
                     containerOuter: 'choices',
                     containerInner: 'choices__inner',
@@ -659,10 +695,11 @@ document.addEventListener('DOMContentLoaded', function() {
     function populateDropdown(dropdown, options) {
         if (!dropdown || !dropdown.choicesInstance) return;
         
-        // Show loading state briefly
-        dropdown.choicesInstance.setChoices([{value: '', label: 'Loading...', disabled: true}], 'value', 'label', true);
+        // Show loading state with spinner
+        dropdown.choicesInstance.setChoices([{value: '', label: '⟳ Loading options...', disabled: true}], 'value', 'label', true);
         
-        setTimeout(() => {
+        // Use requestAnimationFrame for smoother updates
+        requestAnimationFrame(() => {
             dropdown.choicesInstance.clearStore();
             dropdown.choicesInstance.setChoices(
                 options.map(option => ({ value: option, label: option })),
@@ -671,7 +708,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 false
             );
             dropdown.choicesInstance.enable();
-        }, 150);
+            
+            // Brief visual feedback
+            const choicesContainer = dropdown.closest('.choices');
+            if (choicesContainer) {
+                choicesContainer.style.transition = 'border-color 0.3s ease';
+                choicesContainer.style.borderColor = '#28a745';
+                setTimeout(() => {
+                    choicesContainer.style.borderColor = '';
+                }, 300);
+            }
+        });
     }
 
     function resetDropdown(dropdown, placeholder = 'Select option') {
