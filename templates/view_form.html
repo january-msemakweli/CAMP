@@ -266,7 +266,7 @@
                             </select>
                         {% elif field.type == 'text' %}
                             <input type="text" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" {% if field.required %}required{% endif %}>
-                                {% elif field.type == 'number' %}
+                        {% elif field.type == 'number' %}
             <input type="number" step="any" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" {% if field.required %}required{% endif %}>
                         {% elif field.type == 'date' %}
                             <input type="date" class="form-control" id="field-{{ loop.index }}" name="{{ field.label }}" {% if field.required %}required{% endif %}>
@@ -471,7 +471,11 @@ function displayPatientPreview(patientId) {
     // previewCard.style.display = 'block'; 
     previewBody.innerHTML = '<p class="text-center text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading preview...</p>';
 
-    fetch(`/api/patient_preview/${patientId}`)
+    // Get the project ID from the current form context to filter preview by project
+    const projectId = '{{ project.id }}';
+    const url = projectId ? `/api/patient_preview/${patientId}?project_id=${projectId}` : `/api/patient_preview/${patientId}`;
+
+    fetch(url)
         .then(response => {
             if (!response.ok) {
                 if (response.status === 404) {

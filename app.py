@@ -1943,11 +1943,12 @@ def dataset_view():
             }
         
         # Only add submissions to the patient record if they're from the selected project or no project filter is active
-        patient_data[patient_id]['submissions'].append(submission)
-        
-        # SIMPLIFIED: Mark if this submission belongs to the selected project (regardless of registration status)
         if should_process_fields:
+            patient_data[patient_id]['submissions'].append(submission)
             patient_data[patient_id]['has_project_submissions'] = True
+            print(f"Dataset: Including submission from form {submission_form_id} for patient {patient_id} in project {project_id}")
+        else:
+            print(f"Dataset: Excluding submission from form {submission_form_id} for patient {patient_id} - not in project {project_id}")
         
         # Collect all unique field keys from actual data, but only if they belong to the selected project
         if submission.get('data') and should_process_fields:
@@ -2819,11 +2820,13 @@ def export_dataset():
                 'has_project_submissions': False
             }
         
-        patient_data[patient_id]['submissions'].append(submission)
-        
-        # SIMPLIFIED: Mark if this submission belongs to the selected project (regardless of registration status)
+        # Only include submissions that belong to the selected project (or if no project filter)
         if should_process_fields:
+            patient_data[patient_id]['submissions'].append(submission)
             patient_data[patient_id]['has_project_submissions'] = True
+            print(f"Export: Including submission from form {submission_form_id} for patient {patient_id} in project {project_id}")
+        else:
+            print(f"Export: Excluding submission from form {submission_form_id} for patient {patient_id} - not in project {project_id}")
         
         if submission.get('data') and should_process_fields:
             for key in submission['data'].keys():
@@ -3467,11 +3470,13 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
                 'has_project_submissions': False
             }
         
-        patient_data[patient_id]['submissions'].append(submission)
-        
-        # SIMPLIFIED: Mark if this submission belongs to the selected project (regardless of registration status)
+        # Only include submissions that belong to the selected project (or if no project filter)
         if should_process_fields:
+            patient_data[patient_id]['submissions'].append(submission)
             patient_data[patient_id]['has_project_submissions'] = True
+            print(f"Analytics: Including submission from form {submission_form_id} for patient {patient_id} in project {project_id}")
+        else:
+            print(f"Analytics: Excluding submission from form {submission_form_id} for patient {patient_id} - not in project {project_id}")
         
         if submission.get('data') and should_process_fields:
             for key in submission['data'].keys():
@@ -5373,8 +5378,10 @@ def search_patient_id():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/patient_preview/<patient_id>')
-@login_required
+@login_required  
 def get_patient_preview(patient_id):
+    # Get optional project_id parameter to filter forms by project
+    project_id = request.args.get('project_id')
     try:
         # Get patient data from patients table
         patient_response = supabase.table('patients').select('*').eq('patient_id', patient_id).execute()
@@ -5412,12 +5419,21 @@ def get_patient_preview(patient_id):
                 except Exception as e:
                     print(f"Error converting timestamp: {str(e)}")
             
-            # Group form data by form ID
+            # Group form data by form ID, filtered by project if specified
             for submission in submissions:
                 form = submission.get('forms', {})
                 form_id = form.get('id')
+                form_project_id = form.get('project_id')
+                
                 if not form_id:
                     continue
+                
+                # If project filtering is active, only include forms from the specified project
+                if project_id and form_project_id != project_id:
+                    print(f"Patient preview (legacy): Excluding form {form_id} (project {form_project_id}) - not in target project {project_id}")
+                    continue
+                
+                print(f"Patient preview (legacy): Including form {form_id} from project {form_project_id}")
                 
                 # Create form details entry if we haven't seen this form before
                 if form_id not in result['form_details']:
@@ -5470,12 +5486,28 @@ def get_patient_preview(patient_id):
             except Exception as e:
                 print(f"Error converting timestamp: {str(e)}")
         
-        # Get form details for each form ID in the patient data
+        # Get form details for each form ID in the patient data, filtered by project if specified
         form_ids = patient.get('data', {}).keys()
+        
+        # If project_id is specified, get all form IDs that belong to that project for filtering
+        project_form_ids = set()
+        if project_id:
+            try:
+                project_forms_response = supabase.table('forms').select('id').eq('project_id', project_id).execute()
+                if project_forms_response.data:
+                    project_form_ids = {form['id'] for form in project_forms_response.data}
+                    print(f"Patient preview: Filtering to show only forms from project {project_id}: {project_form_ids}")
+            except Exception as e:
+                print(f"Error fetching project forms for filtering: {str(e)}")
+        
+        # Create filtered patient data and form details based on project
+        filtered_patient_data = {}
+        
         for form_id in form_ids:
-            # Handle special case for centralized registration data
+            # Handle special case for centralized registration data (always include)
             if form_id == 'registration':
-                # Create synthetic form details for registration data
+                # Always include registration data
+                filtered_patient_data['registration'] = patient.get('data', {}).get('registration', {})
                 result['form_details']['registration'] = {
                     'title': 'Patient Registration',
                     'field_order': [
@@ -5490,11 +5522,20 @@ def get_patient_preview(patient_id):
                 }
                 continue
             
-            # Handle regular form IDs
+            # Handle regular form IDs - filter by project if specified
             form_response = supabase.table('forms').select('id, title, fields, project_id, projects(name)').eq('id', form_id).execute()
             
             if form_response.data:
                 form = form_response.data[0]
+                form_project_id = form.get('project_id')
+                
+                # If project filtering is active, only include forms from the specified project
+                if project_id and form_project_id != project_id:
+                    print(f"Patient preview: Excluding form {form_id} (project {form_project_id}) - not in target project {project_id}")
+                    continue
+                
+                # Include this form's data
+                filtered_patient_data[form_id] = patient.get('data', {}).get(form_id, {})
                 
                 # Add form details to the form_details map
                 result['form_details'][form_id] = {
@@ -5514,6 +5555,11 @@ def get_patient_preview(patient_id):
                     if isinstance(fields_data, list):
                         field_order = [field.get('label') for field in fields_data if 'label' in field]
                         result['form_details'][form_id]['field_order'] = field_order
+                        
+                print(f"Patient preview: Including form {form_id} from project {form_project_id}")
+        
+        # Update the patient record data to only include filtered forms
+        result['patient_record']['data'] = filtered_patient_data
         
         return jsonify(result)
         
