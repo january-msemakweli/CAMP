@@ -6705,14 +6705,28 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
             
             # Handle ALL DOCTORS case or specific doctor
             if doctor_name == "ALL DOCTORS":
-                # Include all patients regardless of doctor
-                patients_with_doctor.add(patient_id)
+                # For ALL DOCTORS, only include patients who have complete, meaningful data
+                # Check if this submission has essential data (name, age, or diagnosis)
+                has_essential_data = False
+                for key, value in submission['data'].items():
+                    key_lower = key.lower().strip()
+                    if (value and str(value).strip() and 
+                        any(essential in key_lower for essential in ['name', 'age', 'diagnosis', 'gender'])):
+                        has_essential_data = True
+                        break
+                
+                if has_essential_data:
+                    patients_with_doctor.add(patient_id)
+                    print(f"Report: Including patient {patient_id} for ALL DOCTORS (has essential data)")
+                else:
+                    print(f"Report: Excluding patient {patient_id} for ALL DOCTORS (no essential data)")
             else:
                 # Check if this submission has the specified doctor
                 for key, value in submission['data'].items():
                     if (key.lower().replace(' ', '').replace("'", '') in ['doctorsname', 'doctorname', 'doctor'] 
                         and value and str(value).strip().lower() == doctor_name.lower()):
                         patients_with_doctor.add(patient_id)
+                        print(f"Report: Including patient {patient_id} for doctor {doctor_name}")
                         break
         
         # Now fetch centralized registration data for all patients and merge it
@@ -6751,6 +6765,102 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
     except Exception as e:
         print(f"Error getting patients for report: {str(e)}")
         return []
+
+def get_field_value(patient_data, field_names):
+    """
+    Helper function to get field value from patient data using multiple possible field name variants.
+    Returns the first matching field value found, or empty string if none found.
+    """
+    if not patient_data or not field_names:
+        return ''
+    
+    for field_name in field_names:
+        # Try exact match first
+        if field_name in patient_data:
+            value = patient_data[field_name]
+            if value is not None and str(value).strip():
+                return str(value).strip()
+        
+        # Try case-insensitive match
+        for key, value in patient_data.items():
+            if key.lower().strip().replace(' ', '').replace('_', '') == field_name.lower().strip().replace(' ', '').replace('_', ''):
+                if value is not None and str(value).strip():
+                    return str(value).strip()
+    
+    return ''
+
+def build_treatment_plan(patient_data, programme_name=None):
+    """
+    Build treatment plan based on programme type
+    """
+    if not patient_data:
+        return ''
+    
+    # Check if this is FREE EYE CAMPS programme
+    if programme_name and 'FREE EYE CAMPS' in programme_name.upper():
+        return build_eye_camp_treatment_plan(patient_data)
+    else:
+        # Generic treatment plan for other programmes
+        return build_generic_treatment_plan(patient_data)
+
+def build_eye_camp_treatment_plan(patient_data):
+    """
+    Build treatment plan for FREE EYE CAMPS with priority: Surgical Procedure > Eyedrops & Tabs > Reading Glasses
+    """
+    treatment_parts = []
+    
+    # Priority 1: Surgical Procedure
+    surgical_procedure = get_field_value(patient_data, [
+        'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure',
+        'Surgery', 'Procedure', 'SURGICAL PROCEDURE', 'SURGERY'
+    ])
+    if surgical_procedure and surgical_procedure.lower().strip() not in ['no', 'none', 'n/a', '']:
+        treatment_parts.append(surgical_procedure.upper())
+    
+    # Priority 2: Eyedrops & Tabs
+    eyedrops = get_field_value(patient_data, [
+        'Eyedrops & Tabs', 'eyedrops & tabs', 'eyedrops and tabs', 'medications',
+        'Eyedrops', 'eyedrops', 'drops', 'Drops', 'EYEDROPS', 'medicine', 'Medicine'
+    ])
+    if eyedrops and eyedrops.lower().strip() not in ['no', 'none', 'n/a', '']:
+        treatment_parts.append(eyedrops.upper())
+    
+    # Priority 3: Reading Glasses
+    reading_glasses = get_field_value(patient_data, [
+        'Reading Glasses', 'reading glasses', 'glasses', 'Glasses',
+        'READING GLASSES', 'GLASSES', 'spectacles', 'Spectacles'
+    ])
+    if reading_glasses and reading_glasses.lower().strip() not in ['no', 'none', 'n/a', '']:
+        treatment_parts.append('READING GLASS')
+    
+    # Join all treatment parts
+    return ' + '.join(treatment_parts) if treatment_parts else ''
+
+def build_generic_treatment_plan(patient_data):
+    """
+    Build generic treatment plan for any programme - looks for common treatment-related fields
+    """
+    treatment_parts = []
+    
+    # Common treatment field patterns to look for
+    treatment_field_patterns = [
+        'treatment', 'therapy', 'medication', 'prescription', 'plan', 'intervention',
+        'procedure', 'surgery', 'referral', 'recommendation', 'management'
+    ]
+    
+    # Scan through all patient data to find treatment-related fields
+    for key, value in patient_data.items():
+        if value and str(value).strip() and str(value).lower().strip() not in ['no', 'none', 'n/a', '']:
+            key_lower = key.lower()
+            # Check if this field contains any treatment-related keywords
+            if any(pattern in key_lower for pattern in treatment_field_patterns):
+                # Clean up the value and add it
+                clean_value = str(value).strip().upper()
+                if clean_value not in treatment_parts:
+                    treatment_parts.append(clean_value)
+    
+    # Join all treatment parts
+    return ' + '.join(treatment_parts) if treatment_parts else ''
 
 def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_date, project_id):
     """Generate PDF report using reportlab"""
@@ -6886,8 +6996,11 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
         no_data = Paragraph("No patients found for the selected criteria.", no_data_style)
         elements.append(no_data)
     else:
-        # Create table data
-        headers = ['Patient ID', 'Name', 'Gender', 'Age', 'VA RE', 'VA LE', 'Diagnosis', 'Treatment Plan', 'Address', 'Phone']
+        # Create table headers based on programme type
+        if 'FREE EYE CAMPS' in programme_name.upper():
+            headers = ['Patient ID', 'Name', 'Gender', 'Age', 'VA RE', 'VA LE', 'Diagnosis', 'Treatment Plan', 'Address', 'Phone']
+        else:
+            headers = ['Patient ID', 'Name', 'Gender', 'Age', 'Diagnosis', 'Treatment Plan', 'Address', 'Phone']
         data = [headers]
         
         for patient in patients:
@@ -6906,21 +7019,28 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
                 'Age (Years)', 'age (years)', 'age', 'age years', 'Age', 'AGE', 
                 'age_years', 'Age Years', 'age(years)', 'Age(Years)'
             ])
-            va_re = get_field_value(patient_data, [
-                'va re', 'visual acuity re', 'right eye', 'va right', 'VA RE', 'Visual Acuity RE',
-                'va_re', 'visual_acuity_re', 'Right Eye', 'VA Right'
-            ])
-            va_le = get_field_value(patient_data, [
-                'va le', 'visual acuity le', 'left eye', 'va left', 'VA LE', 'Visual Acuity LE',
-                'va_le', 'visual_acuity_le', 'Left Eye', 'VA Left'
-            ])
+            
+            # Extract eye-specific fields only for FREE EYE CAMPS
+            if 'FREE EYE CAMPS' in programme_name.upper():
+                va_re = get_field_value(patient_data, [
+                    'va re', 'visual acuity re', 'right eye', 'va right', 'VA RE', 'Visual Acuity RE',
+                    'va_re', 'visual_acuity_re', 'Right Eye', 'VA Right'
+                ])
+                va_le = get_field_value(patient_data, [
+                    'va le', 'visual acuity le', 'left eye', 'va left', 'VA LE', 'Visual Acuity LE',
+                    'va_le', 'visual_acuity_le', 'Left Eye', 'VA Left'
+                ])
+            else:
+                va_re = ''
+                va_le = ''
+                
             diagnosis = get_field_value(patient_data, [
                 'diagnosis', 'diagnoses', 'Diagnosis', 'Diagnoses', 'DIAGNOSIS', 
                 'Diagnose', 'diagnose'
             ])
             
-            # Build treatment plan based on priority: Surgical Procedure > Eyedrops & Tabs > Reading Glasses
-            treatment_plan = build_treatment_plan(patient_data)
+            # Build treatment plan based on programme type
+            treatment_plan = build_treatment_plan(patient_data, programme_name)
             
             # Physical address (use Ward field from registration or form data)
             address = get_field_value(patient_data, [
@@ -6934,37 +7054,62 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
                 'PHONE', 'mobile', 'Mobile', 'contact number', 'Contact Number'
             ])
             
-            row = [
-                patient_id,
-                name or '',
-                gender or '',
-                age or '',
-                va_re or '',
-                va_le or '',
-                diagnosis or '',
-                treatment_plan or '',
-                address or '',
-                phone or ''
-            ]
+            # Build row based on programme type
+            if 'FREE EYE CAMPS' in programme_name.upper():
+                row = [
+                    patient_id,
+                    name or '',
+                    gender or '',
+                    age or '',
+                    va_re or '',
+                    va_le or '',
+                    diagnosis or '',
+                    treatment_plan or '',
+                    address or '',
+                    phone or ''
+                ]
+            else:
+                row = [
+                    patient_id,
+                    name or '',
+                    gender or '',
+                    age or '',
+                    diagnosis or '',
+                    treatment_plan or '',
+                    address or '',
+                    phone or ''
+                ]
             data.append(row)
         
         # Create table with optimized column widths for landscape
         # Calculate available width and distribute it among columns
         available_width = landscape(A4)[0] - 72  # Total width minus margins
         
-        # Define column widths (in inches) - optimized for landscape and readability
-        col_widths = [
-            0.9 * inch,  # Patient ID
-            1.3 * inch,  # Name
-            0.6 * inch,  # Gender
-            0.6 * inch,  # Age
-            0.7 * inch,  # VA RE
-            0.7 * inch,  # VA LE
-            1.4 * inch,  # Diagnosis
-            1.5 * inch,  # Treatment Plan
-            1.0 * inch,  # Address
-            1.0 * inch,  # Phone
-        ]
+        # Define column widths based on programme type
+        if 'FREE EYE CAMPS' in programme_name.upper():
+            col_widths = [
+                0.9 * inch,  # Patient ID
+                1.3 * inch,  # Name
+                0.6 * inch,  # Gender
+                0.6 * inch,  # Age
+                0.7 * inch,  # VA RE
+                0.7 * inch,  # VA LE
+                1.4 * inch,  # Diagnosis
+                1.5 * inch,  # Treatment Plan
+                1.0 * inch,  # Address
+                1.0 * inch,  # Phone
+            ]
+        else:
+            col_widths = [
+                1.0 * inch,  # Patient ID
+                1.8 * inch,  # Name
+                0.8 * inch,  # Gender
+                0.8 * inch,  # Age
+                2.0 * inch,  # Diagnosis
+                2.2 * inch,  # Treatment Plan
+                1.2 * inch,  # Address
+                1.2 * inch,  # Phone
+            ]
         
         # Add table title
         table_title_style = ParagraphStyle(
@@ -7245,8 +7390,11 @@ def create_individual_doctor_report_elements(patients, programme_name, doctor_na
         no_data = Paragraph("No patients found for this doctor.", no_data_style)
         elements.append(no_data)
     else:
-        # Create table data (same as original)
-        headers = ['Patient ID', 'Name', 'Gender', 'Age', 'VA RE', 'VA LE', 'Diagnosis', 'Treatment Plan', 'Address', 'Phone']
+        # Create table headers based on programme type (same as original)
+        if 'FREE EYE CAMPS' in programme_name.upper():
+            headers = ['Patient ID', 'Name', 'Gender', 'Age', 'VA RE', 'VA LE', 'Diagnosis', 'Treatment Plan', 'Address', 'Phone']
+        else:
+            headers = ['Patient ID', 'Name', 'Gender', 'Age', 'Diagnosis', 'Treatment Plan', 'Address', 'Phone']
         data = [headers]
         
         for patient in patients:
@@ -7265,21 +7413,28 @@ def create_individual_doctor_report_elements(patients, programme_name, doctor_na
                 'Age (Years)', 'age (years)', 'age', 'age years', 'Age', 'AGE', 
                 'age_years', 'Age Years', 'age(years)', 'Age(Years)'
             ])
-            va_re = get_field_value(patient_data, [
-                'va re', 'visual acuity re', 'right eye', 'va right', 'VA RE', 'Visual Acuity RE',
-                'va_re', 'visual_acuity_re', 'Right Eye', 'VA Right'
-            ])
-            va_le = get_field_value(patient_data, [
-                'va le', 'visual acuity le', 'left eye', 'va left', 'VA LE', 'Visual Acuity LE',
-                'va_le', 'visual_acuity_le', 'Left Eye', 'VA Left'
-            ])
+            
+            # Extract eye-specific fields only for FREE EYE CAMPS
+            if 'FREE EYE CAMPS' in programme_name.upper():
+                va_re = get_field_value(patient_data, [
+                    'va re', 'visual acuity re', 'right eye', 'va right', 'VA RE', 'Visual Acuity RE',
+                    'va_re', 'visual_acuity_re', 'Right Eye', 'VA Right'
+                ])
+                va_le = get_field_value(patient_data, [
+                    'va le', 'visual acuity le', 'left eye', 'va left', 'VA LE', 'Visual Acuity LE',
+                    'va_le', 'visual_acuity_le', 'Left Eye', 'VA Left'
+                ])
+            else:
+                va_re = ''
+                va_le = ''
+                
             diagnosis = get_field_value(patient_data, [
                 'diagnosis', 'diagnoses', 'Diagnosis', 'Diagnoses', 'DIAGNOSIS', 
                 'Diagnose', 'diagnose'
             ])
             
             # Build treatment plan
-            treatment_plan = build_treatment_plan(patient_data)
+            treatment_plan = build_treatment_plan(patient_data, programme_name)
             
             # Physical address
             address = get_field_value(patient_data, [
@@ -7293,33 +7448,58 @@ def create_individual_doctor_report_elements(patients, programme_name, doctor_na
                 'PHONE', 'mobile', 'Mobile', 'contact number', 'Contact Number'
             ])
             
-            row = [
-                patient_id,
-                name or '',
-                gender or '',
-                age or '',
-                va_re or '',
-                va_le or '',
-                diagnosis or '',
-                treatment_plan or '',
-                address or '',
-                phone or ''
-            ]
+            # Build row based on programme type
+            if 'FREE EYE CAMPS' in programme_name.upper():
+                row = [
+                    patient_id,
+                    name or '',
+                    gender or '',
+                    age or '',
+                    va_re or '',
+                    va_le or '',
+                    diagnosis or '',
+                    treatment_plan or '',
+                    address or '',
+                    phone or ''
+                ]
+            else:
+                row = [
+                    patient_id,
+                    name or '',
+                    gender or '',
+                    age or '',
+                    diagnosis or '',
+                    treatment_plan or '',
+                    address or '',
+                    phone or ''
+                ]
             data.append(row)
         
-        # Create table with optimized column widths
-        col_widths = [
-            0.9 * inch,  # Patient ID
-            1.3 * inch,  # Name
-            0.6 * inch,  # Gender
-            0.6 * inch,  # Age
-            0.7 * inch,  # VA RE
-            0.7 * inch,  # VA LE
-            1.4 * inch,  # Diagnosis
-            1.5 * inch,  # Treatment Plan
-            1.0 * inch,  # Address
-            1.0 * inch,  # Phone
-        ]
+        # Create table with optimized column widths based on programme type
+        if 'FREE EYE CAMPS' in programme_name.upper():
+            col_widths = [
+                0.9 * inch,  # Patient ID
+                1.3 * inch,  # Name
+                0.6 * inch,  # Gender
+                0.6 * inch,  # Age
+                0.7 * inch,  # VA RE
+                0.7 * inch,  # VA LE
+                1.4 * inch,  # Diagnosis
+                1.5 * inch,  # Treatment Plan
+                1.0 * inch,  # Address
+                1.0 * inch,  # Phone
+            ]
+        else:
+            col_widths = [
+                1.0 * inch,  # Patient ID
+                1.8 * inch,  # Name
+                0.8 * inch,  # Gender
+                0.8 * inch,  # Age
+                2.0 * inch,  # Diagnosis
+                2.2 * inch,  # Treatment Plan
+                1.2 * inch,  # Address
+                1.2 * inch,  # Phone
+            ]
         
         # Add table title
         table_title_style = ParagraphStyle(
@@ -7451,7 +7631,7 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
                 cataract_patients += 1
         
         # Count reading glasses prescriptions
-        treatment_plan = build_treatment_plan(patient_data)
+        treatment_plan = build_treatment_plan(patient_data, None)  # No programme name available here
         if 'READING GLASS' in treatment_plan:
             reading_glasses_count += 1
         
@@ -7490,7 +7670,7 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
                 total_all_cataracts += 1
         
         # Count reading glasses prescriptions
-        treatment_plan = build_treatment_plan(patient_data)
+        treatment_plan = build_treatment_plan(patient_data, None)  # No programme name available here
         if 'READING GLASS' in treatment_plan:
             total_all_reading_glasses += 1
         
