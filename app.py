@@ -8079,6 +8079,7 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
     minor_surgeries = 0
     primary_infertility = 0
     secondary_infertility = 0
+    cryotherapy = 0
     
     # Count statistics for current doctor's patients
     for patient in patients:
@@ -8170,6 +8171,14 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
             primary_infertility += 1
         elif secondary_inf and str(secondary_inf).strip().lower() not in ['no', 'none', 'n/a', '']:
             secondary_infertility += 1
+        
+        # Cryotherapy - check Treatment Plan field
+        treatment_plan = get_field_value(patient_data, [
+            'Treatment Plan', 'treatment plan', 'plan', 'Plan', 
+            'TREATMENT PLAN', 'Treatment plan', 'treatment_plan'
+        ])
+        if treatment_plan and 'cryotherapy' in str(treatment_plan).lower():
+            cryotherapy += 1
 
     # Get ALL patients for this project/date range to calculate totals
     all_doctors_patients = get_patients_for_report(project_id, "ALL DOCTORS", start_date, end_date)
@@ -8186,6 +8195,7 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
     total_all_minor_surgeries = 0
     total_all_primary_infertility = 0
     total_all_secondary_infertility = 0
+    total_all_cryotherapy = 0
     
     for patient in all_doctors_patients:
         patient_data = patient.get('data', {})
@@ -8262,6 +8272,14 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
             total_all_primary_infertility += 1
         elif secondary_inf and str(secondary_inf).strip().lower() not in ['no', 'none', 'n/a', '']:
             total_all_secondary_infertility += 1
+        
+        # Cryotherapy counting - check Treatment Plan field
+        treatment_plan = get_field_value(patient_data, [
+            'Treatment Plan', 'treatment plan', 'plan', 'Plan', 
+            'TREATMENT PLAN', 'Treatment plan', 'treatment_plan'
+        ])
+        if treatment_plan and 'cryotherapy' in str(treatment_plan).lower():
+            total_all_cryotherapy += 1
     
     # Helper function for safe percentage calculation
     def safe_percentage(count, total):
@@ -8317,7 +8335,7 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
             Paragraph(safe_percentage(total_patients, total_all_patients), data_cell_style)
         ],
         [
-            Paragraph('Suspect for CA', metric_cell_style),
+            Paragraph('Suspect for Cervical CA', metric_cell_style),
             Paragraph(str(suspect_ca), data_cell_style),
             Paragraph(safe_percentage(suspect_ca, total_patients), data_cell_style),
             Paragraph(safe_percentage(suspect_ca, total_all_suspect_ca), data_cell_style)
@@ -8329,13 +8347,13 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
             Paragraph(safe_percentage(via_negative, total_all_via_negative), data_cell_style)
         ],
         [
-            Paragraph('VIA Small Lesion', metric_cell_style),
+            Paragraph('VIA Positive with Small Lesion', metric_cell_style),
             Paragraph(str(via_small_lesion), data_cell_style),
             Paragraph(safe_percentage(via_small_lesion, total_patients), data_cell_style),
             Paragraph(safe_percentage(via_small_lesion, total_all_via_small_lesion), data_cell_style)
         ],
         [
-            Paragraph('VIA Large Lesion', metric_cell_style),
+            Paragraph('VIA Positive with Large Lesion', metric_cell_style),
             Paragraph(str(via_large_lesion), data_cell_style),
             Paragraph(safe_percentage(via_large_lesion, total_patients), data_cell_style),
             Paragraph(safe_percentage(via_large_lesion, total_all_via_large_lesion), data_cell_style)
@@ -8363,6 +8381,12 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
             Paragraph(str(minor_surgeries), data_cell_style),
             Paragraph(safe_percentage(minor_surgeries, total_patients), data_cell_style),
             Paragraph(safe_percentage(minor_surgeries, total_all_minor_surgeries), data_cell_style)
+        ],
+        [
+            Paragraph('Cryotherapy', metric_cell_style),
+            Paragraph(str(cryotherapy), data_cell_style),
+            Paragraph(safe_percentage(cryotherapy, total_patients), data_cell_style),
+            Paragraph(safe_percentage(cryotherapy, total_all_cryotherapy), data_cell_style)
         ],
         [
             Paragraph('1° Infertility', metric_cell_style),
