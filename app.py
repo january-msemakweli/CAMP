@@ -6841,10 +6841,13 @@ def build_treatment_plan(patient_data, programme_name=None):
     """
     if not patient_data:
         return ''
-    
+
     # Check if this is FREE EYE CAMPS programme
     if programme_name and 'FREE EYE CAMPS' in programme_name.upper():
         return build_eye_camp_treatment_plan(patient_data)
+    # Check if this is OBSTETRICS & GYNECOLOGY programme
+    elif programme_name and 'OBSTETRICS' in programme_name.upper() and 'GYNECOLOGY' in programme_name.upper():
+        return build_gyne_treatment_plan(patient_data)
     else:
         # Generic treatment plan for other programmes
         return build_generic_treatment_plan(patient_data)
@@ -6853,30 +6856,70 @@ def build_eye_camp_treatment_plan(patient_data):
     """
     Build treatment plan for FREE EYE CAMPS with priority: Surgical Procedure > Eyedrops & Tabs > Reading Glasses
     """
+    def clean_field_value(value):
+        """Clean and extract actual values from field data, handling lists properly"""
+        if not value:
+            return ''
+        
+        # Handle list values (from checkboxes/multi-select)
+        if isinstance(value, list):
+            valid_items = []
+            for item in value:
+                if item and str(item).strip().lower() not in ['no', 'none', 'n/a', '']:
+                    valid_items.append(str(item).strip())
+            return ' + '.join(valid_items) if valid_items else ''
+        
+        # Handle single values
+        value_str = str(value).strip()
+        if value_str.startswith('[') and value_str.endswith(']'):
+            # Handle string representation of lists like "['SICS', 'EXCISION']"
+            try:
+                import ast
+                parsed_list = ast.literal_eval(value_str)
+                if isinstance(parsed_list, list):
+                    valid_items = []
+                    for item in parsed_list:
+                        if item and str(item).strip().lower() not in ['no', 'none', 'n/a', '']:
+                            valid_items.append(str(item).strip())
+                    return ' + '.join(valid_items) if valid_items else ''
+            except:
+                pass
+        
+        # Regular single value
+        if value_str.lower() not in ['no', 'none', 'n/a', '']:
+            return value_str
+        return ''
+    
     treatment_parts = []
     
     # Priority 1: Surgical Procedure
     surgical_procedure = get_field_value(patient_data, [
         'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure',
+        'Treatment Plan (Surgical Procedure)', 'treatment plan (surgical procedure)',
         'Surgery', 'Procedure', 'SURGICAL PROCEDURE', 'SURGERY'
     ])
-    if surgical_procedure and surgical_procedure.lower().strip() not in ['no', 'none', 'n/a', '']:
-        treatment_parts.append(surgical_procedure.upper())
+    cleaned_surgery = clean_field_value(surgical_procedure)
+    if cleaned_surgery:
+        treatment_parts.append(cleaned_surgery.upper())
     
     # Priority 2: Eyedrops & Tabs
     eyedrops = get_field_value(patient_data, [
         'Eyedrops & Tabs', 'eyedrops & tabs', 'eyedrops and tabs', 'medications',
+        'Treatment Plan (Eyedrops & Tabs)', 'treatment plan (eyedrops & tabs)',
         'Eyedrops', 'eyedrops', 'drops', 'Drops', 'EYEDROPS', 'medicine', 'Medicine'
     ])
-    if eyedrops and eyedrops.lower().strip() not in ['no', 'none', 'n/a', '']:
-        treatment_parts.append(eyedrops.upper())
+    cleaned_eyedrops = clean_field_value(eyedrops)
+    if cleaned_eyedrops:
+        treatment_parts.append(cleaned_eyedrops.upper())
     
     # Priority 3: Reading Glasses
     reading_glasses = get_field_value(patient_data, [
         'Reading Glasses', 'reading glasses', 'glasses', 'Glasses',
+        'Treatment Plan (Reading Glasses)', 'treatment plan (reading glasses)',
         'READING GLASSES', 'GLASSES', 'spectacles', 'Spectacles'
     ])
-    if reading_glasses and reading_glasses.lower().strip() not in ['no', 'none', 'n/a', '']:
+    cleaned_glasses = clean_field_value(reading_glasses)
+    if cleaned_glasses:
         treatment_parts.append('READING GLASS')
     
     # Join all treatment parts
@@ -6904,6 +6947,94 @@ def build_generic_treatment_plan(patient_data):
                 clean_value = str(value).strip().upper()
                 if clean_value not in treatment_parts:
                     treatment_parts.append(clean_value)
+    
+    # Join all treatment parts
+    return ' + '.join(treatment_parts) if treatment_parts else ''
+
+def build_gyne_treatment_plan(patient_data):
+    """
+    Build treatment plan for OBSTETRICS & GYNECOLOGY - specific field prioritization
+    """
+    def clean_field_value(value):
+        """Clean and extract actual values from field data, handling lists properly"""
+        if not value:
+            return ''
+        
+        # Handle list values (from checkboxes/multi-select)
+        if isinstance(value, list):
+            valid_items = []
+            for item in value:
+                if item and str(item).strip().lower() not in ['no', 'none', 'n/a', '']:
+                    valid_items.append(str(item).strip())
+            return ' + '.join(valid_items) if valid_items else ''
+        
+        # Handle single values
+        value_str = str(value).strip()
+        if value_str.startswith('[') and value_str.endswith(']'):
+            # Handle string representation of lists like "['SURGERY', 'CRYOTHERAPY']"
+            try:
+                import ast
+                parsed_list = ast.literal_eval(value_str)
+                if isinstance(parsed_list, list):
+                    valid_items = []
+                    for item in parsed_list:
+                        if item and str(item).strip().lower() not in ['no', 'none', 'n/a', '']:
+                            valid_items.append(str(item).strip())
+                    return ' + '.join(valid_items) if valid_items else ''
+            except:
+                pass
+        
+        # Regular single value
+        if value_str.lower() not in ['no', 'none', 'n/a', '']:
+            return value_str
+        return ''
+    
+    treatment_parts = []
+    
+    # Priority 1: Medication (specific field)
+    medication = get_field_value(patient_data, [
+        'Medication', 'medication', 'medications', 'Medications',
+        'MEDICATION', 'MEDICATIONS', 'Medicine', 'medicine'
+    ])
+    cleaned_medication = clean_field_value(medication)
+    if cleaned_medication:
+        treatment_parts.append(cleaned_medication.upper())
+    
+    # Priority 2: Surgical Procedure (specific field)
+    surgical_procedure = get_field_value(patient_data, [
+        'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure',
+        'Surgery', 'Procedure', 'SURGICAL PROCEDURE', 'SURGERY'
+    ])
+    cleaned_surgery = clean_field_value(surgical_procedure)
+    if cleaned_surgery:
+        treatment_parts.append(cleaned_surgery.upper())
+    
+    # Priority 3: Specific treatments from Treatment Plan field (only Counselling, Referral, Cryotherapy)
+    treatment_plan = get_field_value(patient_data, [
+        'Treatment Plan', 'treatment plan', 'plan', 'Plan', 
+        'TREATMENT PLAN', 'Treatment plan', 'treatment_plan'
+    ])
+    
+    cleaned_plan = clean_field_value(treatment_plan)
+    if cleaned_plan:
+        # Split on ' + ' to check each part
+        plan_parts = [part.strip() for part in cleaned_plan.split(' + ')]
+        valid_plan_parts = []
+        
+        for part in plan_parts:
+            part_lower = part.lower().strip()
+            
+            # Exclude generic surgery/medication references
+            if part_lower in ['surgery', 'medication', 'surgical procedure', 'medicine']:
+                continue
+                
+            # Only include specific allowed treatments
+            allowed_treatments = ['counselling', 'referral', 'cryotherapy', 'counseling', 'refer']
+            if any(allowed in part_lower for allowed in allowed_treatments):
+                valid_plan_parts.append(part.upper())
+        
+        if valid_plan_parts:
+            treatment_parts.extend(valid_plan_parts)
     
     # Join all treatment parts
     return ' + '.join(treatment_parts) if treatment_parts else ''
@@ -6943,10 +7074,15 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
                 if i > 0:
                     elements.append(PageBreak())
                 
-                # Generate individual doctor report elements
-                doctor_elements = create_individual_doctor_report_elements(
-                    doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
-                )
+                # Generate individual doctor report elements based on programme type
+                if 'OBSTETRICS' in programme_name.upper() and 'GYNECOLOGY' in programme_name.upper():
+                    doctor_elements = create_gyne_doctor_report_elements(
+                        doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
+                    )
+                else:
+                    doctor_elements = create_individual_doctor_report_elements(
+                        doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
+                    )
                 elements.extend(doctor_elements)
         
         # Build PDF and return
@@ -6955,289 +7091,15 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
         return buffer
     
     # Original single doctor report logic below
-    # Add MDF logo at the very top with minimal spacing
-    logo_path = os.path.join(os.path.dirname(__file__), 'MDF.png')
-    if os.path.exists(logo_path):
-        try:
-            # Create logo for page 1 only with constrained size
-            logo = Image(logo_path, width=1.0*inch, height=0.8*inch, kind='proportional')
-            logo.hAlign = 'CENTER'  # Center the logo
-            elements.append(logo)
-            elements.append(Spacer(1, 15))  # Space after logo
-        except Exception as e:
-            print(f"Could not load logo: {str(e)}")
-    
-    # Get styles and create clean black and white styling
-    styles = getSampleStyleSheet()
-    
-    # Clean title styling
-    title_style = ParagraphStyle(
-        'ReportTitle', 
-        parent=styles['Heading1'], 
-        fontSize=18, 
-        alignment=1,
-        textColor=colors.black,
-        fontName='Times-Bold',
-        spaceAfter=20
-    )
-    
-    # Clean header styling
-    header_style = ParagraphStyle(
-        'ReportHeader', 
-        parent=styles['Normal'], 
-        fontSize=12, 
-        alignment=1,
-        textColor=colors.black,
-        fontName='Times-Roman',
-        spaceAfter=25
-    )
-    
-    # Main title
-    title = Paragraph(f"MEDICAL CAMP REPORT<br/><font size='14'>{programme_name}</font>", title_style)
-    elements.append(title)
-    
-    # Report details in a professional box
-    if start_date == end_date:
-        date_str = start_date.strftime('%B %d, %Y')
-    else:
-        date_str = f"{start_date.strftime('%B %d, %Y')} - {end_date.strftime('%B %d, %Y')}"
-    
-    # Create header info table with generation timestamp
-    generated_at = datetime.datetime.now(EAT).strftime('%B %d, %Y at %I:%M %p EAT')
-    header_data = [
-        ['Doctor:', doctor_name],
-        ['Date:', date_str],
-        ['Total Patients:', str(len(patients))],
-        ['Generated:', generated_at]
-    ]
-    
-    header_table = Table(header_data, colWidths=[2*inch, 4*inch])
-    header_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (0, -1), 'Times-Bold'),
-        ('FONTNAME', (1, 0), (1, -1), 'Times-Roman'),
-        ('FONTSIZE', (0, 0), (-1, -1), 11),
-        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING', (0, 0), (-1, -1), 12),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-    ]))
-    
-    elements.append(header_table)
-    elements.append(Spacer(1, 30))
-    
-    if not patients:
-        no_data_style = ParagraphStyle(
-            'NoData', 
-            parent=styles['Normal'], 
-            fontSize=12, 
-            alignment=1,
-            textColor=colors.black,
-            fontName='Times-Italic',
-            spaceAfter=20
+    # Single doctor report dispatch based on programme type
+    if 'OBSTETRICS' in programme_name.upper() and 'GYNECOLOGY' in programme_name.upper():
+        elements = create_gyne_doctor_report_elements(
+            patients, programme_name, doctor_name, start_date, end_date, project_id
         )
-        no_data = Paragraph("No patients found for the selected criteria.", no_data_style)
-        elements.append(no_data)
     else:
-        # Create table headers based on programme type
-        if 'FREE EYE CAMPS' in programme_name.upper():
-            headers = ['Patient ID', 'Name', 'Gender', 'Age', 'VA RE', 'VA LE', 'Diagnosis', 'Treatment Plan', 'Address', 'Phone']
-        else:
-            headers = ['Patient ID', 'Name', 'Gender', 'Age', 'Diagnosis', 'Treatment Plan', 'Address', 'Phone']
-        data = [headers]
-        
-        for patient in patients:
-            patient_data = patient.get('data', {})
-            
-            # Extract required fields with various possible field names
-            patient_id = patient.get('patient_id', '')
-            name = get_field_value(patient_data, [
-                'Name', 'name', 'patient name', 'full name', 'patient_name', 'full_name', 
-                'Patient Name', 'Full Name', 'NAME'
-            ])
-            gender = get_field_value(patient_data, [
-                'Gender', 'gender', 'sex', 'Sex', 'GENDER', 'SEX'
-            ])
-            age = get_field_value(patient_data, [
-                'Age (Years)', 'age (years)', 'age', 'age years', 'Age', 'AGE', 
-                'age_years', 'Age Years', 'age(years)', 'Age(Years)'
-            ])
-            
-            # Extract eye-specific fields only for FREE EYE CAMPS
-            if 'FREE EYE CAMPS' in programme_name.upper():
-                va_re = get_field_value(patient_data, [
-                    'va re', 'visual acuity re', 'right eye', 'va right', 'VA RE', 'Visual Acuity RE',
-                    'va_re', 'visual_acuity_re', 'Right Eye', 'VA Right'
-                ])
-                va_le = get_field_value(patient_data, [
-                    'va le', 'visual acuity le', 'left eye', 'va left', 'VA LE', 'Visual Acuity LE',
-                    'va_le', 'visual_acuity_le', 'Left Eye', 'VA Left'
-                ])
-            else:
-                va_re = ''
-                va_le = ''
-                
-            diagnosis = get_field_value(patient_data, [
-                'diagnosis', 'diagnoses', 'Diagnosis', 'Diagnoses', 'DIAGNOSIS', 
-                'Diagnose', 'diagnose'
-            ])
-            
-            # Build treatment plan based on programme type
-            treatment_plan = build_treatment_plan(patient_data, programme_name)
-            
-            # Physical address (use Ward field from registration or form data)
-            address = get_field_value(patient_data, [
-                'Ward', 'ward', 'physical address', 'address', 'Address', 'WARD', 
-                'Physical Address', 'PHYSICAL ADDRESS'
-            ])
-            
-            # Phone number
-            phone = get_field_value(patient_data, [
-                'Phone Number', 'phone number', 'phone', 'Phone', 'PHONE NUMBER', 
-                'PHONE', 'mobile', 'Mobile', 'contact number', 'Contact Number'
-            ])
-            
-            # Build row based on programme type
-            if 'FREE EYE CAMPS' in programme_name.upper():
-                row = [
-                    patient_id,
-                    name or '',
-                    gender or '',
-                    age or '',
-                    va_re or '',
-                    va_le or '',
-                    diagnosis or '',
-                    treatment_plan or '',
-                    address or '',
-                    phone or ''
-                ]
-            else:
-                row = [
-                    patient_id,
-                    name or '',
-                    gender or '',
-                    age or '',
-                    diagnosis or '',
-                    treatment_plan or '',
-                    address or '',
-                    phone or ''
-                ]
-            data.append(row)
-        
-        # Create table with optimized column widths for landscape
-        # Calculate available width and distribute it among columns
-        available_width = landscape(A4)[0] - 72  # Total width minus margins
-        
-        # Define column widths based on programme type
-        if 'FREE EYE CAMPS' in programme_name.upper():
-            col_widths = [
-                0.9 * inch,  # Patient ID
-                1.3 * inch,  # Name
-                0.6 * inch,  # Gender
-                0.6 * inch,  # Age
-                0.7 * inch,  # VA RE
-                0.7 * inch,  # VA LE
-                1.4 * inch,  # Diagnosis
-                1.5 * inch,  # Treatment Plan
-                1.0 * inch,  # Address
-                1.0 * inch,  # Phone
-            ]
-        else:
-            col_widths = [
-                1.0 * inch,  # Patient ID
-                1.8 * inch,  # Name
-                0.8 * inch,  # Gender
-                0.8 * inch,  # Age
-                2.0 * inch,  # Diagnosis
-                2.2 * inch,  # Treatment Plan
-                1.2 * inch,  # Address
-                1.2 * inch,  # Phone
-            ]
-        
-        # Add table title
-        table_title_style = ParagraphStyle(
-            'TableTitle',
-            parent=styles['Heading2'],
-            fontSize=14,
-            alignment=1,
-            textColor=colors.black,
-            fontName='Times-Bold',
-            spaceAfter=15
+        elements = create_individual_doctor_report_elements(
+            patients, programme_name, doctor_name, start_date, end_date, project_id
         )
-        table_title = Paragraph("PATIENT DATA", table_title_style)
-        elements.append(table_title)
-        
-        # Process data for proper text wrapping without truncation
-        processed_data = []
-        for i, row in enumerate(data):
-            if i == 0:  # Header row
-                processed_data.append(row)
-            else:
-                processed_row = []
-                for j, cell in enumerate(row):
-                    if j in [1, 6, 7, 8, 9]:  # Name, Diagnosis, Treatment, Address, Phone columns
-                        if cell and len(str(cell)) > 15:
-                            # Create paragraph for long text (no truncation)
-                            cell_style = ParagraphStyle(
-                                'CellText',
-                                parent=styles['Normal'],
-                                fontName='Times-Roman',
-                                fontSize=8,
-                                leading=10
-                            )
-                            processed_row.append(Paragraph(str(cell), cell_style))
-                        else:
-                            processed_row.append(cell or '')
-                    else:
-                        processed_row.append(cell or '')
-                processed_data.append(processed_row)
-        
-        table = Table(processed_data, repeatRows=1, colWidths=col_widths)
-        table.setStyle(TableStyle([
-            # Header styling - Clean black and white
-            ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-            ('TOPPADDING', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            
-            # Data rows styling
-            ('FONTNAME', (0, 1), (-1, -1), 'Times-Roman'),
-            ('FONTSIZE', (0, 1), (-1, -1), 9),
-            
-            # Alignment optimized for each column
-            ('ALIGN', (0, 1), (0, -1), 'CENTER'),  # Patient ID centered
-            ('ALIGN', (1, 1), (1, -1), 'LEFT'),    # Name left-aligned
-            ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # Gender centered
-            ('ALIGN', (3, 1), (3, -1), 'CENTER'),  # Age centered
-            ('ALIGN', (4, 1), (5, -1), 'CENTER'),  # VA fields centered
-            ('ALIGN', (6, 1), (6, -1), 'LEFT'),    # Diagnosis left-aligned
-            ('ALIGN', (7, 1), (7, -1), 'LEFT'),    # Treatment left-aligned
-            ('ALIGN', (8, 1), (8, -1), 'LEFT'),    # Address left-aligned
-            ('ALIGN', (9, 1), (9, -1), 'LEFT'),    # Phone left-aligned
-            
-            # Vertical alignment for better text wrapping
-            ('VALIGN', (0, 1), (-1, -1), 'TOP'),
-            
-            # Padding for clean spacing
-            ('TOPPADDING', (0, 1), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
-            ('LEFTPADDING', (0, 1), (-1, -1), 6),
-            ('RIGHTPADDING', (0, 1), (-1, -1), 6),
-            
-            # Grid and borders - simple black lines
-            ('GRID', (0, 0), (-1, -1), 1, colors.black),
-            ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
-        ]))
-        
-        elements.append(table)
-        
-        # Add summary statistics with total percentages
-        add_summary_statistics(elements, patients, styles, project_id, start_date, end_date)
     
     # Build PDF
     doc.build(elements)
@@ -7631,6 +7493,352 @@ def create_individual_doctor_report_elements(patients, programme_name, doctor_na
     
     return elements
 
+def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, start_date, end_date, project_id):
+    """Create GYNE-specific report elements with specialized table structure"""
+    from reportlab.platypus import Paragraph, Spacer, Image, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    import datetime
+    import os
+    
+    elements = []
+    
+    # Add MDF logo
+    logo_path = os.path.join(os.path.dirname(__file__), 'MDF.png')
+    if os.path.exists(logo_path):
+        try:
+            logo = Image(logo_path, width=1.0*inch, height=0.8*inch, kind='proportional')
+            logo.hAlign = 'CENTER'
+            elements.append(logo)
+            elements.append(Spacer(1, 15))
+        except Exception as e:
+            print(f"Could not load logo: {str(e)}")
+    
+    # Get styles
+    styles = getSampleStyleSheet()
+    
+    # Title styling
+    title_style = ParagraphStyle(
+        'ReportTitle', 
+        parent=styles['Heading1'], 
+        fontSize=18, 
+        alignment=1,
+        textColor=colors.black,
+        fontName='Times-Bold',
+        spaceAfter=20
+    )
+    
+    # Main title
+    title = Paragraph(f"GYNE PATIENTS SUMMARY REPORT<br/><font size='14'>{programme_name}</font>", title_style)
+    elements.append(title)
+    
+    # Report details
+    if start_date == end_date:
+        date_str = start_date.strftime('%B %d, %Y')
+    else:
+        date_str = f"{start_date.strftime('%B %d, %Y')} - {end_date.strftime('%B %d, %Y')}"
+    
+    # Create header info table
+    generated_at = datetime.datetime.now(EAT).strftime('%B %d, %Y at %I:%M %p EAT')
+    header_data = [
+        ['Doctor:', doctor_name],
+        ['Date:', date_str],
+        ['Total Patients:', str(len(patients))],
+        ['Generated:', generated_at]
+    ]
+    
+    header_table = Table(header_data, colWidths=[2*inch, 4*inch])
+    header_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (0, -1), 'Times-Bold'),
+        ('FONTNAME', (1, 0), (1, -1), 'Times-Roman'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+    ]))
+    
+    elements.append(header_table)
+    elements.append(Spacer(1, 30))
+    
+    if not patients:
+        no_data_style = ParagraphStyle(
+            'NoData', 
+            parent=styles['Normal'], 
+            fontSize=12, 
+            alignment=1,
+            textColor=colors.black,
+            fontName='Times-Italic',
+            spaceAfter=20
+        )
+        no_data = Paragraph("No patients found for this doctor.", no_data_style)
+        elements.append(no_data)
+    else:
+        # GYNE-specific table headers
+        headers = [
+            'Name', 'Age', 'Suspect for\nCervical CA', 'VIA\nNEG', 'VIA Small\nLesion', 
+            'VIA Large\nLesion', 'Breast\nExamination', 'Surgeries', 'Infertility', 
+            'Diagnosis', 'Plan', 'Contact', 'Address'
+        ]
+        data = [headers]
+        
+        for patient in patients:
+            patient_data = patient.get('data', {})
+            
+            # Extract required fields
+            name = get_field_value(patient_data, [
+                'Name', 'name', 'patient name', 'full name', 'patient_name', 'full_name', 
+                'Patient Name', 'Full Name', 'NAME'
+            ])
+            
+            age = get_field_value(patient_data, [
+                'Age (Years)', 'age (years)', 'age', 'age years', 'Age', 'AGE', 
+                'age_years', 'Age Years', 'age(years)', 'Age(Years)'
+            ])
+            
+            # CX Visual Inspection (Suspect for CA) - based on "Abnormal Visual Inspection"
+            abnormal_visual = get_field_value(patient_data, [
+                'Abnormal Visual Inspection', 'abnormal visual inspection', 
+                'visual inspection abnormal', 'Visual Inspection Abnormal'
+            ])
+            cx_visual = 'Yes' if abnormal_visual and str(abnormal_visual).strip().lower() not in ['no', 'none', 'n/a', ''] else 'No'
+            
+            # VIA Test results
+            via_inspection = get_field_value(patient_data, [
+                'VIA Inspection', 'via inspection', 'VIA', 'via'
+            ])
+            via_neg = 'Yes' if via_inspection and 'negative' in str(via_inspection).lower() else 'No'
+            
+            # VIA Positive results for Small/Large Lesion
+            via_positive = get_field_value(patient_data, [
+                'VIA Positive', 'via positive', 'VIA positive'
+            ])
+            via_small = 'Yes' if via_positive and 'small lesion' in str(via_positive).lower() else 'No'
+            via_large = 'Yes' if via_positive and 'large lesion' in str(via_positive).lower() else 'No'
+            
+            # Breast Examination
+            left_breast = get_field_value(patient_data, [
+                'Left Breast Condition', 'left breast condition', 'Left Breast', 'left breast'
+            ])
+            right_breast = get_field_value(patient_data, [
+                'Right Breast Condition', 'right breast condition', 'Right Breast', 'right breast'
+            ])
+            
+            # Determine breast examination result
+            left_normal = left_breast and 'normal' in str(left_breast).lower()
+            right_normal = right_breast and 'normal' in str(right_breast).lower()
+            left_abnormal = left_breast and str(left_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
+            right_abnormal = right_breast and str(right_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
+            
+            if left_normal and right_normal:
+                breast_exam = 'Normal'
+            elif left_abnormal and right_abnormal:
+                breast_exam = 'Both Abnormal'
+            elif left_abnormal or right_abnormal:
+                breast_exam = 'Side Abnormal'
+            else:
+                breast_exam = 'Normal'
+            
+            # Surgeries - check for specific surgery names and classify
+            surgery_fields = [
+                'Appendectomy', 'Cervical Repair', 'Colporrhaphy', 'Cystectomy', 'Excision', 
+                'Fissurectomy', 'Hemorrhoidectomy', 'Herniorrhaphy', 'Hernioplasty', 
+                'Laparotomy', 'Lumpectomy', 'Myomectomy', 'Total Abdominal Hysterectomy (TAH)', 
+                'Total Abdominal Hysterectomy with Bilateral Salpingo-Oophorectomy (TAH + BSO)', 
+                'Thyroidectomy', 'Total Vaginal Hysterectomy (TVH)', 'Wide Local Excision (WLE)', 
+                'Marsupialization', 'Incision and Drainage (I&D)'
+            ]
+            
+            # Define major vs minor procedures
+            major_procedures = [
+                'appendectomy', 'appendicitis', 'cervical repair', 'cystectomy', 'hernioplasty', 
+                'laparotomy', 'lumpectomy', 'myomectomy', 'total abdominal hysterectomy',
+                'tah', 'tah + bso', 'thyroidectomy', 'total vaginal hysterectomy', 'tvh'
+            ]
+            
+            minor_procedures = [
+                'colporrhaphy', 'excision', 'fistulectomy', 'hemorrhoidectomy', 'herniorrhaphy',
+                'wide local excision', 'wle', 'marsupialization', 'incision and drainage', 'i&d'
+            ]
+            
+            surgery_performed = 'No'
+            for surgery in surgery_fields:
+                surgery_value = get_field_value(patient_data, [surgery])
+                if surgery_value and str(surgery_value).strip().lower() not in ['no', 'none', 'n/a', '']:
+                    surgery_lower = surgery.lower()
+                    if any(major in surgery_lower for major in major_procedures):
+                        surgery_performed = 'Major'
+                        break
+                    elif any(minor in surgery_lower for minor in minor_procedures):
+                        surgery_performed = 'Minor'
+                        break
+            
+            # Infertility
+            primary_infertility = get_field_value(patient_data, [
+                'Primary Infertility', 'primary infertility', 'Primary infertility'
+            ])
+            secondary_infertility = get_field_value(patient_data, [
+                'Secondary Infertility', 'secondary infertility', 'Secondary infertility'
+            ])
+            
+            if primary_infertility and str(primary_infertility).strip().lower() not in ['no', 'none', 'n/a', '']:
+                infertility = 'Primary Infertility'
+            elif secondary_infertility and str(secondary_infertility).strip().lower() not in ['no', 'none', 'n/a', '']:
+                infertility = 'Secondary Infertility'
+            else:
+                infertility = 'None'
+            
+            # Diagnosis - exclude already reported items
+            diagnosis_raw = get_field_value(patient_data, [
+                'Diagnosis', 'diagnosis', 'diagnoses', 'Diagnoses', 'DIAGNOSIS'
+            ])
+            
+            diagnosis = ''
+            if diagnosis_raw:
+                diagnosis_lower = str(diagnosis_raw).lower()
+                # Exclude certain diagnoses that are already reported in other columns
+                # Note: "cervical cancer" as a diagnosis is different from "suspect for cervical CA"
+                exclude_terms = ['infertility', 'via positive', 'small lesion', 'large lesion']
+                if not any(term in diagnosis_lower for term in exclude_terms):
+                    diagnosis = str(diagnosis_raw).strip()
+            
+            # Treatment Plan
+            plan = build_gyne_treatment_plan(patient_data)
+            
+            # Contact (Phone)
+            contact = get_field_value(patient_data, [
+                'Phone Number', 'phone number', 'phone', 'Phone', 'PHONE NUMBER', 
+                'PHONE', 'mobile', 'Mobile', 'contact number', 'Contact Number'
+            ])
+            
+            # Address (Ward)
+            address = get_field_value(patient_data, [
+                'Ward', 'ward', 'physical address', 'address', 'Address', 'WARD', 
+                'Physical Address', 'PHYSICAL ADDRESS'
+            ])
+            
+            # Build row
+            row = [
+                name or '',
+                age or '',
+                cx_visual,
+                via_neg,
+                via_small,
+                via_large,
+                breast_exam,
+                surgery_performed,
+                infertility,
+                diagnosis or '',
+                plan or '',
+                contact or '',
+                address or ''
+            ]
+            data.append(row)
+        
+        # GYNE-specific column widths (optimized for 13 columns)
+        col_widths = [
+            1.1 * inch,  # Name
+            0.5 * inch,  # Age
+            0.8 * inch,  # Suspect for Cervical CA
+            0.6 * inch,  # VIA NEG
+            0.7 * inch,  # VIA Small Lesion
+            0.7 * inch,  # VIA Large Lesion
+            0.8 * inch,  # Breast Examination
+            0.7 * inch,  # Surgeries
+            0.8 * inch,  # Infertility
+            1.1 * inch,  # Diagnosis
+            1.1 * inch,  # Plan
+            0.8 * inch,  # Contact
+            0.8 * inch,  # Address
+        ]
+        
+        # Add table title
+        table_title_style = ParagraphStyle(
+            'TableTitle',
+            parent=styles['Heading2'],
+            fontSize=14,
+            alignment=1,
+            textColor=colors.black,
+            fontName='Times-Bold',
+            spaceAfter=15
+        )
+        table_title = Paragraph("GYNE PATIENTS SUMMARY", table_title_style)
+        elements.append(table_title)
+        
+        # Process data for proper text wrapping
+        processed_data = []
+        for i, row in enumerate(data):
+            if i == 0:  # Header row
+                processed_data.append(row)
+            else:
+                processed_row = []
+                for j, cell in enumerate(row):
+                    # Apply paragraph styling to long text columns
+                    if j in [0, 9, 10, 11, 12]:  # Name, Diagnosis, Plan, Contact, Address
+                        if cell and len(str(cell)) > 10:
+                            cell_style = ParagraphStyle(
+                                'CellText',
+                                parent=styles['Normal'],
+                                fontName='Times-Roman',
+                                fontSize=8,
+                                leading=9
+                            )
+                            processed_row.append(Paragraph(str(cell), cell_style))
+                        else:
+                            processed_row.append(cell or '')
+                    else:
+                        processed_row.append(cell or '')
+                processed_data.append(processed_row)
+        
+        table = Table(processed_data, repeatRows=1, colWidths=col_widths)
+        table.setStyle(TableStyle([
+            # Header styling
+            ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+            
+            # Data rows styling
+            ('FONTNAME', (0, 1), (-1, -1), 'Times-Roman'),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            
+            # Alignment for each column
+            ('ALIGN', (0, 1), (0, -1), 'LEFT'),    # Name
+            ('ALIGN', (1, 1), (1, -1), 'CENTER'),  # Age
+            ('ALIGN', (2, 1), (8, -1), 'CENTER'),  # All Yes/No columns
+            ('ALIGN', (9, 1), (9, -1), 'LEFT'),    # Diagnosis
+            ('ALIGN', (10, 1), (10, -1), 'LEFT'),  # Plan
+            ('ALIGN', (11, 1), (11, -1), 'CENTER'), # Contact
+            ('ALIGN', (12, 1), (12, -1), 'LEFT'),  # Address
+            
+            # Vertical alignment
+            ('VALIGN', (0, 1), (-1, -1), 'TOP'),
+            
+            # Padding
+            ('TOPPADDING', (0, 1), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+            ('LEFTPADDING', (0, 1), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 1), (-1, -1), 4),
+            
+            # Grid and borders
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
+        ]))
+        
+        elements.append(table)
+        
+        # Add GYNE-specific summary statistics
+        add_gyne_summary_statistics(elements, patients, styles, project_id, start_date, end_date)
+    
+    return elements
+
 def add_summary_statistics(elements, patients, styles, project_id, start_date, end_date):
     """Add clean summary statistics to PDF with total percentages"""
     from reportlab.platypus import Spacer, Table, TableStyle, Paragraph
@@ -7835,6 +8043,363 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
     ]))
     
     elements.append(summary_table)
+
+def add_gyne_summary_statistics(elements, patients, styles, project_id, start_date, end_date):
+    """Add GYNE-specific summary statistics to PDF - similar to eye camps implementation"""
+    from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    
+    # Add spacing before summary
+    elements.append(Spacer(1, 30))
+    
+    # Summary title
+    summary_title_style = ParagraphStyle(
+        'SummaryTitle',
+        parent=styles['Heading2'],
+        fontSize=14,
+        alignment=1,
+        textColor=colors.black,
+        fontName='Times-Bold',
+        spaceAfter=15
+    )
+    summary_title = Paragraph("SUMMARY STATISTICS", summary_title_style)
+    elements.append(summary_title)
+    
+    # Current doctor's patient counts
+    total_patients = len(patients)
+    suspect_ca = 0
+    via_negative = 0
+    via_small_lesion = 0
+    via_large_lesion = 0
+    breast_normal = 0
+    breast_abnormal = 0
+    major_surgeries = 0
+    minor_surgeries = 0
+    primary_infertility = 0
+    secondary_infertility = 0
+    
+    # Count statistics for current doctor's patients
+    for patient in patients:
+        patient_data = patient.get('data', {})
+        
+        # Suspect for CA
+        abnormal_visual = get_field_value(patient_data, [
+            'Abnormal Visual Inspection', 'abnormal visual inspection'
+        ])
+        if abnormal_visual and str(abnormal_visual).strip().lower() not in ['no', 'none', 'n/a', '']:
+            suspect_ca += 1
+        
+        # VIA Test results
+        via_inspection = get_field_value(patient_data, [
+            'VIA Inspection', 'via inspection', 'VIA', 'via'
+        ])
+        if via_inspection and 'negative' in str(via_inspection).lower():
+            via_negative += 1
+        
+        # VIA Positive results
+        via_positive = get_field_value(patient_data, [
+            'VIA Positive', 'via positive', 'VIA positive'
+        ])
+        if via_positive:
+            if 'small lesion' in str(via_positive).lower():
+                via_small_lesion += 1
+            if 'large lesion' in str(via_positive).lower():
+                via_large_lesion += 1
+        
+        # Breast Examination
+        left_breast = get_field_value(patient_data, [
+            'Left Breast Condition', 'left breast condition', 'Left Breast', 'left breast'
+        ])
+        right_breast = get_field_value(patient_data, [
+            'Right Breast Condition', 'right breast condition', 'Right Breast', 'right breast'
+        ])
+        
+        left_normal = left_breast and 'normal' in str(left_breast).lower()
+        right_normal = right_breast and 'normal' in str(right_breast).lower()
+        left_abnormal = left_breast and str(left_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
+        right_abnormal = right_breast and str(right_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
+        
+        if left_normal and right_normal:
+            breast_normal += 1
+        elif left_abnormal or right_abnormal:
+            breast_abnormal += 1
+        
+        # Surgeries
+        surgery_fields = [
+            'Appendectomy', 'Cervical Repair', 'Colporrhaphy', 'Cystectomy', 'Excision', 
+            'Fissurectomy', 'Hemorrhoidectomy', 'Herniorrhaphy', 'Hernioplasty', 
+            'Laparotomy', 'Lumpectomy', 'Myomectomy', 'Total Abdominal Hysterectomy (TAH)', 
+            'Total Abdominal Hysterectomy with Bilateral Salpingo-Oophorectomy (TAH + BSO)', 
+            'Thyroidectomy', 'Total Vaginal Hysterectomy (TVH)', 'Wide Local Excision (WLE)', 
+            'Marsupialization', 'Incision and Drainage (I&D)'
+        ]
+        
+        major_procedures = [
+            'appendectomy', 'appendicitis', 'cervical repair', 'cystectomy', 'hernioplasty', 
+            'laparotomy', 'lumpectomy', 'myomectomy', 'total abdominal hysterectomy',
+            'tah', 'tah + bso', 'thyroidectomy', 'total vaginal hysterectomy', 'tvh'
+        ]
+        
+        minor_procedures = [
+            'colporrhaphy', 'excision', 'fistulectomy', 'hemorrhoidectomy', 'herniorrhaphy',
+            'wide local excision', 'wle', 'marsupialization', 'incision and drainage', 'i&d'
+        ]
+        
+        for surgery in surgery_fields:
+            surgery_value = get_field_value(patient_data, [surgery])
+            if surgery_value and str(surgery_value).strip().lower() not in ['no', 'none', 'n/a', '']:
+                surgery_lower = surgery.lower()
+                if any(major in surgery_lower for major in major_procedures):
+                    major_surgeries += 1
+                    break
+                elif any(minor in surgery_lower for minor in minor_procedures):
+                    minor_surgeries += 1
+                    break
+        
+        # Infertility
+        primary_inf = get_field_value(patient_data, [
+            'Primary Infertility', 'primary infertility', 'Primary infertility'
+        ])
+        secondary_inf = get_field_value(patient_data, [
+            'Secondary Infertility', 'secondary infertility', 'Secondary infertility'
+        ])
+        
+        if primary_inf and str(primary_inf).strip().lower() not in ['no', 'none', 'n/a', '']:
+            primary_infertility += 1
+        elif secondary_inf and str(secondary_inf).strip().lower() not in ['no', 'none', 'n/a', '']:
+            secondary_infertility += 1
+
+    # Get ALL patients for this project/date range to calculate totals
+    all_doctors_patients = get_patients_for_report(project_id, "ALL DOCTORS", start_date, end_date)
+    
+    # Calculate totals across all doctors
+    total_all_patients = len(all_doctors_patients)
+    total_all_suspect_ca = 0
+    total_all_via_negative = 0
+    total_all_via_small_lesion = 0
+    total_all_via_large_lesion = 0
+    total_all_breast_normal = 0
+    total_all_breast_abnormal = 0
+    total_all_major_surgeries = 0
+    total_all_minor_surgeries = 0
+    total_all_primary_infertility = 0
+    total_all_secondary_infertility = 0
+    
+    for patient in all_doctors_patients:
+        patient_data = patient.get('data', {})
+        
+        # Same counting logic for all patients
+        abnormal_visual = get_field_value(patient_data, [
+            'Abnormal Visual Inspection', 'abnormal visual inspection'
+        ])
+        if abnormal_visual and str(abnormal_visual).strip().lower() not in ['no', 'none', 'n/a', '']:
+            total_all_suspect_ca += 1
+        
+        via_inspection = get_field_value(patient_data, [
+            'VIA Inspection', 'via inspection', 'VIA', 'via'
+        ])
+        if via_inspection and 'negative' in str(via_inspection).lower():
+            total_all_via_negative += 1
+        
+        via_positive = get_field_value(patient_data, [
+            'VIA Positive', 'via positive', 'VIA positive'
+        ])
+        if via_positive:
+            if 'small lesion' in str(via_positive).lower():
+                total_all_via_small_lesion += 1
+            if 'large lesion' in str(via_positive).lower():
+                total_all_via_large_lesion += 1
+        
+        left_breast = get_field_value(patient_data, [
+            'Left Breast Condition', 'left breast condition', 'Left Breast', 'left breast'
+        ])
+        right_breast = get_field_value(patient_data, [
+            'Right Breast Condition', 'right breast condition', 'Right Breast', 'right breast'
+        ])
+        
+        left_normal = left_breast and 'normal' in str(left_breast).lower()
+        right_normal = right_breast and 'normal' in str(right_breast).lower()
+        left_abnormal = left_breast and str(left_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
+        right_abnormal = right_breast and str(right_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
+        
+        if left_normal and right_normal:
+            total_all_breast_normal += 1
+        elif left_abnormal or right_abnormal:
+            total_all_breast_abnormal += 1
+        
+        # Surgery counting (same logic)
+        surgery_fields = [
+            'Appendectomy', 'Cervical Repair', 'Colporrhaphy', 'Cystectomy', 'Excision', 
+            'Fissurectomy', 'Hemorrhoidectomy', 'Herniorrhaphy', 'Hernioplasty', 
+            'Laparotomy', 'Lumpectomy', 'Myomectomy', 'Total Abdominal Hysterectomy (TAH)', 
+            'Total Abdominal Hysterectomy with Bilateral Salpingo-Oophorectomy (TAH + BSO)', 
+            'Thyroidectomy', 'Total Vaginal Hysterectomy (TVH)', 'Wide Local Excision (WLE)', 
+            'Marsupialization', 'Incision and Drainage (I&D)'
+        ]
+        
+        for surgery in surgery_fields:
+            surgery_value = get_field_value(patient_data, [surgery])
+            if surgery_value and str(surgery_value).strip().lower() not in ['no', 'none', 'n/a', '']:
+                surgery_lower = surgery.lower()
+                if any(major in surgery_lower for major in major_procedures):
+                    total_all_major_surgeries += 1
+                    break
+                elif any(minor in surgery_lower for minor in minor_procedures):
+                    total_all_minor_surgeries += 1
+                    break
+        
+        # Infertility counting
+        primary_inf = get_field_value(patient_data, [
+            'Primary Infertility', 'primary infertility', 'Primary infertility'
+        ])
+        secondary_inf = get_field_value(patient_data, [
+            'Secondary Infertility', 'secondary infertility', 'Secondary infertility'
+        ])
+        
+        if primary_inf and str(primary_inf).strip().lower() not in ['no', 'none', 'n/a', '']:
+            total_all_primary_infertility += 1
+        elif secondary_inf and str(secondary_inf).strip().lower() not in ['no', 'none', 'n/a', '']:
+            total_all_secondary_infertility += 1
+    
+    # Helper function for safe percentage calculation
+    def safe_percentage(count, total):
+        return f"{count/total*100:.1f}%" if total > 0 else "0%"
+    
+    # Create styles for table cells
+    header_cell_style = ParagraphStyle(
+        'HeaderCell',
+        parent=styles['Normal'],
+        fontSize=10,
+        fontName='Times-Bold',
+        alignment=1,  # Center
+        textColor=colors.black,
+        leading=12
+    )
+    
+    metric_cell_style = ParagraphStyle(
+        'MetricCell', 
+        parent=styles['Normal'],
+        fontSize=9,
+        fontName='Times-Bold',
+        alignment=0,  # Left
+        textColor=colors.black,
+        leading=11,
+        leftIndent=6,
+        rightIndent=6
+    )
+    
+    data_cell_style = ParagraphStyle(
+        'DataCell',
+        parent=styles['Normal'], 
+        fontSize=9,
+        fontName='Times-Roman',
+        alignment=1,  # Center
+        textColor=colors.black,
+        leading=11
+    )
+    
+    # Create summary table data with proper structure like eye camps
+    summary_data = [
+        # Header row
+        [
+            Paragraph('METRIC', header_cell_style),
+            Paragraph('COUNT', header_cell_style), 
+            Paragraph('PERCENTAGE', header_cell_style),
+            Paragraph('TOTAL<br/>PERCENTAGE', header_cell_style)
+        ],
+        # Data rows
+        [
+            Paragraph('Total Patients', metric_cell_style),
+            Paragraph(str(total_patients), data_cell_style),
+            Paragraph('100.0%', data_cell_style),
+            Paragraph(safe_percentage(total_patients, total_all_patients), data_cell_style)
+        ],
+        [
+            Paragraph('Suspect for CA', metric_cell_style),
+            Paragraph(str(suspect_ca), data_cell_style),
+            Paragraph(safe_percentage(suspect_ca, total_patients), data_cell_style),
+            Paragraph(safe_percentage(suspect_ca, total_all_suspect_ca), data_cell_style)
+        ],
+        [
+            Paragraph('VIA Negative', metric_cell_style),
+            Paragraph(str(via_negative), data_cell_style),
+            Paragraph(safe_percentage(via_negative, total_patients), data_cell_style),
+            Paragraph(safe_percentage(via_negative, total_all_via_negative), data_cell_style)
+        ],
+        [
+            Paragraph('VIA Small Lesion', metric_cell_style),
+            Paragraph(str(via_small_lesion), data_cell_style),
+            Paragraph(safe_percentage(via_small_lesion, total_patients), data_cell_style),
+            Paragraph(safe_percentage(via_small_lesion, total_all_via_small_lesion), data_cell_style)
+        ],
+        [
+            Paragraph('VIA Large Lesion', metric_cell_style),
+            Paragraph(str(via_large_lesion), data_cell_style),
+            Paragraph(safe_percentage(via_large_lesion, total_patients), data_cell_style),
+            Paragraph(safe_percentage(via_large_lesion, total_all_via_large_lesion), data_cell_style)
+        ],
+        [
+            Paragraph('Breast Normal', metric_cell_style),
+            Paragraph(str(breast_normal), data_cell_style),
+            Paragraph(safe_percentage(breast_normal, total_patients), data_cell_style),
+            Paragraph(safe_percentage(breast_normal, total_all_breast_normal), data_cell_style)
+        ],
+        [
+            Paragraph('Breast Abnormal', metric_cell_style),
+            Paragraph(str(breast_abnormal), data_cell_style),
+            Paragraph(safe_percentage(breast_abnormal, total_patients), data_cell_style),
+            Paragraph(safe_percentage(breast_abnormal, total_all_breast_abnormal), data_cell_style)
+        ],
+        [
+            Paragraph('Major Surgeries', metric_cell_style),
+            Paragraph(str(major_surgeries), data_cell_style),
+            Paragraph(safe_percentage(major_surgeries, total_patients), data_cell_style),
+            Paragraph(safe_percentage(major_surgeries, total_all_major_surgeries), data_cell_style)
+        ],
+        [
+            Paragraph('Minor Surgeries', metric_cell_style),
+            Paragraph(str(minor_surgeries), data_cell_style),
+            Paragraph(safe_percentage(minor_surgeries, total_patients), data_cell_style),
+            Paragraph(safe_percentage(minor_surgeries, total_all_minor_surgeries), data_cell_style)
+        ],
+        [
+            Paragraph('1° Infertility', metric_cell_style),
+            Paragraph(str(primary_infertility), data_cell_style),
+            Paragraph(safe_percentage(primary_infertility, total_patients), data_cell_style),
+            Paragraph(safe_percentage(primary_infertility, total_all_primary_infertility), data_cell_style)
+        ],
+        [
+            Paragraph('2° Infertility', metric_cell_style),
+            Paragraph(str(secondary_infertility), data_cell_style),
+            Paragraph(safe_percentage(secondary_infertility, total_patients), data_cell_style),
+            Paragraph(safe_percentage(secondary_infertility, total_all_secondary_infertility), data_cell_style)
+        ]
+    ]
+    
+    # Create summary table with same structure as eye camps
+    summary_table = Table(summary_data, colWidths=[3.2*inch, 1.0*inch, 1.1*inch, 1.3*inch])
+    summary_table.setStyle(TableStyle([
+        # Header row styling
+        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+        ('TOPPADDING', (0, 0), (-1, 0), 10),
+        
+        # Data rows styling
+        ('VALIGN', (0, 1), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 1), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        ('LEFTPADDING', (0, 1), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 1), (-1, -1), 4),
+        
+        # Grid and borders
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
+    ]))
+    
+    elements.append(summary_table)
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
