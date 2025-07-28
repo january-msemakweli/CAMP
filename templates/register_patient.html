@@ -502,10 +502,14 @@
     .search-result-item {
         cursor: pointer;
         transition: background-color 0.15s ease-in-out;
+        border-radius: 4px;
+        margin: 2px 0;
     }
     
     .search-result-item:hover {
         background-color: #f8f9fa !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
     .search-result-item.active {
@@ -521,6 +525,9 @@
         border-radius: 0.375rem;
         background-color: white;
         margin-top: 2px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        max-height: 300px;
+        overflow-y: auto;
     }
     
     #patientSearchResults:empty {
@@ -620,8 +627,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 removeItemButton: false,
                 duplicateItemsAllowed: false,
                 addItemFilter: null,
-                position: 'auto', // Automatically flip dropdown direction based on available space
-                flip: true, // Allow flipping when there's insufficient space
                 classNames: {
                     containerOuter: 'choices',
                     containerInner: 'choices__inner',
@@ -810,6 +815,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Patient Search Functionality
 let searchTimeout;
 let selectedPatientData = null;
+let searchPatientData = new Map(); // Store search results data
 
 const patientIdInput = document.getElementById('patient_id');
 const searchResults = document.getElementById('patientSearchResults');
@@ -856,15 +862,20 @@ function displaySearchResults(patients) {
         return;
     }
 
+    // Clear previous data
+    searchPatientData.clear();
+
     const resultsHtml = patients.map(patient => {
         const displayName = patient.display_name || 'Unknown Name';
         const patientId = patient.patient_id;
         const createdDate = patient.created_at ? new Date(patient.created_at).toLocaleDateString() : 'Unknown';
         
+        // Store patient data in Map instead of HTML attribute
+        searchPatientData.set(patientId, patient);
+        
         return `
             <div class="search-result-item px-3 py-2 cursor-pointer border-bottom" 
-                 data-patient-id="${patientId}" 
-                 data-patient-data='${JSON.stringify(patient)}'>
+                 data-patient-id="${patientId}">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="fw-semibold text-primary">${patientId}</div>
@@ -881,9 +892,21 @@ function displaySearchResults(patients) {
 
     // Add click handlers for results
     searchResults.querySelectorAll('.search-result-item').forEach(item => {
-        item.addEventListener('click', function() {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            console.log('Patient search result clicked');
             const patientId = this.dataset.patientId;
-            const patientData = JSON.parse(this.dataset.patientData);
+            const patientData = searchPatientData.get(patientId);
+            
+            if (!patientData) {
+                console.error('Patient data not found for ID:', patientId);
+                alert('Error: Patient data not available. Please try searching again.');
+                return;
+            }
+            
+            console.log('Selected patient:', patientId, patientData);
             selectPatient(patientId, patientData);
         });
         
@@ -899,6 +922,8 @@ function displaySearchResults(patients) {
 
 // Select a patient from search results
 function selectPatient(patientId, patientData) {
+    console.log('selectPatient called with:', patientId, patientData);
+    
     patientIdInput.value = patientId;
     selectedPatientData = patientData;
     hideSearchResults();
@@ -909,22 +934,46 @@ function selectPatient(patientId, patientData) {
     
     // Update form title and button text to indicate editing
     updateFormForEditing(true);
+    
+    console.log('Patient selection completed');
 }
 
 // Pre-populate form fields with patient registration data
 function populateFormFields(patientData) {
+    console.log('populateFormFields called with:', patientData);
+    
+    if (!patientData) {
+        console.warn('No patient data provided to populateFormFields');
+        return;
+    }
+    
     if (patientData && patientData.data && patientData.data.registration) {
         const registration = patientData.data.registration;
+        console.log('Registration data found:', registration);
         
         // Populate basic information fields
         if (registration.Name) {
             const nameField = document.getElementById('Name');
-            if (nameField) nameField.value = registration.Name;
+            if (nameField) {
+                nameField.value = registration.Name;
+                console.log('Populated Name field:', registration.Name);
+            } else {
+                console.warn('Name field not found in DOM');
+            }
+        } else {
+            console.log('No Name in registration data');
         }
         
         if (registration['Age (Years)']) {
             const ageField = document.getElementById('Age (Years)');
-            if (ageField) ageField.value = registration['Age (Years)'];
+            if (ageField) {
+                ageField.value = registration['Age (Years)'];
+                console.log('Populated Age field:', registration['Age (Years)']);
+            } else {
+                console.warn('Age field not found in DOM');
+            }
+        } else {
+            console.log('No Age in registration data');
         }
         
         if (registration.Gender) {
@@ -934,11 +983,21 @@ function populateFormFields(patientData) {
                     radio.checked = true;
                 }
             });
+            console.log('Populated Gender field:', registration.Gender);
+        } else {
+            console.log('No Gender in registration data');
         }
         
         if (registration['Phone Number']) {
             const phoneField = document.getElementById('Phone Number');
-            if (phoneField) phoneField.value = registration['Phone Number'];
+            if (phoneField) {
+                phoneField.value = registration['Phone Number'];
+                console.log('Populated Phone field:', registration['Phone Number']);
+            } else {
+                console.warn('Phone field not found in DOM');
+            }
+        } else {
+            console.log('No Phone Number in registration data');
         }
         
         // Populate location fields using Choices.js instances
@@ -947,6 +1006,7 @@ function populateFormFields(patientData) {
                 const regionDropdown = document.getElementById('Region');
                 if (regionDropdown && regionDropdown.choicesInstance) {
                     regionDropdown.choicesInstance.setChoiceByValue(registration.Region);
+                    console.log('Populated Region field:', registration.Region);
                     // Trigger change event to populate districts
                     regionDropdown.dispatchEvent(new Event('change'));
                     
@@ -955,6 +1015,7 @@ function populateFormFields(patientData) {
                             const districtDropdown = document.getElementById('District');
                             if (districtDropdown && districtDropdown.choicesInstance) {
                                 districtDropdown.choicesInstance.setChoiceByValue(registration.District);
+                                console.log('Populated District field:', registration.District);
                                 // Trigger change event to populate wards
                                 districtDropdown.dispatchEvent(new Event('change'));
                                 
@@ -963,6 +1024,7 @@ function populateFormFields(patientData) {
                                         const wardDropdown = document.getElementById('Ward');
                                         if (wardDropdown && wardDropdown.choicesInstance) {
                                             wardDropdown.choicesInstance.setChoiceByValue(registration.Ward);
+                                            console.log('Populated Ward field:', registration.Ward);
                                         }
                                     }
                                 }, 500);
@@ -972,6 +1034,8 @@ function populateFormFields(patientData) {
                 }
             }
         }, 100);
+    } else {
+        console.warn('No registration data found in patient data structure:', patientData);
     }
 }
 
@@ -1010,6 +1074,8 @@ function updateFormForEditing(isEditing) {
 
 // Show patient preview
 function showPatientPreview(patientData) {
+    console.log('showPatientPreview called with:', patientData);
+    
     const displayName = patientData.display_name || 'Unknown Name';
     const createdDate = patientData.created_at ? new Date(patientData.created_at).toLocaleDateString() : 'Unknown';
     
@@ -1048,6 +1114,16 @@ function showPatientPreview(patientData) {
     `;
     
     patientPreview.style.display = 'block';
+    console.log('Patient preview displayed');
+    
+    // Add a subtle animation to draw attention
+    patientPreview.style.opacity = '0';
+    patientPreview.style.transform = 'translateY(-10px)';
+    setTimeout(() => {
+        patientPreview.style.transition = 'all 0.3s ease';
+        patientPreview.style.opacity = '1';
+        patientPreview.style.transform = 'translateY(0)';
+    }, 10);
 }
 
 // Hide search results
@@ -1105,6 +1181,38 @@ function clearFormFields() {
         }
     });
 }
+
+// Alternative click handling with event delegation to handle dynamic content
+searchResults.addEventListener('click', function(e) {
+    const searchResultItem = e.target.closest('.search-result-item');
+    if (searchResultItem) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Simple visual feedback without modifying content
+        const originalBg = searchResultItem.style.backgroundColor;
+        searchResultItem.style.backgroundColor = '#0d6efd';
+        searchResultItem.style.color = 'white';
+        
+        console.log('Search result clicked via delegation');
+        const patientId = searchResultItem.dataset.patientId;
+        const patientData = searchPatientData.get(patientId);
+        
+        if (!patientData) {
+            console.error('Patient data not found for ID:', patientId);
+            alert('Error: Patient data not available. Please try searching again.');
+            // Reset visual feedback
+            searchResultItem.style.backgroundColor = originalBg;
+            searchResultItem.style.color = '';
+            return;
+        }
+        
+        console.log('Selected patient via delegation:', patientId, patientData);
+        
+        // Immediate selection for better UX
+        selectPatient(patientId, patientData);
+    }
+});
 
 // Event listeners for patient search
 patientIdInput.addEventListener('input', debounceSearch(function(e) {
