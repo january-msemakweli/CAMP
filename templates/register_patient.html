@@ -903,6 +903,109 @@ function selectPatient(patientId, patientData) {
     selectedPatientData = patientData;
     hideSearchResults();
     showPatientPreview(patientData);
+    
+    // Pre-populate form fields with existing registration data if available
+    populateFormFields(patientData);
+    
+    // Update form title and button text to indicate editing
+    updateFormForEditing(true);
+}
+
+// Pre-populate form fields with patient registration data
+function populateFormFields(patientData) {
+    if (patientData && patientData.data && patientData.data.registration) {
+        const registration = patientData.data.registration;
+        
+        // Populate basic information fields
+        if (registration.Name) {
+            const nameField = document.getElementById('Name');
+            if (nameField) nameField.value = registration.Name;
+        }
+        
+        if (registration['Age (Years)']) {
+            const ageField = document.getElementById('Age (Years)');
+            if (ageField) ageField.value = registration['Age (Years)'];
+        }
+        
+        if (registration.Gender) {
+            const genderRadios = document.querySelectorAll('input[name="Gender"]');
+            genderRadios.forEach(radio => {
+                if (radio.value === registration.Gender) {
+                    radio.checked = true;
+                }
+            });
+        }
+        
+        if (registration['Phone Number']) {
+            const phoneField = document.getElementById('Phone Number');
+            if (phoneField) phoneField.value = registration['Phone Number'];
+        }
+        
+        // Populate location fields using Choices.js instances
+        setTimeout(() => {
+            if (registration.Region) {
+                const regionDropdown = document.getElementById('Region');
+                if (regionDropdown && regionDropdown.choicesInstance) {
+                    regionDropdown.choicesInstance.setChoiceByValue(registration.Region);
+                    // Trigger change event to populate districts
+                    regionDropdown.dispatchEvent(new Event('change'));
+                    
+                    setTimeout(() => {
+                        if (registration.District) {
+                            const districtDropdown = document.getElementById('District');
+                            if (districtDropdown && districtDropdown.choicesInstance) {
+                                districtDropdown.choicesInstance.setChoiceByValue(registration.District);
+                                // Trigger change event to populate wards
+                                districtDropdown.dispatchEvent(new Event('change'));
+                                
+                                setTimeout(() => {
+                                    if (registration.Ward) {
+                                        const wardDropdown = document.getElementById('Ward');
+                                        if (wardDropdown && wardDropdown.choicesInstance) {
+                                            wardDropdown.choicesInstance.setChoiceByValue(registration.Ward);
+                                        }
+                                    }
+                                }, 500);
+                            }
+                        }
+                    }, 500);
+                }
+            }
+        }, 100);
+    }
+}
+
+// Update form UI for editing mode
+function updateFormForEditing(isEditing) {
+    const submitButton = document.querySelector('button[type="submit"]');
+    const formTitle = document.querySelector('.registration-header h2');
+    const formDescription = document.querySelector('.registration-header p');
+    
+    if (isEditing) {
+        if (submitButton) {
+            submitButton.innerHTML = '<i class="fas fa-save me-2"></i>Update Patient';
+            submitButton.classList.remove('btn-primary');
+            submitButton.classList.add('btn-warning');
+        }
+        if (formTitle) {
+            formTitle.textContent = 'Edit Patient Registration';
+        }
+        if (formDescription) {
+            formDescription.textContent = 'Update patient information in the centralized system';
+        }
+    } else {
+        if (submitButton) {
+            submitButton.innerHTML = '<i class="fas fa-save me-2"></i>Register Patient';
+            submitButton.classList.remove('btn-warning');
+            submitButton.classList.add('btn-primary');
+        }
+        if (formTitle) {
+            formTitle.textContent = 'Patient Registration';
+        }
+        if (formDescription) {
+            formDescription.textContent = 'Register a new patient in the centralized system';
+        }
+    }
 }
 
 // Show patient preview
@@ -916,7 +1019,7 @@ function showPatientPreview(patientData) {
         const reg = patientData.data.registration;
         const infoItems = [];
         
-        if (reg.Age) infoItems.push(`Age: ${reg.Age}`);
+        if (reg['Age (Years)']) infoItems.push(`Age: ${reg['Age (Years)']}`);
         if (reg.Gender) infoItems.push(`Gender: ${reg.Gender}`);
         if (reg.Region) infoItems.push(`Region: ${reg.Region}`);
         
@@ -928,9 +1031,17 @@ function showPatientPreview(patientData) {
     patientPreviewContent.innerHTML = `
         <div class="d-flex justify-content-between align-items-start">
             <div>
-                <div class="fw-semibold">${patientData.patient_id}</div>
+                <div class="d-flex align-items-center">
+                    <div class="fw-semibold">${patientData.patient_id}</div>
+                    <span class="badge bg-warning text-dark ms-2 small">
+                        <i class="fas fa-edit me-1"></i>EDITING
+                    </span>
+                </div>
                 ${displayName !== 'Unknown Name' ? `<div class="text-muted">${displayName}</div>` : ''}
                 ${additionalInfo}
+                <div class="small text-info mt-1">
+                    <i class="fas fa-info-circle me-1"></i>Form fields have been pre-populated with existing data
+                </div>
             </div>
             <small class="text-muted">Registered: ${createdDate}</small>
         </div>
@@ -959,7 +1070,40 @@ function clearPatientSelection() {
     selectedPatientData = null;
     patientPreview.style.display = 'none';
     hideSearchResults();
+    
+    // Clear all form fields
+    clearFormFields();
+    
+    // Reset form to registration mode
+    updateFormForEditing(false);
+    
     patientIdInput.focus();
+}
+
+// Clear all form fields
+function clearFormFields() {
+    // Clear text inputs
+    const textInputs = document.querySelectorAll('input[type="text"], input[type="number"], input[type="tel"]');
+    textInputs.forEach(input => {
+        input.value = '';
+    });
+    
+    // Clear radio buttons
+    const radioButtons = document.querySelectorAll('input[type="radio"]');
+    radioButtons.forEach(radio => {
+        radio.checked = false;
+    });
+    
+    // Reset dropdowns using Choices.js
+    const dropdowns = document.querySelectorAll('.location-dropdown');
+    dropdowns.forEach(dropdown => {
+        if (dropdown.choicesInstance) {
+            dropdown.choicesInstance.removeActiveItems();
+            if (dropdown.id !== 'Region') {
+                dropdown.choicesInstance.disable();
+            }
+        }
+    });
 }
 
 // Event listeners for patient search

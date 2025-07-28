@@ -1811,17 +1811,14 @@ def dataset_view():
     # With centralized registration, we only need submissions from the selected project
 
     # Modified query to get submissions - for field discovery, we get ALL project submissions
-    # Form filtering will be applied later to preserve complete field structure
+    # Form filtering will be applied later to patients, not to field discovery
     query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
     
-    if project_id:
-        # Always filter by project first to get all forms in the project for field discovery
-        query = query.eq('forms.project_id', project_id)
-    elif submission_form_ids and not form_id: 
+    if submission_form_ids and not form_id: 
         # Only filter by specific forms if no single form is selected AND we have form IDs
         query = query.in_('form_id', submission_form_ids)
-    # NOTE: We removed the single form_id filtering here to preserve field discovery
-        
+    # NOTE: We removed the project filtering here to avoid join issues - will filter at application level
+    
     # Apply date filters if present
     if start_date:
         query = query.gte('created_at', start_date)
@@ -1869,6 +1866,8 @@ def dataset_view():
             break
     
     print(f"Total submissions fetched: {len(submissions)}")
+    if submissions:
+        print(f"Sample submission forms: {[s.get('form_id') for s in submissions[:5]]}")
     
     # If we got exactly 999 records, try to fetch more directly
     if len(submissions) == 999:
@@ -1921,6 +1920,11 @@ def dataset_view():
         if project_forms_response.data:
             project_form_ids = {form['id'] for form in project_forms_response.data}
             print(f"Forms from project {project_id}: {project_form_ids}")
+        else:
+            print(f"No forms found for project {project_id}")
+
+    processed_patients = 0
+    included_patients = 0
 
     for submission in submissions:
         patient_id = submission['patient_id']
@@ -1935,6 +1939,11 @@ def dataset_view():
         # and we have a project filter active
         should_process_fields = (not project_id) or (not project_form_ids) or (submission_form_id in project_form_ids)
         
+        if project_id and submission_form_id:
+            print(f"Dataset: Processing submission {submission_form_id} for patient {patient_id}")
+            print(f"Dataset: Form in project forms? {submission_form_id in project_form_ids}")
+            print(f"Dataset: Should process? {should_process_fields}")
+        
         if patient_id not in patient_data:
             patient_data[patient_id] = {
                 'patient_id': patient_id,
@@ -1942,9 +1951,11 @@ def dataset_view():
                 'has_project_submissions': False  # Flag to track if patient has submissions in this project
             }
         
-        # Only add submissions to the patient record if they're from the selected project or no project filter is active
+        # Always add the submission to track the patient, but only mark as project submission if it belongs to project
+        patient_data[patient_id]['submissions'].append(submission)
+        
+        # Mark as having project submissions only if this submission belongs to the selected project
         if should_process_fields:
-            patient_data[patient_id]['submissions'].append(submission)
             patient_data[patient_id]['has_project_submissions'] = True
             print(f"Dataset: Including submission from form {submission_form_id} for patient {patient_id} in project {project_id}")
         else:
@@ -1967,11 +1978,13 @@ def dataset_view():
             # Include patients who have submissions from this project
             if data.get('has_project_submissions', False):
                         filtered_patient_data[patient_id] = data
+                        included_patients += 1
             else:
                 print(f"Filtered out patient {patient_id} because they have no submissions from this project")
+            processed_patients += 1
         
-        print(f"Included {len(filtered_patient_data)} patients with submissions from this project")
-        print(f"Filtered out {len(patient_data) - len(filtered_patient_data)} patients with no submissions from this project")
+        print(f"Included {included_patients} patients with submissions from this project")
+        print(f"Filtered out {processed_patients - included_patients} patients with no submissions from this project")
         patient_data = filtered_patient_data
 
     # 6. Apply field value filtering (if specified) AFTER grouping
@@ -2059,8 +2072,8 @@ def dataset_view():
             print(f"Error fetching patient registration data for {patient_id}: {str(e)}")
             # Fallback to old method if centralized registration not available
         for submission in data['submissions']:
-            form_id = submission.get('form_id')
-            if form_id and get_form_is_first(form_id) and submission.get('data'):
+            submission_form_id = submission.get('form_id')
+            if submission_form_id and get_form_is_first(submission_form_id) and submission.get('data'):
                 submission_date = submission.get('created_at', '')
                 for key, value in submission['data'].items():
                     normalized_key = key.lower().strip().replace(' ', '_')
@@ -2142,7 +2155,10 @@ def dataset_view():
     #             submission['created_at'] = utc_to_eat(submission['created_at']).strftime('%Y-%m-%d %H:%M:%S')
 
     # 10.5. Apply form filtering to patients (after field discovery, preserve field structure)
-    if form_id:
+    # Only apply form filtering if:
+    # 1. A specific form_id is provided AND
+    # 2. We're not just viewing project-level data (user explicitly selected a form)
+    if form_id and form_id.strip():
         print(f"Applying form filter for form_id: {form_id}")
         filtered_patient_data = {}
         for patient_id, data in patient_data.items():
@@ -2156,6 +2172,12 @@ def dataset_view():
         
         patient_data = filtered_patient_data
         print(f"After form filtering: {len(patient_data)} patients remain (have submissions from selected form)")
+    else:
+        # No form filtering - show all patients from the project
+        if project_id:
+            print(f"No form filter applied - showing all {len(patient_data)} patients from project {project_id}")
+        else:
+            print(f"No filters applied - showing all {len(patient_data)} patients")
 
     # 10.6. Apply search filtering to patients (after field discovery, before final output)
     if search_term:
@@ -2909,10 +2931,10 @@ def export_dataset():
             print(f"Export: Error fetching patient registration data for {patient_id}: {str(e)}")
             # Fallback to old method if centralized registration not available
         for submission in data['submissions']:
-            form_id = submission.get('form_id')
-            if form_id and get_form_is_first(form_id) and submission.get('data'):
+            submission_form_id = submission.get('form_id')
+            if submission_form_id and get_form_is_first(submission_form_id) and submission.get('data'):
                 form_title = submission.get('forms', {}).get('title', 'Unknown')
-                print(f"Export: Found registration data from: {form_title} (ID: {form_id})")
+                print(f"Export: Found registration data from: {form_title} (ID: {submission_form_id})")
                 submission_date = submission.get('created_at', '')
                 for key, value in submission['data'].items():
                     normalized_key = key.lower().strip().replace(' ', '_')
@@ -2945,8 +2967,11 @@ def export_dataset():
         data['merged_data'] = merged_data
 
     # 9.4. Apply form filtering to patients (after field discovery, preserve field structure)
-    if form_id:
-        print(f"Export: Applying form filter for form_id: {form_id}")
+    # Only apply form filtering if:
+    # 1. A specific form_id is provided AND
+    # 2. We're not just viewing project-level data (user explicitly selected a form)
+    if form_id and form_id.strip():
+        print(f"Applying form filter for form_id: {form_id}")
         filtered_patient_data = {}
         for patient_id, data in patient_data.items():
             # Check if this patient has submissions from the selected form
@@ -2958,7 +2983,13 @@ def export_dataset():
                 filtered_patient_data[patient_id] = data
         
         patient_data = filtered_patient_data
-        print(f"Export: After form filtering: {len(patient_data)} patients remain (have submissions from selected form)")
+        print(f"After form filtering: {len(patient_data)} patients remain (have submissions from selected form)")
+    else:
+        # No form filtering - show all patients from the project
+        if project_id:
+            print(f"No form filter applied - showing all {len(patient_data)} patients from project {project_id}")
+        else:
+            print(f"No filters applied - showing all {len(patient_data)} patients")
 
     # 9.5. Apply search filtering to patients (after field discovery, before final export)
     if search_term:
@@ -3470,9 +3501,11 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
                 'has_project_submissions': False
             }
         
-        # Only include submissions that belong to the selected project (or if no project filter)
+        # Always add the submission to track the patient, but only mark as project submission if it belongs to project
+        patient_data[patient_id]['submissions'].append(submission)
+        
+        # Mark as having project submissions only if this submission belongs to the selected project
         if should_process_fields:
-            patient_data[patient_id]['submissions'].append(submission)
             patient_data[patient_id]['has_project_submissions'] = True
             print(f"Analytics: Including submission from form {submission_form_id} for patient {patient_id} in project {project_id}")
         else:
@@ -3530,8 +3563,8 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
             print(f"Analytics: Error fetching patient registration data for {patient_id}: {str(e)}")
             # Fallback to old method if centralized registration not available
         for submission in data['submissions']:
-            form_id = submission.get('form_id')
-            if form_id and get_form_is_first(form_id) and submission.get('data'):
+            submission_form_id = submission.get('form_id')
+            if submission_form_id and get_form_is_first(submission_form_id) and submission.get('data'):
                 submission_date = submission.get('created_at', '')
                 for key, value in submission['data'].items():
                     normalized_key = key.lower().strip().replace(' ', '_')
@@ -6158,13 +6191,13 @@ def admin_statistics():
     if date_filter.get('end'):
         attended_query = attended_query.lt('created_at', date_filter['end'])
         
-        try:
-            attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
-            for submission in attended_data:
-                if submission.get('patient_id'):
-                    attended_patients.add(submission['patient_id'])
-        except Exception as e:
-            print(f"Error fetching attended submissions: {str(e)}")
+    try:
+        attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
+        for submission in attended_data:
+            if submission.get('patient_id'):
+                attended_patients.add(submission['patient_id'])
+    except Exception as e:
+        print(f"Error fetching attended submissions: {str(e)}")
     
     total_patients_attended = len(attended_patients)
     print(f"Found {total_patients_attended} patients who received medical care (form submissions)")
@@ -7702,7 +7735,6 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
             if diagnosis_raw:
                 diagnosis_lower = str(diagnosis_raw).lower()
                 # Exclude certain diagnoses that are already reported in other columns
-                # Note: "cervical cancer" as a diagnosis is different from "suspect for cervical CA"
                 exclude_terms = ['infertility', 'via positive', 'small lesion', 'large lesion']
                 if not any(term in diagnosis_lower for term in exclude_terms):
                     diagnosis = str(diagnosis_raw).strip()
