@@ -547,6 +547,19 @@
         animation: fadeIn 0.3s ease-in-out;
     }
     
+    /* Readonly generated patient ID styling */
+    .readonly-generated {
+        background-color: #f8f9fa !important;
+        border-color: #28a745 !important;
+        color: #495057 !important;
+        cursor: not-allowed !important;
+    }
+    
+    .readonly-generated:focus {
+        box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25) !important;
+        background-color: #f8f9fa !important;
+    }
+    
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(-10px); }
         to { opacity: 1; transform: translateY(0); }
@@ -572,7 +585,13 @@ document.getElementById('generatePatientId').addEventListener('click', function(
     .then(response => response.json())
     .then(data => {
         if (data.success && data.patient_id) {
-            document.getElementById('patient_id').value = data.patient_id;
+            const patientIdField = document.getElementById('patient_id');
+            patientIdField.value = data.patient_id;
+            
+            // Make field readonly and set state flag
+            patientIdField.readOnly = true;
+            patientIdField.classList.add('readonly-generated');
+            isGeneratedPatientId = true;
             
             // Success feedback
             button.innerHTML = '<i class="fas fa-check me-2"></i>Generated!';
@@ -798,6 +817,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 firstInvalid.focus();
             }
+        } else {
+            // Reset readonly state after successful form submission
+            setTimeout(() => {
+                const patientIdField = document.getElementById('patient_id');
+                if (patientIdField) {
+                    patientIdField.readOnly = false;
+                    patientIdField.classList.remove('readonly-generated');
+                    isGeneratedPatientId = false;
+                }
+            }, 100);
         }
     });
 
@@ -816,6 +845,7 @@ document.addEventListener('DOMContentLoaded', function() {
 let searchTimeout;
 let selectedPatientData = null;
 let searchPatientData = new Map(); // Store search results data
+let isGeneratedPatientId = false; // Track if ID was generated vs selected from search
 
 const patientIdInput = document.getElementById('patient_id');
 const searchResults = document.getElementById('patientSearchResults');
@@ -926,6 +956,12 @@ function selectPatient(patientId, patientData) {
     
     patientIdInput.value = patientId;
     selectedPatientData = patientData;
+    
+    // Make field editable for patient updates and reset state flag
+    patientIdInput.readOnly = false;
+    patientIdInput.classList.remove('readonly-generated');
+    isGeneratedPatientId = false;
+    
     hideSearchResults();
     showPatientPreview(patientData);
     
@@ -1144,6 +1180,12 @@ function hideSearchSpinner() {
 function clearPatientSelection() {
     patientIdInput.value = '';
     selectedPatientData = null;
+    
+    // Reset readonly state and state flag
+    patientIdInput.readOnly = false;
+    patientIdInput.classList.remove('readonly-generated');
+    isGeneratedPatientId = false;
+    
     patientPreview.style.display = 'none';
     hideSearchResults();
     
@@ -1216,6 +1258,11 @@ searchResults.addEventListener('click', function(e) {
 
 // Event listeners for patient search
 patientIdInput.addEventListener('input', debounceSearch(function(e) {
+    // Skip search if the field is readonly (generated ID)
+    if (isGeneratedPatientId || e.target.readOnly) {
+        return;
+    }
+    
     const query = e.target.value.trim();
     
     // Clear preview if input is manually changed
@@ -1247,6 +1294,24 @@ document.addEventListener('click', function(e) {
 
 // Clear patient selection button
 clearPatientBtn.addEventListener('click', clearPatientSelection);
+
+// Prevent editing of generated patient ID
+patientIdInput.addEventListener('keydown', function(e) {
+    if (isGeneratedPatientId || this.readOnly) {
+        // Allow Tab, Shift+Tab for navigation, and some other navigation keys
+        const allowedKeys = ['Tab', 'Escape', 'F5'];
+        if (!allowedKeys.includes(e.key)) {
+            e.preventDefault();
+        }
+    }
+});
+
+// Prevent pasting into readonly generated field
+patientIdInput.addEventListener('paste', function(e) {
+    if (isGeneratedPatientId || this.readOnly) {
+        e.preventDefault();
+    }
+});
 
 // Handle keyboard navigation
 patientIdInput.addEventListener('keydown', function(e) {
