@@ -6948,7 +6948,7 @@ def build_eye_camp_treatment_plan(patient_data):
     # Priority 3: Reading Glasses
     reading_glasses = get_field_value(patient_data, [
         'Reading Glasses', 'reading glasses', 'glasses', 'Glasses',
-        'Treatment Plan (Reading Glasses)', 'treatment plan (reading glasses)',
+        'Treatment Plan (Eye Glasses)', 'treatment plan (eye glasses)',
         'READING GLASSES', 'GLASSES', 'spectacles', 'Spectacles'
     ])
     cleaned_glasses = clean_field_value(reading_glasses)
