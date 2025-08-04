@@ -6974,6 +6974,15 @@ def build_generic_treatment_plan(patient_data):
     for key, value in patient_data.items():
         if value and str(value).strip() and str(value).lower().strip() not in ['no', 'none', 'n/a', '']:
             key_lower = key.lower()
+            
+            # Special handling for eye glasses fields to match eye camp format
+            if ('treatment plan' in key_lower and 'eye glasses' in key_lower) or \
+               ('reading glasses' in key_lower) or \
+               ('glasses' in key_lower and 'treatment' in key_lower):
+                # Convert eye glasses references to standard format for statistics counting
+                treatment_parts.append('READING GLASS')
+                continue
+            
             # Check if this field contains any treatment-related keywords
             if any(pattern in key_lower for pattern in treatment_field_patterns):
                 # Clean up the value and add it
