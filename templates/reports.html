@@ -38,11 +38,26 @@
                             </select>
                         </div>
 
-                        <!-- Step 2: Select Doctor's Name (Hidden until programme selected) -->
+                        <!-- Step 2: Select Report Type (Hidden until programme selected) -->
+                        <div class="mb-4" id="reportTypeSection" style="display: none;">
+                            <label for="reportType" class="form-label fw-bold">
+                                <i class="fas fa-chart-bar me-2" style="color: var(--accent-color);"></i>
+                                2. SELECT REPORT TYPE
+                            </label>
+                            <select class="form-select" id="reportType" name="report_type" required>
+                                <option value="">Choose a report type...</option>
+                            </select>
+                            <div class="form-text">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Available report types for the selected programme
+                            </div>
+                        </div>
+
+                        <!-- Step 3: Select Doctor's Name (Hidden until report type selected, only for doctor reports) -->
                         <div class="mb-4" id="doctorSection" style="display: none;">
                             <label for="doctor" class="form-label fw-bold">
                                 <i class="fas fa-user-md me-2" style="color: var(--accent-color);"></i>
-                                2. CHOOSE DOCTOR'S NAME
+                                3. CHOOSE DOCTOR'S NAME
                             </label>
                             <select class="form-select" id="doctor" name="doctor" required>
                                 <option value="">Choose a doctor...</option>
@@ -53,11 +68,11 @@
                             </div>
                         </div>
 
-                        <!-- Step 3: Choose Date Range (Hidden until doctor selected) -->
+                        <!-- Step 4: Choose Date Range (Hidden until previous selections made) -->
                         <div class="mb-4" id="dateSection" style="display: none;">
                             <label class="form-label fw-bold">
                                 <i class="fas fa-calendar-alt me-2" style="color: var(--accent-color);"></i>
-                                3. CHOOSE DATE RANGE
+                                4. CHOOSE DATE RANGE
                             </label>
                             
                             <!-- Quick Date Options -->
@@ -90,7 +105,7 @@
                             </div>
                         </div>
 
-                        <!-- Step 4: Generate Report Button (Hidden until all selections made) -->
+                        <!-- Step 5: Generate Report Button (Hidden until all selections made) -->
                         <div class="mb-3" id="generateSection" style="display: none;">
                             <button type="submit" class="btn btn-success btn-lg w-100">
                                 <i class="fas fa-download me-2"></i>Generate PDF Report
@@ -149,6 +164,8 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const programmeSelect = document.getElementById('programme');
+    const reportTypeSelect = document.getElementById('reportType');
+    const reportTypeSection = document.getElementById('reportTypeSection');
     const doctorSelect = document.getElementById('doctor');
     const doctorSection = document.getElementById('doctorSection');
     const dateSection = document.getElementById('dateSection');
@@ -168,13 +185,42 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle programme selection
     programmeSelect.addEventListener('change', function() {
         if (this.value) {
-            loadDoctors(this.value);
-            doctorSection.style.display = 'block';
+            loadReportTypes(this.value);
+            reportTypeSection.style.display = 'block';
             
             // Hide subsequent sections
+            doctorSection.style.display = 'none';
             dateSection.style.display = 'none';
             generateSection.style.display = 'none';
             previewSection.style.display = 'none';
+        } else {
+            reportTypeSection.style.display = 'none';
+            doctorSection.style.display = 'none';
+            dateSection.style.display = 'none';
+            generateSection.style.display = 'none';
+            previewSection.style.display = 'none';
+        }
+    });
+    
+    // Handle report type selection
+    reportTypeSelect.addEventListener('change', function() {
+        if (this.value) {
+            if (this.value === 'doctor') {
+                // For doctor reports, show doctor selection
+                loadDoctors(programmeSelect.value);
+                doctorSelect.required = true;
+                doctorSection.style.display = 'block';
+                dateSection.style.display = 'none';
+                generateSection.style.display = 'none';
+                previewSection.style.display = 'none';
+            } else {
+                // For form reports, skip doctor selection and go to date
+                doctorSelect.required = false;
+                doctorSection.style.display = 'none';
+                dateSection.style.display = 'block';
+                generateSection.style.display = 'block';
+                updatePreview();
+            }
         } else {
             doctorSection.style.display = 'none';
             dateSection.style.display = 'none';
@@ -183,9 +229,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Handle doctor selection
+    // Handle doctor selection (only for doctor reports)
     doctorSelect.addEventListener('change', function() {
-        if (this.value) {
+        if (this.value && reportTypeSelect.value === 'doctor') {
             dateSection.style.display = 'block';
             generateSection.style.display = 'block';
             updatePreview();
@@ -213,6 +259,30 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById(id).addEventListener('change', updatePreview);
     });
     
+    function loadReportTypes(programmeId) {
+        reportTypeSelect.innerHTML = '<option value="">Loading report types...</option>';
+        
+        fetch(`/api/report_types/${programmeId}`)
+            .then(response => response.json())
+            .then(data => {
+                reportTypeSelect.innerHTML = '<option value="">Choose a report type...</option>';
+                if (data.report_types && data.report_types.length > 0) {
+                    data.report_types.forEach(reportType => {
+                        const option = document.createElement('option');
+                        option.value = reportType.value;
+                        option.textContent = reportType.label;
+                        reportTypeSelect.appendChild(option);
+                    });
+                } else {
+                    reportTypeSelect.innerHTML = '<option value="">No report types available</option>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading report types:', error);
+                reportTypeSelect.innerHTML = '<option value="">Error loading report types</option>';
+            });
+    }
+
     function loadDoctors(programmeId) {
         doctorSelect.innerHTML = '<option value="">Loading doctors...</option>';
         
@@ -238,12 +308,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updatePreview() {
-        if (!programmeSelect.value || !doctorSelect.value) return;
+        if (!programmeSelect.value || !reportTypeSelect.value) return;
+        
+        // For doctor reports, also require doctor selection
+        if (reportTypeSelect.value === 'doctor' && !doctorSelect.value) return;
         
         const formData = new FormData();
         formData.append('project_id', programmeSelect.value);
-        formData.append('doctor', doctorSelect.value);
+        formData.append('report_type', reportTypeSelect.value);
         formData.append('dateType', document.querySelector('input[name="dateType"]:checked').value);
+        
+        // Only append doctor for doctor reports
+        if (reportTypeSelect.value === 'doctor') {
+            formData.append('doctor', doctorSelect.value);
+        }
         
         if (customRadio.checked) {
             formData.append('startDate', document.getElementById('startDate').value);
@@ -257,7 +335,13 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             document.getElementById('totalPatients').textContent = data.totalPatients || 0;
-            document.getElementById('selectedDoctor').textContent = doctorSelect.options[doctorSelect.selectedIndex].text;
+            
+            // Update display based on report type
+            if (reportTypeSelect.value === 'doctor') {
+                document.getElementById('selectedDoctor').textContent = doctorSelect.options[doctorSelect.selectedIndex].text;
+            } else {
+                document.getElementById('selectedDoctor').textContent = reportTypeSelect.options[reportTypeSelect.selectedIndex].text;
+            }
             
             let dateRangeText = 'Today';
             if (customRadio.checked) {

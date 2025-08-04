@@ -6583,6 +6583,51 @@ def reports():
     
     return render_template('reports.html', projects=projects)
 
+@app.route('/api/report_types/<project_id>')
+@login_required  
+def get_report_types_for_programme(project_id):
+    """Get available report types for a specific programme"""
+    try:
+        # Get programme details to determine available report types
+        programme_response = supabase.table('projects').select('name').eq('id', project_id).execute()
+        if not programme_response.data:
+            return jsonify({'report_types': []})
+        
+        programme_name = programme_response.data[0]['name'].upper()
+        
+        # Define report types based on programme
+        report_types = []
+        
+        # Always add doctor reports
+        report_types.append({'value': 'doctor', 'label': 'Doctor Reports'})
+        
+        if 'FREE EYE CAMPS' in programme_name:
+            # Check if the specific forms exist for this programme
+            forms_response = supabase.table('forms').select('title').eq('project_id', project_id).execute()
+            if forms_response.data:
+                form_titles = [form['title'].upper() for form in forms_response.data]
+                
+                if any('READING GLASSES' in title for title in form_titles):
+                    report_types.append({'value': 'reading_glasses', 'label': 'Reading Glasses Reports'})
+                
+                if any('EYE DROPS' in title for title in form_titles):
+                    report_types.append({'value': 'eye_drops', 'label': 'Eye Drops Reports'})
+        
+        elif 'OBSTETRICS' in programme_name and 'GYNECOLOGY' in programme_name:
+            # Check if pharmacy form exists  
+            forms_response = supabase.table('forms').select('title').eq('project_id', project_id).execute()
+            if forms_response.data:
+                form_titles = [form['title'].upper() for form in forms_response.data]
+                
+                if any('PHARMACY' in title and 'GYNE' in title for title in form_titles):
+                    report_types.append({'value': 'pharmacy_gyne', 'label': 'Pharmacy (Gyne) Reports'})
+        
+        return jsonify({'report_types': report_types})
+        
+    except Exception as e:
+        print(f"Error getting report types: {str(e)}")
+        return jsonify({'report_types': []})
+
 @app.route('/api/doctors/<project_id>')
 @login_required
 def get_doctors_for_programme(project_id):
@@ -6638,10 +6683,15 @@ def report_preview():
     """Get preview statistics for the report"""
     try:
         project_id = request.form.get('project_id')
-        doctor_name = request.form.get('doctor')
+        report_type = request.form.get('report_type')
+        doctor_name = request.form.get('doctor')  # Only required for doctor reports
         date_type = request.form.get('dateType', 'today')
         
-        if not project_id or not doctor_name:
+        if not project_id or not report_type:
+            return jsonify({'totalPatients': 0})
+        
+        # For doctor reports, require doctor name
+        if report_type == 'doctor' and not doctor_name:
             return jsonify({'totalPatients': 0})
         
         # Get date range
@@ -6657,13 +6707,21 @@ def report_preview():
             if end_date:
                 end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
         
-        # Get matching patients
-        patients = get_patients_for_report(project_id, doctor_name, start_date, end_date)
+        # Get matching data based on report type
+        if report_type == 'doctor':
+            # For doctor reports, get patients as before
+            data = get_patients_for_report(project_id, doctor_name, start_date, end_date)
+            total_count = len(data)
+        else:
+            # For form reports, get form submissions count
+            data = get_form_submissions_for_report(project_id, report_type, start_date, end_date)
+            total_count = len(data)
         
         return jsonify({
-            'totalPatients': len(patients),
+            'totalPatients': total_count,
             'programme': project_id,
-            'doctor': doctor_name,
+            'report_type': report_type,
+            'doctor': doctor_name if report_type == 'doctor' else None,
             'startDate': start_date.isoformat() if start_date else None,
             'endDate': end_date.isoformat() if end_date else None
         })
@@ -6678,11 +6736,17 @@ def generate_report():
     """Generate PDF report"""
     try:
         project_id = request.form.get('project_id')
-        doctor_name = request.form.get('doctor')
+        report_type = request.form.get('report_type')
+        doctor_name = request.form.get('doctor')  # Only required for doctor reports
         date_type = request.form.get('dateType', 'today')
         
-        if not project_id or not doctor_name:
-            flash('Programme and doctor are required', 'danger')
+        if not project_id or not report_type:
+            flash('Programme and report type are required', 'danger')
+            return redirect(url_for('reports'))
+        
+        # For doctor reports, require doctor name
+        if report_type == 'doctor' and not doctor_name:
+            flash('Doctor name is required for doctor reports', 'danger')
             return redirect(url_for('reports'))
         
         # Get date range
@@ -6702,26 +6766,40 @@ def generate_report():
         programme_response = supabase.table('projects').select('name').eq('id', project_id).execute()
         programme_name = programme_response.data[0]['name'] if programme_response.data else 'Unknown Programme'
         
-        # Get patients data
-        patients = get_patients_for_report(project_id, doctor_name, start_date, end_date)
-        
-        # Generate PDF
-        pdf_buffer = generate_pdf_report(patients, programme_name, doctor_name, start_date, end_date, project_id)
-        
-        # Log activity
-        log_activity('generate', 'report', project_id, f"Generated report for {doctor_name} in {programme_name}")
+        # Generate PDF based on report type
+        if report_type == 'doctor':
+            # Generate doctor report (existing functionality)
+            patients = get_patients_for_report(project_id, doctor_name, start_date, end_date)
+            pdf_buffer = generate_pdf_report(patients, programme_name, doctor_name, start_date, end_date, project_id)
+            
+            # Create appropriate filename for ALL DOCTORS vs specific doctor
+            if doctor_name == "ALL DOCTORS":
+                filename = f"Medical_Report_ALL_DOCTORS_{programme_name}_{start_date}.pdf"
+            else:
+                filename = f"Medical_Report_{doctor_name}_{start_date}.pdf"
+            
+            log_activity('generate', 'report', project_id, f"Generated doctor report for {doctor_name} in {programme_name}")
+            
+        else:
+            # Generate form-specific report
+            form_data = get_form_submissions_for_report(project_id, report_type, start_date, end_date)
+            pdf_buffer = generate_form_report_pdf(form_data, programme_name, report_type, start_date, end_date, project_id)
+            
+            # Create filename for form reports
+            report_type_names = {
+                'reading_glasses': 'Reading_Glasses',
+                'eye_drops': 'Eye_Drops', 
+                'pharmacy_gyne': 'Pharmacy_Gyne'
+            }
+            report_name = report_type_names.get(report_type, report_type)
+            filename = f"{report_name}_Report_{programme_name}_{start_date}.pdf"
+            
+            log_activity('generate', 'report', project_id, f"Generated {report_name} report in {programme_name}")
         
         # Return PDF as response
         from flask import make_response
         response = make_response(pdf_buffer.getvalue())
         response.headers['Content-Type'] = 'application/pdf'
-        
-        # Create appropriate filename for ALL DOCTORS vs specific doctor
-        if doctor_name == "ALL DOCTORS":
-            filename = f"Medical_Report_ALL_DOCTORS_{programme_name}_{start_date}.pdf"
-        else:
-            filename = f"Medical_Report_{doctor_name}_{start_date}.pdf"
-        
         response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
         
         return response
@@ -6730,6 +6808,578 @@ def generate_report():
         print(f"Error generating report: {str(e)}")
         flash('Error generating report. Please try again.', 'danger')
         return redirect(url_for('reports'))
+
+def get_form_submissions_for_report(project_id, report_type, start_date, end_date):
+    """Get form submissions for specific form types based on report type"""
+    try:
+        from datetime import timedelta
+        
+        # Map report types to form title patterns
+        form_patterns = {
+            'reading_glasses': ['READING GLASSES'],
+            'eye_drops': ['EYE DROPS'],
+            'pharmacy_gyne': ['PHARMACY', 'GYNE']
+        }
+        
+        patterns = form_patterns.get(report_type, [])
+        if not patterns:
+            return []
+        
+        # Get forms that match the patterns for this project
+        forms_query = supabase.table('forms').select('id, title').eq('project_id', project_id)
+        forms_data = fetch_all_pages(forms_query, debug_name=f"form_report_project_{project_id}_forms")
+        
+        matching_form_ids = []
+        for form in forms_data:
+            form_title = form.get('title', '').upper()
+            # Check if all patterns are in the form title
+            if all(pattern in form_title for pattern in patterns):
+                matching_form_ids.append(form['id'])
+        
+        if not matching_form_ids:
+            return []
+        
+        # Get submissions for matching forms within date range
+        query = supabase.table('form_submissions').select('*').in_('form_id', matching_form_ids)
+        
+        if start_date:
+            query = query.gte('created_at', start_date.isoformat())
+        if end_date:
+            # Add one day to end_date to include all of that day
+            end_date_plus_one = end_date + timedelta(days=1)
+            query = query.lt('created_at', end_date_plus_one.isoformat())
+        
+        # Get all submissions
+        submissions = fetch_all_pages(query, debug_name=f"form_report_{report_type}_submissions")
+        
+        return submissions
+        
+    except Exception as e:
+        print(f"Error getting form submissions for report: {str(e)}")
+        return []
+
+def generate_form_report_pdf(form_data, programme_name, report_type, start_date, end_date, project_id):
+    """Generate PDF report for form-specific data"""
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from io import BytesIO
+    
+    # Create PDF buffer
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+    
+    # Container for the 'Flowable' objects
+    elements = []
+    
+    # Get the default stylesheet
+    styles = getSampleStyleSheet()
+    
+    # Create custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        alignment=1,  # Center
+        textColor=colors.black,
+        spaceAfter=30,
+        fontName='Times-Bold'
+    )
+    
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Heading2'],
+        fontSize=14,
+        alignment=1,  # Center
+        textColor=colors.black,
+        spaceAfter=20,
+        fontName='Times-Bold'
+    )
+    
+    # Title based on report type
+    report_titles = {
+        'reading_glasses': 'READING GLASSES DISPENSED REPORT',
+        'eye_drops': 'EYE DROPS & TABLETS DISPENSED REPORT',
+        'pharmacy_gyne': 'PHARMACY (GYNE) DISPENSED REPORT'
+    }
+    
+    title = report_titles.get(report_type, 'FORM REPORT')
+    elements.append(Paragraph(title, title_style))
+    elements.append(Paragraph(f"Programme: {programme_name}", subtitle_style))
+    elements.append(Paragraph(f"Period: {start_date} to {end_date}", subtitle_style))
+    elements.append(Spacer(1, 30))
+    
+    # Generate statistics based on report type
+    if report_type == 'reading_glasses':
+        stats_result = generate_reading_glasses_stats(form_data, styles)
+    elif report_type == 'eye_drops':
+        stats_result = generate_eye_drops_stats(form_data, styles)
+    elif report_type == 'pharmacy_gyne':
+        stats_result = generate_pharmacy_gyne_stats(form_data, styles)
+    else:
+        stats_result = None
+    
+    if stats_result:
+        # Handle both single flowable objects and lists of flowable objects
+        if isinstance(stats_result, list):
+            elements.extend(stats_result)
+        else:
+            elements.append(stats_result)
+    else:
+        no_data = Paragraph("No data available for this report.", styles['Normal'])
+        elements.append(no_data)
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+def generate_reading_glasses_stats(form_data, styles):
+    """Generate reading glasses statistics table"""
+    from reportlab.platypus import Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.lib.styles import ParagraphStyle
+    
+    # Count prescription strengths and unique patients
+    prescription_counts = {}
+    unique_patients = set()
+    
+    for submission in form_data:
+        data = submission.get('data', {})
+        patient_id = submission.get('patient_id')
+        
+        # Look for reading glasses field
+        glasses_value = None
+        for key, value in data.items():
+            if 'reading glasses' in key.lower() and value:
+                if str(value).strip().lower() not in ['not applicable', 'no', 'none', 'n/a', '']:
+                    glasses_value = str(value).strip()
+                    break
+        
+        if glasses_value:
+            if glasses_value in prescription_counts:
+                prescription_counts[glasses_value] += 1
+            else:
+                prescription_counts[glasses_value] = 1
+            
+            # Track unique patients
+            if patient_id:
+                unique_patients.add(patient_id)
+    
+    if not prescription_counts:
+        return Paragraph("No reading glasses prescriptions found.", styles['Normal'])
+    
+    elements = []
+    
+    # Add patient count summary
+    summary_style = ParagraphStyle(
+        'SummaryStyle',
+        parent=styles['Normal'],
+        fontSize=14,
+        fontName='Times-Bold',
+        alignment=1,
+        spaceAfter=20,
+        textColor=colors.blue
+    )
+    
+    elements.append(Paragraph(f"Total Patients Who Received Reading Glasses: {len(unique_patients)}", summary_style))
+    elements.append(Spacer(1, 10))
+    
+    # Create table data
+    header_style = ParagraphStyle(
+        'HeaderCell',
+        parent=styles['Normal'],
+        fontSize=12,
+        fontName='Times-Bold',
+        alignment=1,  # Center
+        textColor=colors.white
+    )
+    
+    data_style = ParagraphStyle(
+        'DataCell',
+        parent=styles['Normal'],
+        fontSize=11,
+        alignment=1,  # Center
+        textColor=colors.black
+    )
+    
+    # Sort prescriptions and create table data
+    sorted_prescriptions = sorted(prescription_counts.items())
+    
+    table_data = [
+        [Paragraph('Prescription Strength', header_style), Paragraph('Number Given', header_style)]
+    ]
+    
+    total_given = 0
+    for prescription, count in sorted_prescriptions:
+        table_data.append([
+            Paragraph(prescription, data_style),
+            Paragraph(str(count), data_style)
+        ])
+        total_given += count
+    
+    # Add total row
+    table_data.append([
+        Paragraph('TOTAL', header_style),
+        Paragraph(str(total_given), header_style)
+    ])
+    
+    # Create table
+    table = Table(table_data, colWidths=[3*inch, 2*inch])
+    table.setStyle(TableStyle([
+        # Header row
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        
+        # Data rows
+        ('FONTNAME', (0, 1), (-1, -2), 'Times-Roman'),
+        ('FONTSIZE', (0, 1), (-1, -2), 11),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.lightgrey]),
+        
+        # Total row
+        ('BACKGROUND', (0, -1), (-1, -1), colors.grey),
+        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+        ('FONTNAME', (0, -1), (-1, -1), 'Times-Bold'),
+        ('FONTSIZE', (0, -1), (-1, -1), 12),
+        
+        # Borders
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
+    ]))
+    
+    elements.append(table)
+    return elements
+
+def generate_eye_drops_stats(form_data, styles):
+    """Generate eye drops statistics table"""
+    from reportlab.platypus import Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.lib.styles import ParagraphStyle
+    import json
+    
+    # Count dispensed items and unique patients
+    eye_drops_counts = {}
+    tablets_counts = {}
+    patients_with_drops = set()
+    patients_with_tablets = set()
+    
+    for submission in form_data:
+        data = submission.get('data', {})
+        patient_id = submission.get('patient_id')
+        
+        # Look for dispensed eye drops field
+        for key, value in data.items():
+            if 'dispensed eye drops' in key.lower() and value:
+                # Handle list/array values
+                drops_list = []
+                if isinstance(value, list):
+                    drops_list = value
+                elif isinstance(value, str):
+                    try:
+                        drops_list = json.loads(value) if value.startswith('[') else [value]
+                    except:
+                        drops_list = [value]
+                
+                has_drops = False
+                for drop in drops_list:
+                    drop = str(drop).strip()
+                    if drop and drop.lower() not in ['no', 'none', 'n/a', '']:
+                        eye_drops_counts[drop] = eye_drops_counts.get(drop, 0) + 1
+                        has_drops = True
+                
+                if has_drops and patient_id:
+                    patients_with_drops.add(patient_id)
+            
+            # Look for dispensed tablets field
+            elif 'dispensed tablets' in key.lower() and value:
+                # Handle list/array values
+                tablets_list = []
+                if isinstance(value, list):
+                    tablets_list = value
+                elif isinstance(value, str):
+                    try:
+                        tablets_list = json.loads(value) if value.startswith('[') else [value]
+                    except:
+                        tablets_list = [value]
+                
+                has_tablets = False
+                for tablet in tablets_list:
+                    tablet = str(tablet).strip()
+                    if tablet and tablet.lower() not in ['no', 'none', 'n/a', '']:
+                        tablets_counts[tablet] = tablets_counts.get(tablet, 0) + 1
+                        has_tablets = True
+                
+                if has_tablets and patient_id:
+                    patients_with_tablets.add(patient_id)
+    
+    elements = []
+    
+    # Add patient count summary
+    summary_style = ParagraphStyle(
+        'SummaryStyle',
+        parent=styles['Normal'],
+        fontSize=14,
+        fontName='Times-Bold',
+        alignment=1,
+        spaceAfter=20,
+        textColor=colors.blue
+    )
+    
+    total_patients = len(patients_with_drops | patients_with_tablets)
+    elements.append(Paragraph(f"Total Patients Who Received Eye Drops or Tablets: {total_patients}", summary_style))
+    if patients_with_drops:
+        elements.append(Paragraph(f"Patients Who Received Eye Drops: {len(patients_with_drops)}", summary_style))
+    if patients_with_tablets:
+        elements.append(Paragraph(f"Patients Who Received Tablets: {len(patients_with_tablets)}", summary_style))
+    elements.append(Spacer(1, 20))
+    
+    # Style definitions
+    header_style = ParagraphStyle(
+        'HeaderCell',
+        parent=styles['Normal'],
+        fontSize=12,
+        fontName='Times-Bold',
+        alignment=1,
+        textColor=colors.white
+    )
+    
+    data_style = ParagraphStyle(
+        'DataCell',
+        parent=styles['Normal'],
+        fontSize=11,
+        alignment=1,
+        textColor=colors.black
+    )
+    
+    section_style = ParagraphStyle(
+        'SectionTitle',
+        parent=styles['Heading2'],
+        fontSize=14,
+        fontName='Times-Bold',
+        alignment=1,
+        spaceAfter=10
+    )
+    
+    # Eye Drops Table
+    if eye_drops_counts:
+        elements.append(Paragraph("EYE DROPS DISPENSED", section_style))
+        
+        table_data = [
+            [Paragraph('Eye Drop', header_style), Paragraph('Number Dispensed', header_style)]
+        ]
+        
+        total_drops = 0
+        for drop, count in sorted(eye_drops_counts.items()):
+            table_data.append([
+                Paragraph(drop, data_style),
+                Paragraph(str(count), data_style)
+            ])
+            total_drops += count
+        
+        table_data.append([
+            Paragraph('TOTAL', header_style),
+            Paragraph(str(total_drops), header_style)
+        ])
+        
+        table = Table(table_data, colWidths=[3*inch, 2*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('FONTNAME', (0, 1), (-1, -2), 'Times-Roman'),
+            ('FONTSIZE', (0, 1), (-1, -2), 11),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.lightgrey]),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.grey),
+            ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+            ('FONTNAME', (0, -1), (-1, -1), 'Times-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
+        ]))
+        
+        elements.append(table)
+        elements.append(Spacer(1, 30))
+    
+    # Tablets Table
+    if tablets_counts:
+        elements.append(Paragraph("TABLETS DISPENSED", section_style))
+        
+        table_data = [
+            [Paragraph('Tablet', header_style), Paragraph('Number Dispensed', header_style)]
+        ]
+        
+        total_tablets = 0
+        for tablet, count in sorted(tablets_counts.items()):
+            table_data.append([
+                Paragraph(tablet, data_style),
+                Paragraph(str(count), data_style)
+            ])
+            total_tablets += count
+        
+        table_data.append([
+            Paragraph('TOTAL', header_style),
+            Paragraph(str(total_tablets), header_style)
+        ])
+        
+        table = Table(table_data, colWidths=[3*inch, 2*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('FONTNAME', (0, 1), (-1, -2), 'Times-Roman'),
+            ('FONTSIZE', (0, 1), (-1, -2), 11),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.lightgrey]),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.grey),
+            ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+            ('FONTNAME', (0, -1), (-1, -1), 'Times-Bold'),
+            ('FONTSIZE', (0, -1), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
+        ]))
+        
+        elements.append(table)
+    
+    if not eye_drops_counts and not tablets_counts:
+        return Paragraph("No eye drops or tablets dispensed found.", styles['Normal'])
+    
+    return elements
+
+def generate_pharmacy_gyne_stats(form_data, styles):
+    """Generate pharmacy gyne statistics table"""
+    from reportlab.platypus import Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.lib.styles import ParagraphStyle
+    import json
+    
+    # Count dispensed medications and unique patients
+    medication_counts = {}
+    unique_patients = set()
+    
+    for submission in form_data:
+        data = submission.get('data', {})
+        patient_id = submission.get('patient_id')
+        
+        # Look for dispensed medication field
+        for key, value in data.items():
+            if 'dispenseed medication' in key.lower() and value:  # Note: typo in field name as per your data
+                # Handle list/array values
+                medications_list = []
+                if isinstance(value, list):
+                    medications_list = value
+                elif isinstance(value, str):
+                    try:
+                        medications_list = json.loads(value) if value.startswith('[') else [value]
+                    except:
+                        medications_list = [value]
+                
+                has_medication = False
+                for medication in medications_list:
+                    medication = str(medication).strip()
+                    if medication and medication.lower() not in ['no', 'none', 'n/a', '']:
+                        medication_counts[medication] = medication_counts.get(medication, 0) + 1
+                        has_medication = True
+                
+                if has_medication and patient_id:
+                    unique_patients.add(patient_id)
+    
+    if not medication_counts:
+        return Paragraph("No medications dispensed found.", styles['Normal'])
+    
+    elements = []
+    
+    # Add patient count summary
+    summary_style = ParagraphStyle(
+        'SummaryStyle',
+        parent=styles['Normal'],
+        fontSize=14,
+        fontName='Times-Bold',
+        alignment=1,
+        spaceAfter=20,
+        textColor=colors.blue
+    )
+    
+    elements.append(Paragraph(f"Total Patients Who Received Medications: {len(unique_patients)}", summary_style))
+    elements.append(Spacer(1, 10))
+    
+    # Create table data
+    header_style = ParagraphStyle(
+        'HeaderCell',
+        parent=styles['Normal'],
+        fontSize=12,
+        fontName='Times-Bold',
+        alignment=1,
+        textColor=colors.white
+    )
+    
+    data_style = ParagraphStyle(
+        'DataCell',
+        parent=styles['Normal'],
+        fontSize=11,
+        alignment=1,
+        textColor=colors.black
+    )
+    
+    # Sort medications and create table data
+    sorted_medications = sorted(medication_counts.items())
+    
+    table_data = [
+        [Paragraph('Medication', header_style), Paragraph('Number Dispensed', header_style)]
+    ]
+    
+    total_dispensed = 0
+    for medication, count in sorted_medications:
+        table_data.append([
+            Paragraph(medication, data_style),
+            Paragraph(str(count), data_style)
+        ])
+        total_dispensed += count
+    
+    # Add total row
+    table_data.append([
+        Paragraph('TOTAL', header_style),
+        Paragraph(str(total_dispensed), header_style)
+    ])
+    
+    # Create table
+    table = Table(table_data, colWidths=[4*inch, 2*inch])
+    table.setStyle(TableStyle([
+        # Header row
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        
+        # Data rows
+        ('FONTNAME', (0, 1), (-1, -2), 'Times-Roman'),
+        ('FONTSIZE', (0, 1), (-1, -2), 11),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.lightgrey]),
+        
+        # Total row
+        ('BACKGROUND', (0, -1), (-1, -1), colors.grey),
+        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+        ('FONTNAME', (0, -1), (-1, -1), 'Times-Bold'),
+        ('FONTSIZE', (0, -1), (-1, -1), 12),
+        
+        # Borders
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
+    ]))
+    
+    elements.append(table)
+    return elements
 
 def get_patients_for_report(project_id, doctor_name, start_date, end_date):
     """Get patients data for the report based on filters"""
