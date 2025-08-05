@@ -7172,21 +7172,14 @@ def generate_eye_drops_stats(form_data, styles):
         elements.append(Paragraph("EYE DROPS DISPENSED", section_style))
         
         table_data = [
-            [Paragraph('Eye Drop', header_style), Paragraph('Number Dispensed', header_style)]
+            [Paragraph('Eye Drop', header_style), Paragraph('Number of Patients who received', header_style)]
         ]
         
-        total_drops = 0
         for drop, count in sorted(eye_drops_counts.items()):
             table_data.append([
                 Paragraph(drop, data_style),
                 Paragraph(str(count), data_style)
             ])
-            total_drops += count
-        
-        table_data.append([
-            Paragraph('TOTAL', header_style),
-            Paragraph(str(total_drops), header_style)
-        ])
         
         table = Table(table_data, colWidths=[3*inch, 2*inch])
         table.setStyle(TableStyle([
@@ -7195,13 +7188,9 @@ def generate_eye_drops_stats(form_data, styles):
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('FONTNAME', (0, 1), (-1, -2), 'Times-Roman'),
-            ('FONTSIZE', (0, 1), (-1, -2), 11),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.lightgrey]),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.grey),
-            ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-            ('FONTNAME', (0, -1), (-1, -1), 'Times-Bold'),
-            ('FONTSIZE', (0, -1), (-1, -1), 12),
+            ('FONTNAME', (0, 1), (-1, -1), 'Times-Roman'),
+            ('FONTSIZE', (0, 1), (-1, -1), 11),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
         ]))
@@ -7214,21 +7203,14 @@ def generate_eye_drops_stats(form_data, styles):
         elements.append(Paragraph("TABLETS DISPENSED", section_style))
         
         table_data = [
-            [Paragraph('Tablet', header_style), Paragraph('Number Dispensed', header_style)]
+            [Paragraph('Tablet', header_style), Paragraph('Number of Patients who received', header_style)]
         ]
         
-        total_tablets = 0
         for tablet, count in sorted(tablets_counts.items()):
             table_data.append([
                 Paragraph(tablet, data_style),
                 Paragraph(str(count), data_style)
             ])
-            total_tablets += count
-        
-        table_data.append([
-            Paragraph('TOTAL', header_style),
-            Paragraph(str(total_tablets), header_style)
-        ])
         
         table = Table(table_data, colWidths=[3*inch, 2*inch])
         table.setStyle(TableStyle([
@@ -7237,13 +7219,9 @@ def generate_eye_drops_stats(form_data, styles):
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
             ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('FONTNAME', (0, 1), (-1, -2), 'Times-Roman'),
-            ('FONTSIZE', (0, 1), (-1, -2), 11),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.lightgrey]),
-            ('BACKGROUND', (0, -1), (-1, -1), colors.grey),
-            ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-            ('FONTNAME', (0, -1), (-1, -1), 'Times-Bold'),
-            ('FONTSIZE', (0, -1), (-1, -1), 12),
+            ('FONTNAME', (0, 1), (-1, -1), 'Times-Roman'),
+            ('FONTSIZE', (0, 1), (-1, -1), 11),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('LINEBELOW', (0, 0), (-1, 0), 2, colors.black),
         ]))
@@ -7335,22 +7313,14 @@ def generate_pharmacy_gyne_stats(form_data, styles):
     sorted_medications = sorted(medication_counts.items())
     
     table_data = [
-        [Paragraph('Medication', header_style), Paragraph('Number Dispensed', header_style)]
+        [Paragraph('Medication', header_style), Paragraph('Number of Patients who received', header_style)]
     ]
     
-    total_dispensed = 0
     for medication, count in sorted_medications:
         table_data.append([
             Paragraph(medication, data_style),
             Paragraph(str(count), data_style)
         ])
-        total_dispensed += count
-    
-    # Add total row
-    table_data.append([
-        Paragraph('TOTAL', header_style),
-        Paragraph(str(total_dispensed), header_style)
-    ])
     
     # Create table
     table = Table(table_data, colWidths=[4*inch, 2*inch])
@@ -7363,15 +7333,9 @@ def generate_pharmacy_gyne_stats(form_data, styles):
         ('FONTSIZE', (0, 0), (-1, 0), 12),
         
         # Data rows
-        ('FONTNAME', (0, 1), (-1, -2), 'Times-Roman'),
-        ('FONTSIZE', (0, 1), (-1, -2), 11),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.lightgrey]),
-        
-        # Total row
-        ('BACKGROUND', (0, -1), (-1, -1), colors.grey),
-        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-        ('FONTNAME', (0, -1), (-1, -1), 'Times-Bold'),
-        ('FONTSIZE', (0, -1), (-1, -1), 12),
+        ('FONTNAME', (0, 1), (-1, -1), 'Times-Roman'),
+        ('FONTSIZE', (0, 1), (-1, -1), 11),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
         
         # Borders
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
@@ -8557,13 +8521,17 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
     total_patients = len(patients)
     cataract_patients = 0
     immature_cataract_patients = 0
+    pterygium_patients = 0
+    chalazion_patients = 0
+    foreign_body_patients = 0
+    trichiasis_patients = 0
     reading_glasses_count = 0
     surgical_referrals = 0
     
     for patient in patients:
         patient_data = patient.get('data', {})
         
-        # Count cataract patients (separate immature from regular cataracts)
+        # Count cataract patients (separate immature from regular cataracts) and other diagnoses
         diagnosis = get_field_value(patient_data, [
             'diagnosis', 'diagnoses', 'Diagnosis', 'Diagnoses', 'DIAGNOSIS'
         ])
@@ -8574,6 +8542,14 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
                 immature_cataract_patients += 1
             elif 'cataract' in diagnosis_clean:
                 cataract_patients += 1
+            elif 'pterygium' in diagnosis_clean:
+                pterygium_patients += 1
+            elif 'chalazion' in diagnosis_clean:
+                chalazion_patients += 1
+            elif 'foreign body' in diagnosis_clean:
+                foreign_body_patients += 1
+            elif 'trichiasis' in diagnosis_clean:
+                trichiasis_patients += 1
         
         # Count reading glasses prescriptions
         treatment_plan = build_treatment_plan(patient_data, None)  # No programme name available here
@@ -8597,13 +8573,17 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
     total_all_patients = len(all_doctors_patients)
     total_all_cataracts = 0
     total_all_immature_cataracts = 0
+    total_all_pterygium = 0
+    total_all_chalazion = 0
+    total_all_foreign_body = 0
+    total_all_trichiasis = 0
     total_all_reading_glasses = 0
     total_all_surgical_referrals = 0
     
     for patient in all_doctors_patients:
         patient_data = patient.get('data', {})
         
-        # Count cataract patients (separate immature from regular cataracts)
+        # Count cataract patients (separate immature from regular cataracts) and other diagnoses
         diagnosis = get_field_value(patient_data, [
             'diagnosis', 'diagnoses', 'Diagnosis', 'Diagnoses', 'DIAGNOSIS'
         ])
@@ -8613,6 +8593,14 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
                 total_all_immature_cataracts += 1
             elif 'cataract' in diagnosis_clean:
                 total_all_cataracts += 1
+            elif 'pterygium' in diagnosis_clean:
+                total_all_pterygium += 1
+            elif 'chalazion' in diagnosis_clean:
+                total_all_chalazion += 1
+            elif 'foreign body' in diagnosis_clean:
+                total_all_foreign_body += 1
+            elif 'trichiasis' in diagnosis_clean:
+                total_all_trichiasis += 1
         
         # Count reading glasses prescriptions
         treatment_plan = build_treatment_plan(patient_data, None)  # No programme name available here
@@ -8698,6 +8686,30 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
             Paragraph(str(immature_cataract_patients), data_cell_style),
             Paragraph(safe_percentage(immature_cataract_patients, total_patients), data_cell_style),
             Paragraph(safe_percentage(immature_cataract_patients, total_all_immature_cataracts), data_cell_style)
+        ],
+        [
+            Paragraph('Pterygium Cases', metric_cell_style),
+            Paragraph(str(pterygium_patients), data_cell_style),
+            Paragraph(safe_percentage(pterygium_patients, total_patients), data_cell_style),
+            Paragraph(safe_percentage(pterygium_patients, total_all_pterygium), data_cell_style)
+        ],
+        [
+            Paragraph('Chalazion Cases', metric_cell_style),
+            Paragraph(str(chalazion_patients), data_cell_style),
+            Paragraph(safe_percentage(chalazion_patients, total_patients), data_cell_style),
+            Paragraph(safe_percentage(chalazion_patients, total_all_chalazion), data_cell_style)
+        ],
+        [
+            Paragraph('Foreign Body Cases', metric_cell_style),
+            Paragraph(str(foreign_body_patients), data_cell_style),
+            Paragraph(safe_percentage(foreign_body_patients, total_patients), data_cell_style),
+            Paragraph(safe_percentage(foreign_body_patients, total_all_foreign_body), data_cell_style)
+        ],
+        [
+            Paragraph('Trichiasis Cases', metric_cell_style),
+            Paragraph(str(trichiasis_patients), data_cell_style),
+            Paragraph(safe_percentage(trichiasis_patients, total_patients), data_cell_style),
+            Paragraph(safe_percentage(trichiasis_patients, total_all_trichiasis), data_cell_style)
         ],
         [
             Paragraph('Reading Glasses Prescribed', metric_cell_style),
