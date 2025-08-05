@@ -8145,7 +8145,7 @@ def create_individual_doctor_report_elements(patients, programme_name, doctor_na
         elements.append(table)
         
         # Add summary statistics
-        add_summary_statistics(elements, patients, styles, project_id, start_date, end_date)
+        add_summary_statistics(elements, patients, styles, project_id, start_date, end_date, programme_name)
     
     return elements
 
@@ -8494,7 +8494,7 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
     
     return elements
 
-def add_summary_statistics(elements, patients, styles, project_id, start_date, end_date):
+def add_summary_statistics(elements, patients, styles, project_id, start_date, end_date, programme_name):
     """Add clean summary statistics to PDF with total percentages"""
     from reportlab.platypus import Spacer, Table, TableStyle, Paragraph
     from reportlab.lib import colors
@@ -8552,21 +8552,31 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
                 trichiasis_patients += 1
         
         # Count reading glasses prescriptions
-        treatment_plan = build_treatment_plan(patient_data, None)  # No programme name available here
+        treatment_plan = build_treatment_plan(patient_data, programme_name)
         if 'READING GLASS' in treatment_plan:
             reading_glasses_count += 1
         
-        # Count surgical referrals
-        surgical_procedure = get_field_value(patient_data, [
-            'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure'
-        ])
-        referral_surgery = get_field_value(patient_data, [
-            'Referral for Surgery', 'referral for surgery', 'surgery referral'
-        ])
-        
-        if ((surgical_procedure and surgical_procedure.strip().lower() not in ['no', 'none', 'n/a']) or 
-            (referral_surgery and referral_surgery.strip().lower() in ['yes', 'y'])):
-            surgical_referrals += 1
+        # Count surgical referrals (FREE EYE CAMPS specific)
+        if 'FREE EYE CAMPS' in programme_name.upper():
+            # For FREE EYE CAMPS, only count "Referral for Surgery" field when value is "Yes"
+            referral_surgery = get_field_value(patient_data, [
+                'Referral for Surgery', 'referral for surgery', 'Referral for surgery'
+            ])
+            
+            if referral_surgery and referral_surgery.strip().lower() == 'yes':
+                surgical_referrals += 1
+        else:
+            # Generic logic for other programmes
+            surgical_procedure = get_field_value(patient_data, [
+                'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure'
+            ])
+            referral_surgery = get_field_value(patient_data, [
+                'Referral for Surgery', 'referral for surgery', 'surgery referral'
+            ])
+            
+            if ((surgical_procedure and surgical_procedure.strip().lower() not in ['no', 'none', 'n/a']) or 
+                (referral_surgery and referral_surgery.strip().lower() in ['yes', 'y'])):
+                surgical_referrals += 1
     
     # Get total statistics across ALL doctors for percentage calculation
     all_doctors_patients = get_patients_for_report(project_id, "ALL DOCTORS", start_date, end_date)
@@ -8603,21 +8613,31 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
                 total_all_trichiasis += 1
         
         # Count reading glasses prescriptions
-        treatment_plan = build_treatment_plan(patient_data, None)  # No programme name available here
+        treatment_plan = build_treatment_plan(patient_data, programme_name)
         if 'READING GLASS' in treatment_plan:
             total_all_reading_glasses += 1
         
-        # Count surgical referrals
-        surgical_procedure = get_field_value(patient_data, [
-            'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure'
-        ])
-        referral_surgery = get_field_value(patient_data, [
-            'Referral for Surgery', 'referral for surgery', 'surgery referral'
-        ])
-        
-        if ((surgical_procedure and surgical_procedure.strip().lower() not in ['no', 'none', 'n/a']) or 
-            (referral_surgery and referral_surgery.strip().lower() in ['yes', 'y'])):
-            total_all_surgical_referrals += 1
+        # Count surgical referrals (FREE EYE CAMPS specific)
+        if 'FREE EYE CAMPS' in programme_name.upper():
+            # For FREE EYE CAMPS, only count "Referral for Surgery" field when value is "Yes"
+            referral_surgery = get_field_value(patient_data, [
+                'Referral for Surgery', 'referral for surgery', 'Referral for surgery'
+            ])
+            
+            if referral_surgery and referral_surgery.strip().lower() == 'yes':
+                total_all_surgical_referrals += 1
+        else:
+            # Generic logic for other programmes
+            surgical_procedure = get_field_value(patient_data, [
+                'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure'
+            ])
+            referral_surgery = get_field_value(patient_data, [
+                'Referral for Surgery', 'referral for surgery', 'surgery referral'
+            ])
+            
+            if ((surgical_procedure and surgical_procedure.strip().lower() not in ['no', 'none', 'n/a']) or 
+                (referral_surgery and referral_surgery.strip().lower() in ['yes', 'y'])):
+                total_all_surgical_referrals += 1
     
     # Helper function for safe percentage calculation
     def safe_percentage(count, total):
