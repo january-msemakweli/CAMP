@@ -3643,6 +3643,57 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
     
     return df
 
+def categorize_age(age):
+    """Convert numerical age to meaningful age groups"""
+    if pd.isna(age):
+        return None
+    
+    try:
+        age_num = float(age)
+        if age_num <= 5:
+            return "Under-fives (0–5)"
+        elif age_num <= 12:
+            return "School-age children (6–12)"
+        elif age_num <= 17:
+            return "Adolescents (13–17)"
+        elif age_num <= 39:
+            return "Young adults (18–39)"
+        elif age_num <= 59:
+            return "Middle-aged adults (40–59)"
+        elif age_num <= 79:
+            return "Older adults (60–79)"
+        else:
+            return "Elderly (80+)"
+    except (ValueError, TypeError):
+        return None
+
+def get_age_group_order():
+    """Get the correct ordinal order for age groups"""
+    return [
+        "Under-fives (0–5)", 
+        "School-age children (6–12)", 
+        "Adolescents (13–17)", 
+        "Young adults (18–39)", 
+        "Middle-aged adults (40–59)", 
+        "Older adults (60–79)", 
+        "Elderly (80+)"
+    ]
+
+def sort_age_groups(df, age_column):
+    """Sort a dataframe by age groups in proper ordinal order"""
+    age_order = get_age_group_order()
+    
+    # Create a categorical column with proper ordering
+    if age_column in df.columns:
+        df[age_column] = pd.Categorical(df[age_column], categories=age_order, ordered=True)
+    
+    return df
+
+def is_age_field(field_name):
+    """Check if a field represents age data"""
+    field_lower = field_name.lower()
+    return 'age' in field_lower and ('year' in field_lower or 'age' == field_lower.strip())
+
 def get_summary_statistics(data, field_name):
     """Generate comprehensive summary statistics for numerical data"""
     if data.empty or field_name not in data.columns:
@@ -4095,52 +4146,99 @@ def analytics():
                             else:
                                 stats = f"<div class='alert alert-warning'>No data available for this checkbox field.</div>"
                         else:
-                            # Standard handling for non-checkbox fields
-                            # Get value counts
-                            try:
-                                value_counts = df[field1].value_counts().reset_index()
-                                value_counts.columns = ['Value', 'Count']
+                            # Check if this is an age field for special grouping
+                            if is_age_field(field1):
+                                # Apply age grouping for frequency distribution
+                                df_temp = df.copy()
+                                df_temp[f'{field1}_grouped'] = df_temp[field1].apply(categorize_age)
+                                
+                                # Get value counts for age groups with proper ordering
+                                age_groups_series = df_temp[f'{field1}_grouped']
+                                age_groups_series = pd.Categorical(age_groups_series, categories=get_age_group_order(), ordered=True)
+                                
+                                value_counts = age_groups_series.value_counts().reset_index()
+                                value_counts.columns = ['Age Group', 'Count']
                                 value_counts['Percentage'] = (value_counts['Count'] / value_counts['Count'].sum() * 100).round(2)
-                            except TypeError:
-                                # Handle unhashable types (like lists) by converting to strings first
-                                value_counts = df[field1].astype(str).value_counts().reset_index()
-                                value_counts.columns = ['Value', 'Count']
-                                value_counts['Percentage'] = (value_counts['Count'] / value_counts['Count'].sum() * 100).round(2)
-                            
-                            # Get missing values count
-                            missing_count = df[field1].isna().sum()
-                            
-                            # Add data source note
-                            stats = f"""
-                            <div class='alert alert-info mb-3'>{data_source_note}</div>
-                            <div class='alert alert-info'>
-                                <p>Total records: {len(df)}</p>
-                                <p>Unique values: {df[field1].astype(str).nunique()}</p>
-                                <p>Missing values: {missing_count} ({(missing_count/len(df)*100).round(2)}%)</p>
-                            </div>
-                            {value_counts.to_html(classes='table table-striped table-hover', index=False)}
-                            """
-                            
-                            # If we have too many values, only show top N in visualization
-                            if len(value_counts) > 15:
-                                plot_data = value_counts.head(15)
-                                has_more = True
-                            else:
+                                
+                                # Ensure proper ordering by creating categorical with ordered levels
+                                value_counts['Age Group'] = pd.Categorical(value_counts['Age Group'], categories=get_age_group_order(), ordered=True)
+                                value_counts = value_counts.sort_values('Age Group')
+                                
+                                # Get missing values count
+                                missing_count = df[field1].isna().sum()
+                                
+                                # Add data source note
+                                stats = f"""
+                                <div class='alert alert-info mb-3'>{data_source_note}</div>
+                                <div class='alert alert-success'>
+                                    <p>Age field detected - automatically grouped into meaningful age categories</p>
+                                    <p>Original field: {field1}</p>
+                                    <p>Total records: {len(df)}</p>
+                                    <p>Age groups: {len(value_counts)}</p>
+                                    <p>Missing values: {missing_count} ({(missing_count/len(df)*100).round(2)}%)</p>
+                                </div>
+                                {value_counts.to_html(classes='table table-striped table-hover', index=False)}
+                                """
+                                
                                 plot_data = value_counts
-                                has_more = False
-                            
-                            # Create a bar chart
-                            fig, ax = plt.subplots(figsize=(12, 6))
-                            sns.barplot(x='Value', y='Count', data=plot_data, ax=ax)
-                            ax.set_title(f'Frequency Distribution of {field1}')
-                            if has_more:
-                                ax.set_title(f'Frequency Distribution of {field1} (Top 15 Values)')
-                            plt.xticks(rotation=45, ha='right')
-                            plt.tight_layout()
-                            plots.append({
-                                'title': 'Frequency Distribution',
-                                'img': fig_to_base64(fig)
-                            })
+                                
+                                # Create a bar chart for age groups
+                                fig, ax = plt.subplots(figsize=(12, 6))
+                                sns.barplot(x='Age Group', y='Count', data=plot_data, ax=ax)
+                                ax.set_title(f'Age Group Distribution ({field1})')
+                                plt.xticks(rotation=45, ha='right')
+                                plt.tight_layout()
+                                plots.append({
+                                    'title': 'Age Group Distribution',
+                                    'img': fig_to_base64(fig)
+                                })
+                            else:
+                                # Standard handling for non-checkbox, non-age fields
+                                # Get value counts
+                                try:
+                                    value_counts = df[field1].value_counts().reset_index()
+                                    value_counts.columns = ['Value', 'Count']
+                                    value_counts['Percentage'] = (value_counts['Count'] / value_counts['Count'].sum() * 100).round(2)
+                                except TypeError:
+                                    # Handle unhashable types (like lists) by converting to strings first
+                                    value_counts = df[field1].astype(str).value_counts().reset_index()
+                                    value_counts.columns = ['Value', 'Count']
+                                    value_counts['Percentage'] = (value_counts['Count'] / value_counts['Count'].sum() * 100).round(2)
+                                
+                                # Get missing values count
+                                missing_count = df[field1].isna().sum()
+                                
+                                # Add data source note
+                                stats = f"""
+                                <div class='alert alert-info mb-3'>{data_source_note}</div>
+                                <div class='alert alert-info'>
+                                    <p>Total records: {len(df)}</p>
+                                    <p>Unique values: {df[field1].astype(str).nunique()}</p>
+                                    <p>Missing values: {missing_count} ({(missing_count/len(df)*100).round(2)}%)</p>
+                                </div>
+                                {value_counts.to_html(classes='table table-striped table-hover', index=False)}
+                                """
+                                
+                                # If we have too many values, only show top N in visualization
+                                if len(value_counts) > 15:
+                                    plot_data = value_counts.head(15)
+                                    has_more = True
+                                else:
+                                    plot_data = value_counts
+                                    has_more = False
+                                
+                                # Create a bar chart
+                                fig, ax = plt.subplots(figsize=(12, 6))
+                                sns.barplot(x='Value', y='Count', data=plot_data, ax=ax)
+                                ax.set_title(f'Frequency Distribution of {field1}')
+                                if has_more:
+                                    ax.set_title(f'Frequency Distribution of {field1} (Top 15 Values)')
+                                plt.xticks(rotation=45, ha='right')
+                                plt.tight_layout()
+                                plots.append({
+                                    'title': 'Frequency Distribution',
+                                    'img': fig_to_base64(fig)
+                                })
                 
                 # 3. Cross-tabulation between two fields
                 elif analysis_type == 'crosstab' and field1 and field2:
@@ -4154,9 +4252,154 @@ def analytics():
                         field1_type = field_types.get(field1, 'unknown')
                         field2_type = field_types.get(field2, 'unknown')
                         
-                        # Special handling if either field is a checkbox field
-                        if field1_type == 'checkbox' or field2_type == 'checkbox':
-                            stats = "<div class='alert alert-warning'>Cross-tabulation with checkbox fields (multiple selection) is not directly supported. Please export the data for more advanced analysis.</div>"
+                        # Check for special field handling (checkbox or age fields)
+                        is_field1_checkbox = field1_type == 'checkbox'
+                        is_field2_checkbox = field2_type == 'checkbox'
+                        is_field1_age = is_age_field(field1)
+                        is_field2_age = is_age_field(field2)
+                        
+                        # Special handling for checkbox fields or age fields
+                        if is_field1_checkbox or is_field2_checkbox or is_field1_age or is_field2_age:
+                            try:
+                                # Create processed dataframe
+                                processed_df = df.copy()
+                                processing_notes = []
+                                
+                                # Function to explode checkbox field into separate rows
+                                def explode_checkbox_field(df, field_name):
+                                    """Explode a checkbox field (list) into separate rows"""
+                                    if field_name not in df.columns:
+                                        return df
+                                    
+                                    # Create a list to store exploded rows
+                                    exploded_rows = []
+                                    
+                                    for idx, row in df.iterrows():
+                                        field_value = row[field_name]
+                                        
+                                        if isinstance(field_value, list) and len(field_value) > 0:
+                                            # Create a row for each item in the list
+                                            for item in field_value:
+                                                new_row = row.copy()
+                                                new_row[field_name] = item
+                                                exploded_rows.append(new_row)
+                                        elif field_value and field_value != [] and pd.notna(field_value):
+                                            # Handle non-list values
+                                            exploded_rows.append(row)
+                                        # Skip empty/null values
+                                    
+                                    return pd.DataFrame(exploded_rows) if exploded_rows else pd.DataFrame()
+                                
+                                # Process checkbox fields
+                                if is_field1_checkbox:
+                                    processed_df = explode_checkbox_field(processed_df, field1)
+                                    processing_notes.append(f"Checkbox field '{field1}' has been expanded")
+                                if is_field2_checkbox:
+                                    processed_df = explode_checkbox_field(processed_df, field2)
+                                    processing_notes.append(f"Checkbox field '{field2}' has been expanded")
+                                
+                                # Process age fields
+                                if is_field1_age:
+                                    processed_df[f'{field1}_grouped'] = processed_df[field1].apply(categorize_age)
+                                    processed_df[field1] = pd.Categorical(processed_df[f'{field1}_grouped'], categories=get_age_group_order(), ordered=True)
+                                    processing_notes.append(f"Age field '{field1}' has been grouped into age categories")
+                                if is_field2_age:
+                                    processed_df[f'{field2}_grouped'] = processed_df[field2].apply(categorize_age)
+                                    processed_df[field2] = pd.Categorical(processed_df[f'{field2}_grouped'], categories=get_age_group_order(), ordered=True)
+                                    processing_notes.append(f"Age field '{field2}' has been grouped into age categories")
+                                
+                                if len(processed_df) == 0:
+                                    stats = "<div class='alert alert-warning'>No data available for cross-tabulation after processing fields.</div>"
+                                else:
+                                    # Create cross-tabulation with processed data - preserve categorical ordering
+                                    ct = pd.crosstab(processed_df[field1], processed_df[field2], dropna=False)
+                                    
+                                    # Ensure proper ordering in the resulting crosstab if age fields are involved
+                                    if is_field1_age:
+                                        # Reorder index (rows) according to age group order
+                                        age_order = get_age_group_order()
+                                        existing_indices = [idx for idx in age_order if idx in ct.index]
+                                        ct = ct.reindex(existing_indices)
+                                    
+                                    if is_field2_age:
+                                        # Reorder columns according to age group order
+                                        age_order = get_age_group_order()
+                                        existing_columns = [col for col in age_order if col in ct.columns]
+                                        ct = ct.reindex(columns=existing_columns)
+                                    
+                                    # Create notes about processing
+                                    notes_html = "<div class='alert alert-info'><strong>Field Processing Notes:</strong><ul>"
+                                    for note in processing_notes:
+                                        notes_html += f"<li>{note}</li>"
+                                    notes_html += "</ul></div>"
+                                    
+                                    stats = notes_html + ct.to_html(classes='table table-striped table-hover')
+                                    
+                                    # Show row and column totals
+                                    ct_with_totals = pd.crosstab(processed_df[field1], processed_df[field2], margins=True, margins_name="Total", dropna=False)
+                                    
+                                    # Apply same ordering to totals table if age fields are involved
+                                    if is_field1_age:
+                                        age_order = get_age_group_order()
+                                        existing_indices = [idx for idx in age_order if idx in ct_with_totals.index and idx != "Total"] + ["Total"]
+                                        ct_with_totals = ct_with_totals.reindex(existing_indices)
+                                    
+                                    if is_field2_age:
+                                        age_order = get_age_group_order()
+                                        existing_columns = [col for col in age_order if col in ct_with_totals.columns and col != "Total"] + ["Total"]
+                                        ct_with_totals = ct_with_totals.reindex(columns=existing_columns)
+                                    
+                                    stats += "<h5>With Row/Column Totals:</h5>"
+                                    stats += ct_with_totals.to_html(classes='table table-striped table-hover')
+                                    
+                                    # Create visualizations
+                                    if len(ct) > 0 and len(ct.columns) > 0:
+                                        # Heatmap
+                                        fig, ax = plt.subplots(figsize=(12, 8))
+                                        sns.heatmap(ct, annot=True, fmt='d', cmap='YlGnBu', ax=ax)
+                                        ax.set_title(f'Heatmap - {title}')
+                                        ax.set_xlabel(field2)
+                                        ax.set_ylabel(field1)
+                                        plt.tight_layout()
+                                        plots.append({
+                                            'title': 'Heatmap - Cross-tabulation (Processed Data)',
+                                            'img': fig_to_base64(fig)
+                                        })
+                                        
+                                        # Stacked bar chart
+                                        fig, ax = plt.subplots(figsize=(12, 8))
+                                        ct_pct = ct.div(ct.sum(axis=1), axis=0)
+                                        ct_pct.plot(kind='bar', stacked=True, ax=ax)
+                                        ax.set_title(f'Stacked Bar Chart - {title}')
+                                        ax.set_xlabel(field1)
+                                        ax.set_ylabel('Proportion')
+                                        ax.legend(title=field2, bbox_to_anchor=(1.05, 1), loc='upper left')
+                                        plt.tight_layout()
+                                        plots.append({
+                                            'title': 'Stacked Bar Chart (Processed Data)',
+                                            'img': fig_to_base64(fig)
+                                        })
+                                        
+                                        # Show percentages
+                                        ct_pct = ct.div(ct.sum(axis=1), axis=0) * 100
+                                        ct_pct = ct_pct.round(2).astype(str) + '%'
+                                        
+                                        # Apply same ordering to percentage table if age fields are involved
+                                        if is_field1_age:
+                                            age_order = get_age_group_order()
+                                            existing_indices = [idx for idx in age_order if idx in ct_pct.index]
+                                            ct_pct = ct_pct.reindex(existing_indices)
+                                        
+                                        if is_field2_age:
+                                            age_order = get_age_group_order()
+                                            existing_columns = [col for col in age_order if col in ct_pct.columns]
+                                            ct_pct = ct_pct.reindex(columns=existing_columns)
+                                        
+                                        stats += "<h5>Percentages (Row-wise):</h5>"
+                                        stats += ct_pct.to_html(classes='table table-striped table-hover')
+                                        
+                            except Exception as e:
+                                stats = f"<div class='alert alert-danger'>Error processing fields for cross-tabulation: {str(e)}</div>"
                         # Cross-tab for categorical vs categorical
                         elif field1_type == 'categorical' and field2_type == 'categorical':
                             try:
@@ -4619,6 +4862,39 @@ def export_analytics():
     if analysis_type:
         filename = f"{filename}_{analysis_type}"
     
+    # Generate field_types for checkbox detection
+    field_types = {}
+    all_fields = [col for col in df.columns if col not in ['patient_id', 'full_name', 'created_at', 'updated_at']]
+    
+    # Determine field types for analysis
+    for field in all_fields:
+        # First check if this field contains lists (checkbox data)
+        contains_lists = False
+        try:
+            # Check if any value in this field is a list
+            contains_lists = df[field].apply(lambda x: isinstance(x, list)).any()
+            if contains_lists:
+                field_types[field] = 'checkbox'
+                continue
+        except:
+            # If we can't check (e.g., field is empty), assume it's not a list
+            pass
+        
+        if df[field].dtype == 'object':  # String/categorical
+            # Try to convert to numeric, setting errors='coerce' will convert failures to NaN
+            numeric_series = pd.to_numeric(df[field], errors='coerce')
+            # If the conversion didn't result in all NaNs, consider it numeric
+            if not numeric_series.isna().all():
+                field_types[field] = 'numeric'
+            else:
+                field_types[field] = 'categorical'
+        elif pd.api.types.is_numeric_dtype(df[field]):
+            field_types[field] = 'numeric'
+        elif pd.api.types.is_datetime64_any_dtype(df[field]):
+            field_types[field] = 'datetime'
+        else:
+            field_types[field] = 'unknown'
+    
     # For CSV format
     if export_format == 'csv':
         output = StringIO()
@@ -4637,10 +4913,85 @@ def export_analytics():
             # Export crosstab
             if field1 in df.columns and field2 in df.columns:
                 try:
-                    ct = pd.crosstab(df[field1], df[field2])
-                    ct.to_csv(output)
+                    # Check field types for checkbox handling
+                    field1_type = field_types.get(field1, 'unknown')
+                    field2_type = field_types.get(field2, 'unknown')
+                    
+                    # Handle checkbox fields or age fields
+                    is_field1_age = is_age_field(field1)
+                    is_field2_age = is_age_field(field2)
+                    
+                    if field1_type == 'checkbox' or field2_type == 'checkbox' or is_field1_age or is_field2_age:
+                        # Function to explode checkbox field into separate rows (same as in analytics)
+                        def explode_checkbox_field_export(df, field_name):
+                            """Explode a checkbox field (list) into separate rows for export"""
+                            if field_name not in df.columns:
+                                return df
+                            
+                            exploded_rows = []
+                            for idx, row in df.iterrows():
+                                field_value = row[field_name]
+                                
+                                if isinstance(field_value, list) and len(field_value) > 0:
+                                    for item in field_value:
+                                        new_row = row.copy()
+                                        new_row[field_name] = item
+                                        exploded_rows.append(new_row)
+                                elif field_value and field_value != [] and pd.notna(field_value):
+                                    exploded_rows.append(row)
+                            
+                            return pd.DataFrame(exploded_rows) if exploded_rows else pd.DataFrame()
+                        
+                        # Create processed dataframe
+                        processed_df = df.copy()
+                        processing_notes = []
+                        
+                        # Process checkbox fields
+                        if field1_type == 'checkbox':
+                            processed_df = explode_checkbox_field_export(processed_df, field1)
+                            processing_notes.append(f"Checkbox field '{field1}' has been expanded")
+                        if field2_type == 'checkbox':
+                            processed_df = explode_checkbox_field_export(processed_df, field2)
+                            processing_notes.append(f"Checkbox field '{field2}' has been expanded")
+                        
+                        # Process age fields
+                        if is_field1_age:
+                            processed_df[f'{field1}_grouped'] = processed_df[field1].apply(categorize_age)
+                            processed_df[field1] = pd.Categorical(processed_df[f'{field1}_grouped'], categories=get_age_group_order(), ordered=True)
+                            processing_notes.append(f"Age field '{field1}' has been grouped into age categories")
+                        if is_field2_age:
+                            processed_df[f'{field2}_grouped'] = processed_df[field2].apply(categorize_age)
+                            processed_df[field2] = pd.Categorical(processed_df[f'{field2}_grouped'], categories=get_age_group_order(), ordered=True)
+                            processing_notes.append(f"Age field '{field2}' has been grouped into age categories")
+                        
+                        if len(processed_df) > 0:
+                            # Write processing notes
+                            for note in processing_notes:
+                                output.write(f"Note: {note}\n")
+                            output.write("\n")
+                            
+                            ct = pd.crosstab(processed_df[field1], processed_df[field2], dropna=False)
+                            
+                            # Ensure proper ordering in the resulting crosstab if age fields are involved
+                            if is_field1_age:
+                                age_order = get_age_group_order()
+                                existing_indices = [idx for idx in age_order if idx in ct.index]
+                                ct = ct.reindex(existing_indices)
+                            
+                            if is_field2_age:
+                                age_order = get_age_group_order()
+                                existing_columns = [col for col in age_order if col in ct.columns]
+                                ct = ct.reindex(columns=existing_columns)
+                            
+                            ct.to_csv(output)
+                        else:
+                            output.write("No data available for cross-tabulation after processing fields.\n")
+                    else:
+                        # Regular crosstab for non-checkbox fields
+                        ct = pd.crosstab(df[field1], df[field2])
+                        ct.to_csv(output)
                 except TypeError:
-                    # Handle unhashable types like lists
+                    # Handle unhashable types like lists (fallback)
                     try:
                         ct = pd.crosstab(df[field1].astype(str), df[field2].astype(str))
                         output.write("Note: Values were converted to strings for cross-tabulation due to unhashable types\n\n")
@@ -4707,15 +5058,98 @@ def export_analytics():
             elif analysis_type == 'crosstab' and field1 and field2:
                 if field1 in df.columns and field2 in df.columns:
                     try:
-                        ct = pd.crosstab(df[field1], df[field2])
-                        ct.to_excel(writer, sheet_name='Cross Tabulation')
+                        # Check field types for checkbox handling
+                        field1_type = field_types.get(field1, 'unknown')
+                        field2_type = field_types.get(field2, 'unknown')
                         
-                        # Apply header formatting
-                        worksheet = writer.sheets['Cross Tabulation']
-                        for col_num, value in enumerate([''] + list(ct.columns)):
-                            worksheet.write(0, col_num, value, header_format)
+                        # Handle checkbox fields or age fields
+                        is_field1_age = is_age_field(field1)
+                        is_field2_age = is_age_field(field2)
+                        
+                        if field1_type == 'checkbox' or field2_type == 'checkbox' or is_field1_age or is_field2_age:
+                            # Function to explode checkbox field into separate rows (same as in analytics)
+                            def explode_checkbox_field_excel(df, field_name):
+                                """Explode a checkbox field (list) into separate rows for Excel export"""
+                                if field_name not in df.columns:
+                                    return df
+                                
+                                exploded_rows = []
+                                for idx, row in df.iterrows():
+                                    field_value = row[field_name]
+                                    
+                                    if isinstance(field_value, list) and len(field_value) > 0:
+                                        for item in field_value:
+                                            new_row = row.copy()
+                                            new_row[field_name] = item
+                                            exploded_rows.append(new_row)
+                                    elif field_value and field_value != [] and pd.notna(field_value):
+                                        exploded_rows.append(row)
+                                
+                                return pd.DataFrame(exploded_rows) if exploded_rows else pd.DataFrame()
+                            
+                            # Create processed dataframe
+                            processed_df = df.copy()
+                            processing_notes = []
+                            
+                            # Process checkbox fields
+                            if field1_type == 'checkbox':
+                                processed_df = explode_checkbox_field_excel(processed_df, field1)
+                                processing_notes.append(f"Checkbox field '{field1}' has been expanded")
+                            if field2_type == 'checkbox':
+                                processed_df = explode_checkbox_field_excel(processed_df, field2)
+                                processing_notes.append(f"Checkbox field '{field2}' has been expanded")
+                            
+                            # Process age fields
+                            if is_field1_age:
+                                processed_df[f'{field1}_grouped'] = processed_df[field1].apply(categorize_age)
+                                processed_df[field1] = pd.Categorical(processed_df[f'{field1}_grouped'], categories=get_age_group_order(), ordered=True)
+                                processing_notes.append(f"Age field '{field1}' has been grouped into age categories")
+                            if is_field2_age:
+                                processed_df[f'{field2}_grouped'] = processed_df[field2].apply(categorize_age)
+                                processed_df[field2] = pd.Categorical(processed_df[f'{field2}_grouped'], categories=get_age_group_order(), ordered=True)
+                                processing_notes.append(f"Age field '{field2}' has been grouped into age categories")
+                            
+                            if len(processed_df) > 0:
+                                # Add notes about field processing
+                                notes_text = "Field Processing Notes: " + "; ".join(processing_notes)
+                                notes_df = pd.DataFrame([[notes_text]], columns=["Cross Tabulation"])
+                                notes_df.to_excel(writer, sheet_name='Cross Tabulation', index=False)
+                                
+                                ct = pd.crosstab(processed_df[field1], processed_df[field2], dropna=False)
+                                
+                                # Ensure proper ordering in the resulting crosstab if age fields are involved
+                                if is_field1_age:
+                                    age_order = get_age_group_order()
+                                    existing_indices = [idx for idx in age_order if idx in ct.index]
+                                    ct = ct.reindex(existing_indices)
+                                
+                                if is_field2_age:
+                                    age_order = get_age_group_order()
+                                    existing_columns = [col for col in age_order if col in ct.columns]
+                                    ct = ct.reindex(columns=existing_columns)
+                                
+                                ct.to_excel(writer, sheet_name='Cross Tabulation', startrow=3)
+                                
+                                # Apply header formatting
+                                worksheet = writer.sheets['Cross Tabulation']
+                                for col_num, value in enumerate([''] + list(ct.columns)):
+                                    worksheet.write(3, col_num, value, header_format)
+                            else:
+                                # No data available after processing
+                                notes_df = pd.DataFrame([["No data available for cross-tabulation after processing fields."]], 
+                                                      columns=["Cross Tabulation"])
+                                notes_df.to_excel(writer, sheet_name='Cross Tabulation', index=False)
+                        else:
+                            # Regular crosstab for non-checkbox fields
+                            ct = pd.crosstab(df[field1], df[field2])
+                            ct.to_excel(writer, sheet_name='Cross Tabulation')
+                            
+                            # Apply header formatting
+                            worksheet = writer.sheets['Cross Tabulation']
+                            for col_num, value in enumerate([''] + list(ct.columns)):
+                                worksheet.write(0, col_num, value, header_format)
                     except TypeError:
-                        # Handle unhashable types like lists
+                        # Handle unhashable types like lists (fallback)
                         try:
                             # Convert to strings
                             ct = pd.crosstab(df[field1].astype(str), df[field2].astype(str))
