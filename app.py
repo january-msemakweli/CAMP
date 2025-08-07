@@ -7793,7 +7793,8 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
         form_ids = [form['id'] for form in forms_data]
         
         # Get all submissions for these forms within date range
-        query = supabase.table('form_submissions').select('*').in_('form_id', form_ids)
+        # PERFORMANCE FIX: Only fetch essential fields to reduce memory usage and network transfer
+        query = supabase.table('form_submissions').select('patient_id, data, created_at, form_id').in_('form_id', form_ids)
         
         if start_date:
             query = query.gte('created_at', start_date.isoformat())
@@ -7802,15 +7803,31 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
             end_date_plus_one = end_date + timedelta(days=1)
             query = query.lt('created_at', end_date_plus_one.isoformat())
         
+        # PERFORMANCE FIX: For specific doctors (not ALL DOCTORS), add database-level filtering if possible
+        if doctor_name != "ALL DOCTORS":
+            # Note: We can't easily filter by doctor at DB level due to JSON field variations
+            # So we'll fetch all and filter in memory (still faster than before due to other optimizations)
+            pass
+        
         # Use pagination to fetch ALL submissions
         all_submissions = fetch_all_pages(query, debug_name="report_submissions")
         
-        # First, aggregate ALL patient data from ALL forms
+        # PERFORMANCE FIX: Process submissions more efficiently with early filtering
         all_patient_data = {}
         patients_with_doctor = set()
         
-        for submission in all_submissions:
-            if not submission.get('data'):
+        # Track processing progress for large datasets
+        total_submissions = len(all_submissions)
+        if total_submissions > 1000:
+            print(f"Report: Processing {total_submissions} submissions for report generation...")
+        
+        for idx, submission in enumerate(all_submissions):
+            # Progress tracking for large datasets
+            if total_submissions > 1000 and idx % 1000 == 0:
+                print(f"Report: Processed {idx}/{total_submissions} submissions ({(idx/total_submissions)*100:.1f}%)")
+                
+            # PERFORMANCE FIX: Skip submissions with no data early to avoid unnecessary processing
+            if not submission.get('data') or not submission.get('patient_id'):
                 continue
             
             patient_id = submission['patient_id']
@@ -7858,33 +7875,73 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
         
         # Now fetch centralized registration data for all patients and merge it
         print(f"Report: Fetching centralized registration data for {len(all_patient_data)} patients")
-        for patient_id, patient_info in all_patient_data.items():
-            try:
-                # Get registration data from centralized patients table
-                patient_response = supabase.table('patients').select('data, created_at').eq('patient_id', patient_id).execute()
-                if patient_response.data and patient_response.data[0].get('data', {}).get('registration'):
-                    registration_data = patient_response.data[0]['data']['registration']
-                    
-                    # Merge registration data with form data (registration data takes priority)
-                    merged_data = {}
-                    merged_data.update(patient_info['data'])  # Form data first
-                    merged_data.update(registration_data)     # Registration data overwrites/adds
-                    
-                    patient_info['data'] = merged_data
-                    print(f"Report: Added centralized registration data for patient {patient_id}")
-                else:
-                    print(f"Report: No centralized registration data found for patient {patient_id}")
-                    
-            except Exception as e:
-                print(f"Report: Error fetching registration data for patient {patient_id}: {str(e)}")
-                # Continue with form data only
-                pass
         
-        # Filter to only include patients who have been seen by the specified doctor (or all if ALL DOCTORS)
-        filtered_patient_data = []
-        for patient_id, patient_info in all_patient_data.items():
-            if patient_id in patients_with_doctor:
-                filtered_patient_data.append(patient_info)
+        # PERFORMANCE FIX: Batch fetch all patient registration data in one query
+        patient_ids = list(all_patient_data.keys())
+        if patient_ids:
+            try:
+                # PERFORMANCE FIX: Fetch all patient registration data in a single batch query
+                batch_response = supabase.table('patients')\
+                    .select('patient_id, data, created_at')\
+                    .in_('patient_id', patient_ids)\
+                    .execute()
+                
+                # Create a lookup dict for O(1) access
+                registration_lookup = {}
+                for patient_record in batch_response.data:
+                    patient_id = patient_record.get('patient_id')
+                    if patient_id and patient_record.get('data', {}).get('registration'):
+                        registration_lookup[patient_id] = {
+                            'registration': patient_record['data']['registration'],
+                            'created_at': patient_record.get('created_at', '')
+                        }
+                
+                print(f"Report: Batch fetched registration data for {len(registration_lookup)} patients")
+                
+                # Now merge registration data with form data (much faster)
+                for patient_id, patient_info in all_patient_data.items():
+                    if patient_id in registration_lookup:
+                        registration_data = registration_lookup[patient_id]['registration']
+                        
+                        # Merge registration data with form data (registration data takes priority)
+                        merged_data = {}
+                        merged_data.update(patient_info['data'])  # Form data first
+                        merged_data.update(registration_data)     # Registration data overwrites/adds
+                        
+                        patient_info['data'] = merged_data
+                        print(f"Report: Added centralized registration data for patient {patient_id}")
+                    else:
+                        print(f"Report: No centralized registration data found for patient {patient_id}")
+                        
+            except Exception as e:
+                print(f"Report: Error batch fetching registration data: {str(e)}")
+                print("Report: Falling back to individual queries...")
+                
+                # Fallback to original method if batch fails
+                for patient_id, patient_info in all_patient_data.items():
+                    try:
+                        patient_response = supabase.table('patients').select('data, created_at').eq('patient_id', patient_id).execute()
+                        if patient_response.data and patient_response.data[0].get('data', {}).get('registration'):
+                            registration_data = patient_response.data[0]['data']['registration']
+                            
+                            merged_data = {}
+                            merged_data.update(patient_info['data'])
+                            merged_data.update(registration_data)
+                            
+                            patient_info['data'] = merged_data
+                            print(f"Report: Added centralized registration data for patient {patient_id}")
+                        else:
+                            print(f"Report: No centralized registration data found for patient {patient_id}")
+                            
+                    except Exception as inner_e:
+                        print(f"Report: Error fetching registration data for patient {patient_id}: {str(inner_e)}")
+                        continue
+        
+        # PERFORMANCE FIX: More efficient filtering using list comprehension
+        filtered_patient_data = [
+            patient_info for patient_id, patient_info in all_patient_data.items() 
+            if patient_id in patients_with_doctor
+        ]
         
         print(f"Report: Returning {len(filtered_patient_data)} patients for report generation")
         return filtered_patient_data
@@ -8148,32 +8205,39 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
     
     # Check if we need to generate individual reports for all doctors
     if doctor_name == "ALL DOCTORS":
-        # Get all unique doctors for this project/date range
-        all_doctors = get_unique_doctors_for_project(project_id, start_date, end_date)
+        # PERFORMANCE FIX: Fetch ALL patient data once, then filter by doctor in memory
+        all_patients_data = get_patients_for_report(project_id, "ALL DOCTORS", start_date, end_date)
         
-        if not all_doctors:
-            # If no doctors found, create empty report
+        if not all_patients_data:
+            # If no patients found, create empty report
             elements = create_empty_report_elements(programme_name, doctor_name, start_date, end_date)
         else:
-            # Generate individual report for each doctor
-            for i, individual_doctor in enumerate(all_doctors):
-                # Get patients for this specific doctor
-                doctor_patients = get_patients_for_report(project_id, individual_doctor, start_date, end_date)
-                
-                # Add page break before each doctor's report (except the first one)
-                if i > 0:
-                    elements.append(PageBreak())
-                
-                # Generate individual doctor report elements based on programme type
-                if 'OBSTETRICS' in programme_name.upper() and 'GYNECOLOGY' in programme_name.upper():
-                    doctor_elements = create_gyne_doctor_report_elements(
-                        doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
-                    )
-                else:
-                    doctor_elements = create_individual_doctor_report_elements(
-                        doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
-                    )
-                elements.extend(doctor_elements)
+            # Extract unique doctors from the patient data (much faster than separate DB query)
+            all_doctors = get_unique_doctors_from_patients(all_patients_data)
+            
+            if not all_doctors:
+                # If no doctors found in patient data, create empty report
+                elements = create_empty_report_elements(programme_name, doctor_name, start_date, end_date)
+            else:
+                # Generate individual report for each doctor using pre-fetched data
+                for i, individual_doctor in enumerate(all_doctors):
+                    # Filter patients for this specific doctor from the already-fetched data
+                    doctor_patients = filter_patients_by_doctor(all_patients_data, individual_doctor)
+                    
+                    # Add page break before each doctor's report (except the first one)
+                    if i > 0:
+                        elements.append(PageBreak())
+                    
+                    # Generate individual doctor report elements based on programme type
+                    if 'OBSTETRICS' in programme_name.upper() and 'GYNECOLOGY' in programme_name.upper():
+                        doctor_elements = create_gyne_doctor_report_elements(
+                            doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
+                        )
+                    else:
+                        doctor_elements = create_individual_doctor_report_elements(
+                            doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
+                        )
+                    elements.extend(doctor_elements)
         
         # Build PDF and return
         doc.build(elements)
@@ -8196,8 +8260,40 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
     buffer.seek(0)
     return buffer
 
+def get_unique_doctors_from_patients(patients_data):
+    """Extract unique doctors from already-fetched patient data (much faster than DB query)"""
+    doctors = set()
+    
+    for patient in patients_data:
+        patient_data = patient.get('data', {})
+        
+        # Look for doctor name in various possible field names
+        for key, value in patient_data.items():
+            if (key.lower().replace(' ', '').replace("'", '') in ['doctorsname', 'doctorname', 'doctor'] 
+                and value and str(value).strip()):
+                doctors.add(str(value).strip())
+                break
+    
+    return sorted(list(doctors))
+
+def filter_patients_by_doctor(patients_data, doctor_name):
+    """Filter patients for a specific doctor from already-fetched data"""
+    filtered_patients = []
+    
+    for patient in patients_data:
+        patient_data = patient.get('data', {})
+        
+        # Check if this patient was seen by the specified doctor
+        for key, value in patient_data.items():
+            if (key.lower().replace(' ', '').replace("'", '') in ['doctorsname', 'doctorname', 'doctor'] 
+                and value and str(value).strip().lower() == doctor_name.lower()):
+                filtered_patients.append(patient)
+                break
+    
+    return filtered_patients
+
 def get_unique_doctors_for_project(project_id, start_date, end_date):
-    """Get all unique doctors for a specific project and date range"""
+    """Get all unique doctors for a specific project and date range (legacy function - kept for compatibility)"""
     try:
         from datetime import timedelta
         
