@@ -9504,104 +9504,89 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
     secondary_infertility = 0
     cryotherapy = 0
     
-    # Count statistics for current doctor's patients
+    # Count statistics for current doctor's patients using exact field names
     for patient in patients:
         patient_data = patient.get('data', {})
         
-        # Suspect for CA
-        abnormal_visual = get_field_value(patient_data, [
-            'Abnormal Visual Inspection', 'abnormal visual inspection'
-        ])
-        if abnormal_visual and str(abnormal_visual).strip().lower() not in ['no', 'none', 'n/a', '']:
+        # Suspect for CA - check if abnormal visual inspection shows "Suspect for Cervical Cancer"
+        abnormal_visual = get_field_value(patient_data, ['Abnormal Visual Inspection'])
+        if abnormal_visual and 'Suspect for Cervical Cancer' in str(abnormal_visual):
             suspect_ca += 1
         
-        # VIA Test results
-        via_inspection = get_field_value(patient_data, [
-            'VIA Inspection', 'via inspection', 'VIA', 'via'
-        ])
-        if via_inspection and 'negative' in str(via_inspection).lower():
+        # VIA Test results - check exact values
+        via_inspection = get_field_value(patient_data, ['VIA Inspection'])
+        if via_inspection == 'Negative':
             via_negative += 1
         
-        # VIA Positive results
-        via_positive = get_field_value(patient_data, [
-            'VIA Positive', 'via positive', 'VIA positive'
-        ])
-        if via_positive:
-            if 'small lesion' in str(via_positive).lower():
-                via_small_lesion += 1
-            if 'large lesion' in str(via_positive).lower():
-                via_large_lesion += 1
+        # VIA Positive results - check exact values
+        via_positive = get_field_value(patient_data, ['VIA Positive'])
+        if via_positive == 'Small Lesion':
+            via_small_lesion += 1
+        elif via_positive == 'Large Lesion':
+            via_large_lesion += 1
         
-        # Breast Examination
-        left_breast = get_field_value(patient_data, [
-            'Left Breast Condition', 'left breast condition', 'Left Breast', 'left breast'
-        ])
-        right_breast = get_field_value(patient_data, [
-            'Right Breast Condition', 'right breast condition', 'Right Breast', 'right breast'
-        ])
+        # Breast Examination - use exact field names and values
+        left_breast = get_field_value(patient_data, ['Left Breast Condition'])
+        right_breast = get_field_value(patient_data, ['Right Breast Condition'])
         
-        left_normal = left_breast and 'normal' in str(left_breast).lower()
-        right_normal = right_breast and 'normal' in str(right_breast).lower()
-        left_abnormal = left_breast and str(left_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
-        right_abnormal = right_breast and str(right_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
+        left_normal = left_breast == 'Normal'
+        right_normal = right_breast == 'Normal'
+        left_abnormal = left_breast == 'Abnormal'
+        right_abnormal = right_breast == 'Abnormal'
         
         if left_normal and right_normal:
             breast_normal += 1
         elif left_abnormal or right_abnormal:
             breast_abnormal += 1
         
-        # Surgeries
-        surgery_fields = [
-            'Appendectomy', 'Cervical Repair', 'Colporrhaphy', 'Cystectomy', 'Excision', 
-            'Fissurectomy', 'Hemorrhoidectomy', 'Herniorrhaphy', 'Hernioplasty', 
-            'Laparotomy', 'Lumpectomy', 'Myomectomy', 'Total Abdominal Hysterectomy (TAH)', 
-            'Total Abdominal Hysterectomy with Bilateral Salpingo-Oophorectomy (TAH + BSO)', 
-            'Thyroidectomy', 'Total Vaginal Hysterectomy (TVH)', 'Wide Local Excision (WLE)', 
-            'Marsupialization', 'Incision and Drainage (I&D)'
-        ]
+        # Surgeries - use exact Surgical Procedure field
+        surgical_procedure = get_field_value(patient_data, ['Surgical Procedure'])
         
+        # Define major vs minor procedures based on exact form options
         major_procedures = [
-            'appendectomy', 'appendicitis', 'cervical repair', 'cystectomy', 'hernioplasty', 
-            'laparotomy', 'lumpectomy', 'myomectomy', 'total abdominal hysterectomy',
-            'tah', 'tah + bso', 'thyroidectomy', 'total vaginal hysterectomy', 'tvh'
+            'Appendectomy', 'Cervical Repair', 'Cystectomy', 'Hernioplasty', 
+            'Laparotomy', 'Lumpectomy', 'Myomectomy', 'Total Abdominal Hysterectomy (TAH)',
+            'Total Abdominal Hysterectomy with Bilateral Salpingo-Oophorectomy (TAH + BSO)', 
+            'Thyroidectomy', 'Total Vaginal Hysterectomy (TVH)'
         ]
         
         minor_procedures = [
-            'colporrhaphy', 'excision', 'fistulectomy', 'hemorrhoidectomy', 'herniorrhaphy',
-            'wide local excision', 'wle', 'marsupialization', 'incision and drainage', 'i&d'
+            'Colporrhaphy', 'Excision', 'Fissurectomy', 'Hemorrhoidectomy', 'Herniorrhaphy',
+            'Wide Local Excision (WLE)', 'Marsupialization', 'Incision and Drainage (I&D)'
         ]
         
-        for surgery in surgery_fields:
-            surgery_value = get_field_value(patient_data, [surgery])
-            if surgery_value and str(surgery_value).strip().lower() not in ['no', 'none', 'n/a', '']:
-                surgery_lower = surgery.lower()
-                if any(major in surgery_lower for major in major_procedures):
+        if surgical_procedure:
+            procedure_list = surgical_procedure if isinstance(surgical_procedure, list) else [surgical_procedure]
+            for procedure in procedure_list:
+                if procedure in major_procedures:
                     major_surgeries += 1
                     break
-                elif any(minor in surgery_lower for minor in minor_procedures):
+                elif procedure in minor_procedures:
                     minor_surgeries += 1
                     break
         
-        # Infertility
-        primary_inf = get_field_value(patient_data, [
-            'Primary Infertility', 'primary infertility', 'Primary infertility'
-        ])
-        secondary_inf = get_field_value(patient_data, [
-            'Secondary Infertility', 'secondary infertility', 'Secondary infertility'
-        ])
+        # Infertility - check diagnosis field (checkbox data) for infertility values
+        diagnosis = get_field_value(patient_data, ['Diagnosis'])
+        if diagnosis:
+            # Handle both string and list formats from checkbox data
+            diagnosis_str = ''
+            if isinstance(diagnosis, list):
+                diagnosis_str = ' '.join(str(d) for d in diagnosis).lower()
+            else:
+                diagnosis_str = str(diagnosis).lower()
+            
+            # Check for infertility (case insensitive, flexible matching)
+            if 'primary infertility' in diagnosis_str:
+                primary_infertility += 1
+            elif 'secondary infertility' in diagnosis_str:
+                secondary_infertility += 1
         
-        if primary_inf and str(primary_inf).strip().lower() not in ['no', 'none', 'n/a', '']:
-            primary_infertility += 1
-        elif secondary_inf and str(secondary_inf).strip().lower() not in ['no', 'none', 'n/a', '']:
-            secondary_infertility += 1
-        
-        # Cryotherapy - check Treatment Plan field
-        treatment_plan = get_field_value(patient_data, [
-            'Treatment Plan', 'treatment plan', 'plan', 'Plan', 
-            'TREATMENT PLAN', 'Treatment plan', 'treatment_plan'
-        ])
-        if treatment_plan and 'cryotherapy' in str(treatment_plan).lower():
-            cryotherapy += 1
+        # Cryotherapy - check Treatment Plan field for exact value
+        treatment_plan = get_field_value(patient_data, ['Treatment Plan'])
+        if treatment_plan:
+            plan_list = treatment_plan if isinstance(treatment_plan, list) else [treatment_plan]
+            if 'Cryotherapy' in plan_list:
+                cryotherapy += 1
 
     # Get ALL patients for this project/date range to calculate totals
     all_doctors_patients = get_patients_for_report(project_id, "ALL DOCTORS", start_date, end_date)
@@ -9623,86 +9608,81 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
     for patient in all_doctors_patients:
         patient_data = patient.get('data', {})
         
-        # Same counting logic for all patients
-        abnormal_visual = get_field_value(patient_data, [
-            'Abnormal Visual Inspection', 'abnormal visual inspection'
-        ])
-        if abnormal_visual and str(abnormal_visual).strip().lower() not in ['no', 'none', 'n/a', '']:
+        # Same improved counting logic for all patients
+        abnormal_visual = get_field_value(patient_data, ['Abnormal Visual Inspection'])
+        if abnormal_visual and 'Suspect for Cervical Cancer' in str(abnormal_visual):
             total_all_suspect_ca += 1
         
-        via_inspection = get_field_value(patient_data, [
-            'VIA Inspection', 'via inspection', 'VIA', 'via'
-        ])
-        if via_inspection and 'negative' in str(via_inspection).lower():
+        via_inspection = get_field_value(patient_data, ['VIA Inspection'])
+        if via_inspection == 'Negative':
             total_all_via_negative += 1
         
-        via_positive = get_field_value(patient_data, [
-            'VIA Positive', 'via positive', 'VIA positive'
-        ])
-        if via_positive:
-            if 'small lesion' in str(via_positive).lower():
-                total_all_via_small_lesion += 1
-            if 'large lesion' in str(via_positive).lower():
-                total_all_via_large_lesion += 1
+        via_positive = get_field_value(patient_data, ['VIA Positive'])
+        if via_positive == 'Small Lesion':
+            total_all_via_small_lesion += 1
+        elif via_positive == 'Large Lesion':
+            total_all_via_large_lesion += 1
         
-        left_breast = get_field_value(patient_data, [
-            'Left Breast Condition', 'left breast condition', 'Left Breast', 'left breast'
-        ])
-        right_breast = get_field_value(patient_data, [
-            'Right Breast Condition', 'right breast condition', 'Right Breast', 'right breast'
-        ])
+        left_breast = get_field_value(patient_data, ['Left Breast Condition'])
+        right_breast = get_field_value(patient_data, ['Right Breast Condition'])
         
-        left_normal = left_breast and 'normal' in str(left_breast).lower()
-        right_normal = right_breast and 'normal' in str(right_breast).lower()
-        left_abnormal = left_breast and str(left_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
-        right_abnormal = right_breast and str(right_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
+        left_normal = left_breast == 'Normal'
+        right_normal = right_breast == 'Normal'
+        left_abnormal = left_breast == 'Abnormal'
+        right_abnormal = right_breast == 'Abnormal'
         
         if left_normal and right_normal:
             total_all_breast_normal += 1
         elif left_abnormal or right_abnormal:
             total_all_breast_abnormal += 1
         
-        # Surgery counting (same logic)
-        surgery_fields = [
-            'Appendectomy', 'Cervical Repair', 'Colporrhaphy', 'Cystectomy', 'Excision', 
-            'Fissurectomy', 'Hemorrhoidectomy', 'Herniorrhaphy', 'Hernioplasty', 
-            'Laparotomy', 'Lumpectomy', 'Myomectomy', 'Total Abdominal Hysterectomy (TAH)', 
+        # Surgery counting using exact Surgical Procedure field
+        surgical_procedure = get_field_value(patient_data, ['Surgical Procedure'])
+        
+        major_procedures = [
+            'Appendectomy', 'Cervical Repair', 'Cystectomy', 'Hernioplasty', 
+            'Laparotomy', 'Lumpectomy', 'Myomectomy', 'Total Abdominal Hysterectomy (TAH)',
             'Total Abdominal Hysterectomy with Bilateral Salpingo-Oophorectomy (TAH + BSO)', 
-            'Thyroidectomy', 'Total Vaginal Hysterectomy (TVH)', 'Wide Local Excision (WLE)', 
-            'Marsupialization', 'Incision and Drainage (I&D)'
+            'Thyroidectomy', 'Total Vaginal Hysterectomy (TVH)'
         ]
         
-        for surgery in surgery_fields:
-            surgery_value = get_field_value(patient_data, [surgery])
-            if surgery_value and str(surgery_value).strip().lower() not in ['no', 'none', 'n/a', '']:
-                surgery_lower = surgery.lower()
-                if any(major in surgery_lower for major in major_procedures):
+        minor_procedures = [
+            'Colporrhaphy', 'Excision', 'Fissurectomy', 'Hemorrhoidectomy', 'Herniorrhaphy',
+            'Wide Local Excision (WLE)', 'Marsupialization', 'Incision and Drainage (I&D)'
+        ]
+        
+        if surgical_procedure:
+            procedure_list = surgical_procedure if isinstance(surgical_procedure, list) else [surgical_procedure]
+            for procedure in procedure_list:
+                if procedure in major_procedures:
                     total_all_major_surgeries += 1
                     break
-                elif any(minor in surgery_lower for minor in minor_procedures):
+                elif procedure in minor_procedures:
                     total_all_minor_surgeries += 1
                     break
         
-        # Infertility counting
-        primary_inf = get_field_value(patient_data, [
-            'Primary Infertility', 'primary infertility', 'Primary infertility'
-        ])
-        secondary_inf = get_field_value(patient_data, [
-            'Secondary Infertility', 'secondary infertility', 'Secondary infertility'
-        ])
+        # Infertility counting from diagnosis field (checkbox data)
+        diagnosis = get_field_value(patient_data, ['Diagnosis'])
+        if diagnosis:
+            # Handle both string and list formats from checkbox data
+            diagnosis_str = ''
+            if isinstance(diagnosis, list):
+                diagnosis_str = ' '.join(str(d) for d in diagnosis).lower()
+            else:
+                diagnosis_str = str(diagnosis).lower()
+            
+            # Check for infertility (case insensitive, flexible matching)
+            if 'primary infertility' in diagnosis_str:
+                total_all_primary_infertility += 1
+            elif 'secondary infertility' in diagnosis_str:
+                total_all_secondary_infertility += 1
         
-        if primary_inf and str(primary_inf).strip().lower() not in ['no', 'none', 'n/a', '']:
-            total_all_primary_infertility += 1
-        elif secondary_inf and str(secondary_inf).strip().lower() not in ['no', 'none', 'n/a', '']:
-            total_all_secondary_infertility += 1
-        
-        # Cryotherapy counting - check Treatment Plan field
-        treatment_plan = get_field_value(patient_data, [
-            'Treatment Plan', 'treatment plan', 'plan', 'Plan', 
-            'TREATMENT PLAN', 'Treatment plan', 'treatment_plan'
-        ])
-        if treatment_plan and 'cryotherapy' in str(treatment_plan).lower():
-            total_all_cryotherapy += 1
+        # Cryotherapy counting from Treatment Plan field
+        treatment_plan = get_field_value(patient_data, ['Treatment Plan'])
+        if treatment_plan:
+            plan_list = treatment_plan if isinstance(treatment_plan, list) else [treatment_plan]
+            if 'Cryotherapy' in plan_list:
+                total_all_cryotherapy += 1
     
     # Helper function for safe percentage calculation
     def safe_percentage(count, total):
@@ -9806,22 +9786,22 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
             Paragraph(safe_percentage(minor_surgeries, total_all_minor_surgeries), data_cell_style)
         ],
         [
-            Paragraph('Cryotherapy', metric_cell_style),
-            Paragraph(str(cryotherapy), data_cell_style),
-            Paragraph(safe_percentage(cryotherapy, total_patients), data_cell_style),
-            Paragraph(safe_percentage(cryotherapy, total_all_cryotherapy), data_cell_style)
-        ],
-        [
-            Paragraph('1° Infertility', metric_cell_style),
+            Paragraph('Primary Infertility', metric_cell_style),
             Paragraph(str(primary_infertility), data_cell_style),
             Paragraph(safe_percentage(primary_infertility, total_patients), data_cell_style),
             Paragraph(safe_percentage(primary_infertility, total_all_primary_infertility), data_cell_style)
         ],
         [
-            Paragraph('2° Infertility', metric_cell_style),
+            Paragraph('Secondary Infertility', metric_cell_style),
             Paragraph(str(secondary_infertility), data_cell_style),
             Paragraph(safe_percentage(secondary_infertility, total_patients), data_cell_style),
             Paragraph(safe_percentage(secondary_infertility, total_all_secondary_infertility), data_cell_style)
+        ],
+        [
+            Paragraph('Cryotherapy', metric_cell_style),
+            Paragraph(str(cryotherapy), data_cell_style),
+            Paragraph(safe_percentage(cryotherapy, total_patients), data_cell_style),
+            Paragraph(safe_percentage(cryotherapy, total_all_cryotherapy), data_cell_style)
         ]
     ]
     
