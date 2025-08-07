@@ -8379,50 +8379,26 @@ def build_gyne_treatment_plan(patient_data):
     
     treatment_parts = []
     
-    # Priority 1: Medication (specific field)
-    medication = get_field_value(patient_data, [
-        'Medication', 'medication', 'medications', 'Medications',
-        'MEDICATION', 'MEDICATIONS', 'Medicine', 'medicine'
-    ])
+    # Priority 1: Medication from exact field
+    medication = get_field_value(patient_data, ['Medication'])
     cleaned_medication = clean_field_value(medication)
     if cleaned_medication:
         treatment_parts.append(cleaned_medication.upper())
     
-    # Priority 2: Surgical Procedure (specific field)
-    surgical_procedure = get_field_value(patient_data, [
-        'Surgical Procedure', 'surgical procedure', 'surgery', 'procedure',
-        'Surgery', 'Procedure', 'SURGICAL PROCEDURE', 'SURGERY'
-    ])
+    # Priority 2: Surgical Procedure from exact field
+    surgical_procedure = get_field_value(patient_data, ['Surgical Procedure'])
     cleaned_surgery = clean_field_value(surgical_procedure)
     if cleaned_surgery:
         treatment_parts.append(cleaned_surgery.upper())
     
-    # Priority 3: Specific treatments from Treatment Plan field (only Counselling, Referral, Cryotherapy)
-    treatment_plan = get_field_value(patient_data, [
-        'Treatment Plan', 'treatment plan', 'plan', 'Plan', 
-        'TREATMENT PLAN', 'Treatment plan', 'treatment_plan'
-    ])
+    # Priority 3: Other treatments from Treatment Plan field (Counselling, Referral, Cryotherapy)
+    treatment_plan = get_field_value(patient_data, ['Treatment Plan'])
     
-    cleaned_plan = clean_field_value(treatment_plan)
-    if cleaned_plan:
-        # Split on ' + ' to check each part
-        plan_parts = [part.strip() for part in cleaned_plan.split(' + ')]
-        valid_plan_parts = []
-        
-        for part in plan_parts:
-            part_lower = part.lower().strip()
-            
-            # Exclude generic surgery/medication references
-            if part_lower in ['surgery', 'medication', 'surgical procedure', 'medicine']:
-                continue
-                
-            # Only include specific allowed treatments
-            allowed_treatments = ['counselling', 'referral', 'cryotherapy', 'counseling', 'refer']
-            if any(allowed in part_lower for allowed in allowed_treatments):
-                valid_plan_parts.append(part.upper())
-        
-        if valid_plan_parts:
-            treatment_parts.extend(valid_plan_parts)
+    if treatment_plan:
+        plan_list = treatment_plan if isinstance(treatment_plan, list) else [treatment_plan]
+        for plan_item in plan_list:
+            if plan_item in ['Counselling', 'Referral', 'Cryotherapy']:
+                treatment_parts.append(plan_item.upper())
     
     # Join all treatment parts
     return ' + '.join(treatment_parts) if treatment_parts else ''
@@ -9010,7 +8986,7 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
         # GYNE-specific table headers
         headers = [
             'Name', 'Age', 'Suspect for\nCervical CA', 'VIA\nNEG', 'VIA Small\nLesion', 
-            'VIA Large\nLesion', 'Breast\nExamination', 'Surgeries', 'Infertility', 
+            'VIA Large\nLesion', 'Breast\nExamination', 'Surgeries', 
             'Diagnosis', 'Plan', 'Contact', 'Address'
         ]
         data = [headers]
@@ -9018,50 +8994,32 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
         for patient in patients:
             patient_data = patient.get('data', {})
             
-            # Extract required fields
-            name = get_field_value(patient_data, [
-                'Name', 'name', 'patient name', 'full name', 'patient_name', 'full_name', 
-                'Patient Name', 'Full Name', 'NAME'
-            ])
-            
-            age = get_field_value(patient_data, [
-                'Age (Years)', 'age (years)', 'age', 'age years', 'Age', 'AGE', 
-                'age_years', 'Age Years', 'age(years)', 'Age(Years)'
-            ])
+            # Extract required fields using exact form field names
+            name = get_field_value(patient_data, ['Name'])
+            age = get_field_value(patient_data, ['Age (Years)'])
             
             # CX Visual Inspection (Suspect for CA) - based on "Abnormal Visual Inspection"
-            abnormal_visual = get_field_value(patient_data, [
-                'Abnormal Visual Inspection', 'abnormal visual inspection', 
-                'visual inspection abnormal', 'Visual Inspection Abnormal'
-            ])
-            cx_visual = 'Yes' if abnormal_visual and str(abnormal_visual).strip().lower() not in ['no', 'none', 'n/a', ''] else 'No'
+            abnormal_visual = get_field_value(patient_data, ['Abnormal Visual Inspection'])
+            cx_visual = 'Yes' if abnormal_visual and 'Suspect for Cervical Cancer' in str(abnormal_visual) else 'No'
             
             # VIA Test results
-            via_inspection = get_field_value(patient_data, [
-                'VIA Inspection', 'via inspection', 'VIA', 'via'
-            ])
-            via_neg = 'Yes' if via_inspection and 'negative' in str(via_inspection).lower() else 'No'
+            via_inspection = get_field_value(patient_data, ['VIA Inspection'])
+            via_neg = 'Yes' if via_inspection == 'Negative' else 'No'
             
             # VIA Positive results for Small/Large Lesion
-            via_positive = get_field_value(patient_data, [
-                'VIA Positive', 'via positive', 'VIA positive'
-            ])
-            via_small = 'Yes' if via_positive and 'small lesion' in str(via_positive).lower() else 'No'
-            via_large = 'Yes' if via_positive and 'large lesion' in str(via_positive).lower() else 'No'
+            via_positive = get_field_value(patient_data, ['VIA Positive'])
+            via_small = 'Yes' if via_positive == 'Small Lesion' else 'No'
+            via_large = 'Yes' if via_positive == 'Large Lesion' else 'No'
             
             # Breast Examination
-            left_breast = get_field_value(patient_data, [
-                'Left Breast Condition', 'left breast condition', 'Left Breast', 'left breast'
-            ])
-            right_breast = get_field_value(patient_data, [
-                'Right Breast Condition', 'right breast condition', 'Right Breast', 'right breast'
-            ])
+            left_breast = get_field_value(patient_data, ['Left Breast Condition'])
+            right_breast = get_field_value(patient_data, ['Right Breast Condition'])
             
             # Determine breast examination result
-            left_normal = left_breast and 'normal' in str(left_breast).lower()
-            right_normal = right_breast and 'normal' in str(right_breast).lower()
-            left_abnormal = left_breast and str(left_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
-            right_abnormal = right_breast and str(right_breast).strip().lower() not in ['', 'normal', 'no', 'none', 'n/a']
+            left_normal = left_breast == 'Normal'
+            right_normal = right_breast == 'Normal'
+            left_abnormal = left_breast == 'Abnormal'
+            right_abnormal = right_breast == 'Abnormal'
             
             if left_normal and right_normal:
                 breast_exam = 'Normal'
@@ -9074,96 +9032,52 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
             else:
                 breast_exam = 'Normal'
             
-            # Surgeries - check for specific surgery names and classify
-            surgery_fields = [
-                'Appendectomy', 'Cervical Repair', 'Colporrhaphy', 'Cystectomy', 'Excision', 
-                'Fissurectomy', 'Hemorrhoidectomy', 'Herniorrhaphy', 'Hernioplasty', 
-                'Laparotomy', 'Lumpectomy', 'Myomectomy', 'Total Abdominal Hysterectomy (TAH)', 
-                'Total Abdominal Hysterectomy with Bilateral Salpingo-Oophorectomy (TAH + BSO)', 
-                'Thyroidectomy', 'Total Vaginal Hysterectomy (TVH)', 'Wide Local Excision (WLE)', 
-                'Marsupialization', 'Incision and Drainage (I&D)'
-            ]
+            # Surgeries - check surgical procedure field
+            surgical_procedure = get_field_value(patient_data, ['Surgical Procedure'])
             
-            # Define major vs minor procedures
+            # Define major vs minor procedures based on exact form options
             major_procedures = [
-                'appendectomy', 'appendicitis', 'cervical repair', 'cystectomy', 'hernioplasty', 
-                'laparotomy', 'lumpectomy', 'myomectomy', 'total abdominal hysterectomy',
-                'tah', 'tah + bso', 'thyroidectomy', 'total vaginal hysterectomy', 'tvh'
+                'Appendectomy', 'Cervical Repair', 'Cystectomy', 'Hernioplasty', 
+                'Laparotomy', 'Lumpectomy', 'Myomectomy', 'Total Abdominal Hysterectomy (TAH)',
+                'Total Abdominal Hysterectomy with Bilateral Salpingo-Oophorectomy (TAH + BSO)', 
+                'Thyroidectomy', 'Total Vaginal Hysterectomy (TVH)'
             ]
             
             minor_procedures = [
-                'colporrhaphy', 'excision', 'fistulectomy', 'hemorrhoidectomy', 'herniorrhaphy',
-                'wide local excision', 'wle', 'marsupialization', 'incision and drainage', 'i&d'
+                'Colporrhaphy', 'Excision', 'Fissurectomy', 'Hemorrhoidectomy', 'Herniorrhaphy',
+                'Wide Local Excision (WLE)', 'Marsupialization', 'Incision and Drainage (I&D)'
             ]
             
             surgery_performed = 'No'
-            for surgery in surgery_fields:
-                surgery_value = get_field_value(patient_data, [surgery])
-                if surgery_value and str(surgery_value).strip().lower() not in ['no', 'none', 'n/a', '']:
-                    surgery_lower = surgery.lower()
-                    if any(major in surgery_lower for major in major_procedures):
+            if surgical_procedure:
+                procedure_list = surgical_procedure if isinstance(surgical_procedure, list) else [surgical_procedure]
+                for procedure in procedure_list:
+                    if procedure in major_procedures:
                         surgery_performed = 'Major'
                         break
-                    elif any(minor in surgery_lower for minor in minor_procedures):
+                    elif procedure in minor_procedures:
                         surgery_performed = 'Minor'
                         break
             
-            # Infertility - check for exact database values
-            infertility_value = get_field_value(patient_data, [
-                'Infertility', 'infertility', 'INFERTILITY', 'Infertility Type', 'infertility type'
-            ])
+
             
-            if infertility_value:
-                infertility_str = str(infertility_value).strip()
-                if 'Primary Infertility' in infertility_str:
-                    infertility = 'Primary Infertility'
-                elif 'Secondary Infertility' in infertility_str:
-                    infertility = 'Secondary Infertility'
-                else:
-                    infertility = 'None'
-            else:
-                # Fallback: check individual fields for backward compatibility
-                primary_infertility = get_field_value(patient_data, [
-                    'Primary Infertility', 'primary infertility', 'Primary infertility'
-                ])
-                secondary_infertility = get_field_value(patient_data, [
-                    'Secondary Infertility', 'secondary infertility', 'Secondary infertility'
-                ])
-                
-                if primary_infertility and str(primary_infertility).strip().lower() not in ['no', 'none', 'n/a', '']:
-                    infertility = 'Primary Infertility'
-                elif secondary_infertility and str(secondary_infertility).strip().lower() not in ['no', 'none', 'n/a', '']:
-                    infertility = 'Secondary Infertility'
-                else:
-                    infertility = 'None'
-            
-            # Diagnosis - exclude already reported items
-            diagnosis_raw = get_field_value(patient_data, [
-                'Diagnosis', 'diagnosis', 'diagnoses', 'Diagnoses', 'DIAGNOSIS'
-            ])
-            
+            # Diagnosis - get from exact field name
+            diagnosis_raw = get_field_value(patient_data, ['Diagnosis'])
             diagnosis = ''
             if diagnosis_raw:
-                diagnosis_lower = str(diagnosis_raw).lower()
-                # Exclude certain diagnoses that are already reported in other columns
-                exclude_terms = ['via positive', 'small lesion', 'large lesion']
-                if not any(term in diagnosis_lower for term in exclude_terms):
-                    diagnosis = str(diagnosis_raw).strip()
+                if isinstance(diagnosis_raw, list):
+                    # Filter out NIL and VIA-related duplicates
+                    filtered_diagnoses = [d for d in diagnosis_raw if d not in ['NIL', 'VIA Positive (Small Lesion)']]
+                    diagnosis = ', '.join(filtered_diagnoses) if filtered_diagnoses else ''
+                else:
+                    diagnosis = str(diagnosis_raw).strip() if diagnosis_raw != 'NIL' else ''
             
             # Treatment Plan
             plan = build_gyne_treatment_plan(patient_data)
             
-            # Contact (Phone)
-            contact = get_field_value(patient_data, [
-                'Phone Number', 'phone number', 'phone', 'Phone', 'PHONE NUMBER', 
-                'PHONE', 'mobile', 'Mobile', 'contact number', 'Contact Number'
-            ])
-            
-            # Address (Ward)
-            address = get_field_value(patient_data, [
-                'Ward', 'ward', 'physical address', 'address', 'Address', 'WARD', 
-                'Physical Address', 'PHYSICAL ADDRESS'
-            ])
+            # Contact (Phone) and Address (Ward) - use exact field names
+            contact = get_field_value(patient_data, ['Phone Number'])
+            address = get_field_value(patient_data, ['Ward'])
             
             # Build row
             row = [
@@ -9175,7 +9089,6 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
                 via_large,
                 breast_exam,
                 surgery_performed,
-                infertility,
                 diagnosis or '',
                 plan or '',
                 contact or '',
@@ -9183,7 +9096,7 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
             ]
             data.append(row)
         
-        # GYNE-specific column widths (optimized for 13 columns)
+        # GYNE-specific column widths (optimized for 12 columns)
         col_widths = [
             1.1 * inch,  # Name
             0.5 * inch,  # Age
@@ -9193,8 +9106,7 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
             0.7 * inch,  # VIA Large Lesion
             0.8 * inch,  # Breast Examination
             0.7 * inch,  # Surgeries
-            0.8 * inch,  # Infertility
-            1.1 * inch,  # Diagnosis
+            1.2 * inch,  # Diagnosis (increased width since infertility now goes here)
             1.1 * inch,  # Plan
             0.8 * inch,  # Contact
             0.8 * inch,  # Address
@@ -9222,7 +9134,7 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
                 processed_row = []
                 for j, cell in enumerate(row):
                     # Apply paragraph styling to long text columns
-                    if j in [0, 9, 10, 11, 12]:  # Name, Diagnosis, Plan, Contact, Address
+                    if j in [0, 8, 9, 10, 11]:  # Name, Diagnosis, Plan, Contact, Address
                         if cell and len(str(cell)) > 10:
                             cell_style = ParagraphStyle(
                                 'CellText',
@@ -9255,11 +9167,11 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
             # Alignment for each column
             ('ALIGN', (0, 1), (0, -1), 'LEFT'),    # Name
             ('ALIGN', (1, 1), (1, -1), 'CENTER'),  # Age
-            ('ALIGN', (2, 1), (8, -1), 'CENTER'),  # All Yes/No columns
-            ('ALIGN', (9, 1), (9, -1), 'LEFT'),    # Diagnosis
-            ('ALIGN', (10, 1), (10, -1), 'LEFT'),  # Plan
-            ('ALIGN', (11, 1), (11, -1), 'CENTER'), # Contact
-            ('ALIGN', (12, 1), (12, -1), 'LEFT'),  # Address
+            ('ALIGN', (2, 1), (7, -1), 'CENTER'),  # All Yes/No columns
+            ('ALIGN', (8, 1), (8, -1), 'LEFT'),    # Diagnosis
+            ('ALIGN', (9, 1), (9, -1), 'LEFT'),    # Plan
+            ('ALIGN', (10, 1), (10, -1), 'CENTER'), # Contact
+            ('ALIGN', (11, 1), (11, -1), 'LEFT'),  # Address
             
             # Vertical alignment
             ('VALIGN', (0, 1), (-1, -1), 'TOP'),
