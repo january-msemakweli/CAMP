@@ -9082,13 +9082,26 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
             surgery_performed = 'No'
             if surgical_procedure:
                 procedure_list = surgical_procedure if isinstance(surgical_procedure, list) else [surgical_procedure]
+                surgery_found = False
                 for procedure in procedure_list:
-                    if procedure in major_procedures:
+                    procedure_str = str(procedure).strip()
+                    if procedure_str in major_procedures:
                         surgery_performed = 'Major'
+                        surgery_found = True
                         break
-                    elif procedure in minor_procedures:
+                    elif procedure_str in minor_procedures:
                         surgery_performed = 'Minor'
+                        surgery_found = True
                         break
+                
+                # If no exact match found, check if it's a surgery but not categorized
+                if not surgery_found:
+                    for procedure in procedure_list:
+                        procedure_str = str(procedure).strip().lower()
+                        surgery_keywords = ['surgery', 'surgical', 'operation', 'ectomy', 'plasty', 'repair', 'excision']
+                        if any(keyword in procedure_str for keyword in surgery_keywords):
+                            surgery_performed = 'Minor'  # Default to minor if we can't categorize
+                            break
             
 
             
@@ -9574,17 +9587,27 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
         if surgical_procedure:
             # Handle checkbox data - convert to list and check each procedure
             procedure_list = surgical_procedure if isinstance(surgical_procedure, list) else [surgical_procedure]
-            surgery_found = False
+            patient_has_surgery = False
             for procedure in procedure_list:
                 procedure_str = str(procedure).strip()
                 if procedure_str in major_procedures:
                     major_surgeries += 1
-                    surgery_found = True
-                    break
+                    patient_has_surgery = True
+                    # Don't break - count all procedures for this patient
                 elif procedure_str in minor_procedures:
                     minor_surgeries += 1
-                    surgery_found = True
-                    break
+                    patient_has_surgery = True
+                    # Don't break - count all procedures for this patient
+            
+            # If no exact match found, check if it's a surgery but not categorized
+            if not patient_has_surgery:
+                for procedure in procedure_list:
+                    procedure_str = str(procedure).strip().lower()
+                    surgery_keywords = ['surgery', 'surgical', 'operation', 'ectomy', 'plasty', 'repair', 'excision', 'appendix', 'thyroid', 'cervix', 'uterus']
+                    if any(keyword in procedure_str for keyword in surgery_keywords):
+                        # Default to minor if we can't categorize
+                        minor_surgeries += 1
+                        break
         
         # Infertility - check diagnosis field (checkbox data) for infertility values
         diagnosis = get_field_value(patient_data, ['Diagnosis'])
@@ -9683,17 +9706,27 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
         if surgical_procedure:
             # Handle checkbox data - convert to list and check each procedure
             procedure_list = surgical_procedure if isinstance(surgical_procedure, list) else [surgical_procedure]
-            surgery_found = False
+            patient_has_surgery = False
             for procedure in procedure_list:
                 procedure_str = str(procedure).strip()
                 if procedure_str in major_procedures:
                     total_all_major_surgeries += 1
-                    surgery_found = True
-                    break
+                    patient_has_surgery = True
+                    # Don't break - count all procedures for this patient
                 elif procedure_str in minor_procedures:
                     total_all_minor_surgeries += 1
-                    surgery_found = True
-                    break
+                    patient_has_surgery = True
+                    # Don't break - count all procedures for this patient
+            
+            # If no exact match found, check if it's a surgery but not categorized
+            if not patient_has_surgery:
+                for procedure in procedure_list:
+                    procedure_str = str(procedure).strip().lower()
+                    surgery_keywords = ['surgery', 'surgical', 'operation', 'ectomy', 'plasty', 'repair', 'excision', 'appendix', 'thyroid', 'cervix', 'uterus']
+                    if any(keyword in procedure_str for keyword in surgery_keywords):
+                        # Default to minor if we can't categorize
+                        total_all_minor_surgeries += 1
+                        break
         
         # Infertility counting from diagnosis field (checkbox data)
         diagnosis = get_field_value(patient_data, ['Diagnosis'])
