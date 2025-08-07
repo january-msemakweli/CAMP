@@ -9067,8 +9067,10 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
                 breast_exam = 'Normal'
             elif left_abnormal and right_abnormal:
                 breast_exam = 'Both Abnormal'
-            elif left_abnormal or right_abnormal:
-                breast_exam = 'Side Abnormal'
+            elif left_abnormal:
+                breast_exam = 'Left Abnormal'
+            elif right_abnormal:
+                breast_exam = 'Right Abnormal'
             else:
                 breast_exam = 'Normal'
             
@@ -9106,20 +9108,34 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
                         surgery_performed = 'Minor'
                         break
             
-            # Infertility
-            primary_infertility = get_field_value(patient_data, [
-                'Primary Infertility', 'primary infertility', 'Primary infertility'
-            ])
-            secondary_infertility = get_field_value(patient_data, [
-                'Secondary Infertility', 'secondary infertility', 'Secondary infertility'
+            # Infertility - check for exact database values
+            infertility_value = get_field_value(patient_data, [
+                'Infertility', 'infertility', 'INFERTILITY', 'Infertility Type', 'infertility type'
             ])
             
-            if primary_infertility and str(primary_infertility).strip().lower() not in ['no', 'none', 'n/a', '']:
-                infertility = 'Primary Infertility'
-            elif secondary_infertility and str(secondary_infertility).strip().lower() not in ['no', 'none', 'n/a', '']:
-                infertility = 'Secondary Infertility'
+            if infertility_value:
+                infertility_str = str(infertility_value).strip()
+                if 'Primary Infertility' in infertility_str:
+                    infertility = 'Primary Infertility'
+                elif 'Secondary Infertility' in infertility_str:
+                    infertility = 'Secondary Infertility'
+                else:
+                    infertility = 'None'
             else:
-                infertility = 'None'
+                # Fallback: check individual fields for backward compatibility
+                primary_infertility = get_field_value(patient_data, [
+                    'Primary Infertility', 'primary infertility', 'Primary infertility'
+                ])
+                secondary_infertility = get_field_value(patient_data, [
+                    'Secondary Infertility', 'secondary infertility', 'Secondary infertility'
+                ])
+                
+                if primary_infertility and str(primary_infertility).strip().lower() not in ['no', 'none', 'n/a', '']:
+                    infertility = 'Primary Infertility'
+                elif secondary_infertility and str(secondary_infertility).strip().lower() not in ['no', 'none', 'n/a', '']:
+                    infertility = 'Secondary Infertility'
+                else:
+                    infertility = 'None'
             
             # Diagnosis - exclude already reported items
             diagnosis_raw = get_field_value(patient_data, [
@@ -9130,7 +9146,7 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
             if diagnosis_raw:
                 diagnosis_lower = str(diagnosis_raw).lower()
                 # Exclude certain diagnoses that are already reported in other columns
-                exclude_terms = ['infertility', 'via positive', 'small lesion', 'large lesion']
+                exclude_terms = ['via positive', 'small lesion', 'large lesion']
                 if not any(term in diagnosis_lower for term in exclude_terms):
                     diagnosis = str(diagnosis_raw).strip()
             
