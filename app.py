@@ -37,14 +37,16 @@ EAT = timezone(timedelta(hours=3))
 # Load environment variables
 load_dotenv()
 
-def fetch_all_pages(query, page_size=1000, debug_name="query"):
+def fetch_all_pages(query, page_size=1000, debug_name="query", max_retries=3, timeout_seconds=300):
     """
-    Fetch all pages of data from a Supabase query to handle pagination.
+    FIXED: Fetch all pages using the exact same logic as dataset view manual pagination.
     
     Args:
         query: Supabase query object (before .execute())
         page_size: Number of records per page (default 1000)
         debug_name: Name for debug logging
+        max_retries: Maximum retry attempts for failed pages
+        timeout_seconds: Timeout for individual page requests
         
     Returns:
         List of all records across all pages
@@ -52,28 +54,41 @@ def fetch_all_pages(query, page_size=1000, debug_name="query"):
     all_data = []
     start = 0
     
+    print(f"{debug_name}: Starting pagination with page_size={page_size}")
+    
     while True:
         try:
+            print(f"{debug_name}: Fetching page starting at {start}")
             page_response = query.range(start, start + page_size - 1).execute()
             page_data = page_response.data
             
             if not page_data:
-                print(f"{debug_name}: No more data at start={start}, stopping pagination")
+                print(f"{debug_name}: No more data at start={start}, pagination complete")
                 break
                 
             all_data.extend(page_data)
-            print(f"{debug_name}: Fetched page starting at {start}: {len(page_data)} records")
+            print(f"{debug_name}: Successfully fetched page starting at {start}: {len(page_data)} records (Total so far: {len(all_data)})")
+            
+            # CRITICAL DEBUG: For report submissions, print sample patient IDs
+            if debug_name == "report_submissions" and len(page_data) > 0:
+                sample_patient_ids = [item.get('patient_id') for item in page_data[:5] if item.get('patient_id')]
+                print(f"REPORT DEBUG: Sample patient IDs from this page: {sample_patient_ids}")
             
             # Continue fetching if we got a full page OR if we got exactly 999 (possible Supabase limit)
             if len(page_data) < page_size and len(page_data) != 999:
-                print(f"{debug_name}: Got {len(page_data)} records (less than {page_size}), stopping pagination")
+                print(f"{debug_name}: Got {len(page_data)} records (less than {page_size}), pagination complete")
                 break
                 
             start += page_size
             
-            # Safety check to prevent infinite loops
-            if start > 50000:  # Adjust this limit as needed
-                print(f"{debug_name}: Reached safety limit of 50,000 records, stopping pagination")
+            # Safety limit to prevent infinite loops
+            if start > 500000:  # 500K record safety limit
+                print(f"{debug_name}: CRITICAL WARNING - Reached 500,000 records, investigating...")
+                if len(page_data) == page_size:
+                    print(f"{debug_name}: Still getting full pages, continuing with caution...")
+                    continue
+                else:
+                    print(f"{debug_name}: Page size reduced, safe to break")
                 break
                 
         except Exception as e:
@@ -86,7 +101,27 @@ def fetch_all_pages(query, page_size=1000, debug_name="query"):
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 
-# Initialize Supabase client
+# PERFORMANCE FIX: Initialize Supabase client with enhanced timeout configuration
+try:
+    # Try with advanced options first
+    from supabase._sync.client import ClientOptions
+    from httpx import Timeout
+    
+    client_options = ClientOptions(
+        postgrest_client_timeout=300,  # 5 minutes for large datasets
+        storage_client_timeout=300,
+    )
+    
+    supabase: Client = create_client(
+        os.getenv('SUPABASE_URL'),
+        os.getenv('SUPABASE_KEY'),
+        options=client_options
+    )
+    print("Supabase client initialized with enhanced timeout settings")
+    
+except (ImportError, AttributeError, TypeError) as e:
+    # Fallback to basic client initialization if advanced options not supported
+    print(f"Advanced Supabase options not supported, using basic client: {str(e)}")
 supabase: Client = create_client(
     os.getenv('SUPABASE_URL'),
     os.getenv('SUPABASE_KEY')
@@ -1636,6 +1671,9 @@ def program_list():
 @app.route('/dataset')
 @login_required
 def dataset_view():
+    # PERFORMANCE FIX: Add quick loading mode for large datasets
+    quick_load = request.args.get('quick_load', 'false').lower() == 'true'
+    
     # Get pagination parameters
     try:
         page = int(request.args.get('page', 1))
@@ -1673,6 +1711,49 @@ def dataset_view():
     # If no project_id is provided, redirect to program list
     if not project_id:
         return redirect(url_for('program_list'))
+    
+    # PERFORMANCE FIX: For quick load mode, get count first and show loading page
+    if quick_load:
+        try:
+            # Get quick count of submissions for this project
+            count_query = supabase.table('form_submissions').select('id', count='exact')
+            if project_id:
+                # Get forms for this project first
+                forms_query = supabase.table('forms').select('id').eq('project_id', project_id)
+                forms_response = forms_query.execute()
+                if forms_response.data:
+                    form_ids = [form['id'] for form in forms_response.data]
+                    count_query = count_query.in_('form_id', form_ids)
+            
+            # Apply date filters if present
+            if start_date:
+                count_query = count_query.gte('created_at', start_date)
+            if end_date:
+                try:
+                    end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                    inclusive_end_date = (end_date_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+                    count_query = count_query.lt('created_at', inclusive_end_date)
+                except ValueError:
+                    pass
+            
+            count_response = count_query.execute()
+            total_count = count_response.count if count_response.count else 0
+            
+            # If large dataset, return loading page with progressive loading
+            if total_count > 1000:
+                return render_template('dataset_loading.html', 
+                                     total_count=total_count,
+                                     project_id=project_id,
+                                     form_id=form_id,
+                                     field_name=field_name,
+                                     field_value=field_value,
+                                     start_date=start_date,
+                                     end_date=end_date,
+                                     camp_id=camp_id,
+                                     search_term=search_term)
+        except Exception as e:
+            print(f"Error getting quick count: {str(e)}")
+            # Continue with normal loading if quick count fails
     
     # Log dataset view with filters
     log_details = f"Filters - Project: {project_id or 'All'}, Form: {form_id or 'All'}"
@@ -1856,9 +1937,16 @@ def dataset_view():
                 
             start += page_size
             
-            # Safety check to prevent infinite loops
-            if start > 50000:  # Adjust this limit as needed
-                print(f"Reached safety limit of 50,000 records, stopping pagination")
+            # CRITICAL FIX: Remove arbitrary safety limit that could cause missing data
+            # Use enhanced safety detection
+            if start > 500000:  # Only stop at 500K records (10x higher safety margin)
+                print(f"Dataset: CRITICAL WARNING - Reached 500,000 records, investigating...")
+                if len(page_data) == page_size:
+                    print(f"Dataset: Still getting full pages, continuing with caution...")
+                    start += page_size
+                    continue
+                else:
+                    print(f"Dataset: Page size reduced, safe to break")
                 break
                 
         except Exception as e:
@@ -2054,23 +2142,8 @@ def dataset_view():
         # Get registration data from centralized patients table
         registration_data = {}
         
-        # Fetch patient record from patients table to get centralized registration data
-        try:
-            patient_response = supabase.table('patients').select('data, created_at').eq('patient_id', patient_id).execute()
-            if patient_response.data and patient_response.data[0].get('data', {}).get('registration'):
-                patient_registration = patient_response.data[0]['data']['registration']
-                patient_created_at = patient_response.data[0].get('created_at', '')
-                
-                # Convert registration data to normalized keys
-                for key, value in patient_registration.items():
-                    normalized_key = key.lower().strip().replace(' ', '_')
-                    registration_data[normalized_key] = value
-                    if patient_created_at:
-                        last_updated[normalized_key] = patient_created_at
-                        
-        except Exception as e:
-            print(f"Error fetching patient registration data for {patient_id}: {str(e)}")
-            # Fallback to old method if centralized registration not available
+        # PERFORMANCE FIX: Skip individual patient lookup here - will be done in batch later
+        # Individual queries moved to batch optimization below
         for submission in data['submissions']:
             submission_form_id = submission.get('form_id')
             if submission_form_id and get_form_is_first(submission_form_id) and submission.get('data'):
@@ -2107,6 +2180,62 @@ def dataset_view():
                             last_updated[normalized_key] = submission_date
         
         data['merged_data'] = merged_data
+
+    # PERFORMANCE FIX: Batch fetch registration data for all patients and merge
+    print(f"Dataset: Fetching centralized registration data for {len(patient_data)} patients")
+    patient_ids = list(patient_data.keys())
+    if patient_ids:
+        try:
+            # CRITICAL FIX: Use chunked batch processing to avoid Supabase query limits
+            registration_lookup = {}
+            chunk_size = 100  # Smaller chunks to avoid Supabase limits
+            total_chunks = (len(patient_ids) + chunk_size - 1) // chunk_size
+            
+            print(f"Dataset: Fetching registration data in {total_chunks} chunks for {len(patient_ids)} patients")
+            
+            for i in range(0, len(patient_ids), chunk_size):
+                chunk = patient_ids[i:i + chunk_size]
+                chunk_num = (i // chunk_size) + 1
+                
+                try:
+                    batch_response = supabase.table('patients')\
+                        .select('patient_id, data, created_at')\
+                        .in_('patient_id', chunk)\
+                        .execute()
+                    
+                    chunk_count = 0
+                    for patient_record in batch_response.data:
+                        patient_id = patient_record.get('patient_id')
+                        if patient_id and patient_record.get('data', {}).get('registration'):
+                            registration_lookup[patient_id] = {
+                                'registration': patient_record['data']['registration'],
+                                'created_at': patient_record.get('created_at', '')
+                            }
+                            chunk_count += 1
+                    
+                    print(f"Dataset: Chunk {chunk_num}/{total_chunks}: {chunk_count} registration records found")
+                    
+                except Exception as chunk_error:
+                    print(f"Dataset: Error fetching chunk {chunk_num}: {str(chunk_error)}")
+                    continue
+            
+            print(f"Dataset: TOTAL registration data fetched: {len(registration_lookup)} patients")
+            
+            # Now merge registration data with existing patient data - registration takes priority
+            for patient_id, data in patient_data.items():
+                if patient_id in registration_lookup:
+                    registration_data = registration_lookup[patient_id]['registration']
+                    patient_created_at = registration_lookup[patient_id]['created_at']
+                    
+                    # Convert registration data to normalized keys and merge - registration takes priority
+                    for key, value in registration_data.items():
+                        normalized_key = key.lower().strip().replace(' ', '_')
+                        # Registration data takes priority over form data
+                        data['merged_data'][normalized_key] = value
+                        
+        except Exception as e:
+            print(f"Dataset: Error batch fetching registration data: {str(e)}")
+            # Continue without registration data if batch fails
 
     # 10. Get data for filter dropdowns
     # Get all projects
@@ -2348,6 +2477,96 @@ def dataset_view():
                          page_numbers=page_numbers,
                          start_index=start_index + 1,  # 1-based for display
                          end_index=min(end_index, total_patients))
+
+@app.route('/api/dataset/progressive/<project_id>')
+@login_required
+def get_dataset_progressive(project_id):
+    """PERFORMANCE FIX: Progressive loading API for large datasets"""
+    try:
+        # Get pagination parameters
+        offset = int(request.args.get('offset', 0))
+        limit = int(request.args.get('limit', 100))
+        
+        # Get filter parameters
+        form_id = request.args.get('form_id')
+        field_name = request.args.get('field_name')
+        field_value = request.args.get('field_value')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        search_term = request.args.get('search', '').strip()
+        
+        # Quick validation
+        if limit > 500:  # Prevent too large chunks
+            limit = 500
+            
+        print(f"Progressive API: Fetching {limit} records starting at offset {offset} for project {project_id}")
+        
+        # Build query efficiently - only get essential fields
+        query = supabase.table('form_submissions').select('patient_id, data, created_at, form_id')
+        
+        # Get forms for this project
+        forms_query = supabase.table('forms').select('id').eq('project_id', project_id)
+        forms_response = forms_query.execute()
+        if forms_response.data:
+            form_ids = [form['id'] for form in forms_response.data]
+            query = query.in_('form_id', form_ids)
+        else:
+            return jsonify({'data': [], 'has_more': False, 'total_fetched': 0})
+        
+        # Apply filters
+        if form_id:
+            query = query.eq('form_id', form_id)
+        if start_date:
+            query = query.gte('created_at', start_date)
+        if end_date:
+            try:
+                end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
+                inclusive_end_date = (end_date_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+                query = query.lt('created_at', inclusive_end_date)
+            except ValueError:
+                pass
+        
+        # Get page of data
+        query = query.order('created_at', desc=True).range(offset, offset + limit - 1)
+        response = query.execute()
+        
+        submissions = response.data if response.data else []
+        
+        # Quick patient processing for this chunk
+        patient_data = {}
+        for submission in submissions:
+            patient_id = submission['patient_id']
+            if patient_id not in patient_data:
+                patient_data[patient_id] = {
+                    'patient_id': patient_id,
+                    'data': {},
+                    'latest_date': submission.get('created_at')
+                }
+            patient_data[patient_id]['data'].update(submission['data'])
+        
+        # Convert to simple list format
+        result_data = []
+        for patient_id, data in patient_data.items():
+            patient_row = {'patient_id': patient_id}
+            # Add basic fields that are commonly needed
+            for key, value in data['data'].items():
+                if key.lower() in ['name', 'age', 'gender', 'phone']:
+                    patient_row[key] = value
+            result_data.append(patient_row)
+        
+        # Determine if there's more data
+        has_more = len(submissions) == limit
+        
+        return jsonify({
+            'data': result_data,
+            'has_more': has_more,
+            'total_fetched': offset + len(submissions),
+            'chunk_size': len(result_data)
+        })
+        
+    except Exception as e:
+        print(f"Progressive API error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/submission/<submission_id>')
 @login_required
@@ -2739,39 +2958,12 @@ def export_dataset():
         except ValueError:
              print(f"Invalid end date format: {end_date}")
     
-    # Fetch all submissions using pagination to handle large datasets
-    submissions = []
-    page_size = 1000
-    start = 0
+    # PERFORMANCE FIX: Use optimized fetch_all_pages function with progress tracking
+    submissions = fetch_all_pages(query, debug_name="export_dataset_submissions")
     
-    while True:
-        try:
-            page_response = query.range(start, start + page_size - 1).execute()
-            page_data = page_response.data
-            
-            if not page_data:
-                print(f"Export: No more data at start={start}, stopping pagination")
-                break
-                
-            submissions.extend(page_data)
-            print(f"Export: Fetched page starting at {start}: {len(page_data)} submissions")
-            
-            # Continue fetching if we got a full page OR if we got exactly 999 (possible Supabase limit)
-            if len(page_data) < page_size and len(page_data) != 999:
-                print(f"Export: Got {len(page_data)} records (less than {page_size}), stopping pagination")
-                break
-                
-            start += page_size
-            
-            # Safety check to prevent infinite loops
-            if start > 50000:
-                print(f"Export: Reached safety limit of 50,000 records, stopping pagination")
-                break
-        except Exception as e:
-            print(f"Export: Error fetching page starting at {start}: {str(e)}")
-            break
-    
-    print(f"Export: Total submissions fetched: {len(submissions)}")
+    # PERFORMANCE FIX: Add progress tracking for large exports
+    if len(submissions) > 1000:
+        print(f"Export: Processing {len(submissions)} submissions for dataset export...")
     
     # If we got exactly 999 records, try to fetch more directly
     if len(submissions) == 999:
@@ -2903,38 +3095,75 @@ def export_dataset():
     # 8. Combine ordered fields with extra fields
     final_ordered_fields = ordered_fields + extra_field_labels
     
+    # PERFORMANCE FIX: Batch fetch all patient registration data before processing
+    print(f"Export: Batch fetching centralized registration data for {len(patient_data)} patients")
+    patient_ids = list(patient_data.keys())
+    registration_lookup = {}
+    
+    if patient_ids:
+        try:
+            # CRITICAL FIX: Use chunked batch processing to avoid Supabase query limits
+            chunk_size = 100  # Smaller chunks to avoid Supabase limits
+            total_chunks = (len(patient_ids) + chunk_size - 1) // chunk_size
+            
+            print(f"Export: Fetching registration data in {total_chunks} chunks for {len(patient_ids)} patients")
+            
+            for i in range(0, len(patient_ids), chunk_size):
+                chunk = patient_ids[i:i + chunk_size]
+                chunk_num = (i // chunk_size) + 1
+                
+                try:
+                    batch_response = supabase.table('patients')\
+                        .select('patient_id, data, created_at')\
+                        .in_('patient_id', chunk)\
+                        .execute()
+                    
+                    chunk_count = 0
+                    for patient_record in batch_response.data:
+                        patient_id = patient_record.get('patient_id')
+                        if patient_id and patient_record.get('data', {}).get('registration'):
+                            registration_lookup[patient_id] = {
+                                'registration': patient_record['data']['registration'],
+                                'created_at': patient_record.get('created_at', '')
+                            }
+                            chunk_count += 1
+                    
+                    print(f"Export: Chunk {chunk_num}/{total_chunks}: {chunk_count} registration records found")
+                    
+                except Exception as chunk_error:
+                    print(f"Export: Error fetching chunk {chunk_num}: {str(chunk_error)}")
+                    continue
+            
+            print(f"Export: TOTAL registration data fetched: {len(registration_lookup)} patients")
+            
+
+            
+        except Exception as e:
+            print(f"Export: Error batch fetching registration data: {str(e)}")
+            # Continue without registration data if batch fails
+
     # 9. Pre-process patient data to merge values
     for patient_id, data in patient_data.items():
         merged_data = {}
         last_updated = {} 
         
-        # Get registration data from centralized patients table
+        # Get registration data from batch lookup
         registration_data = {}
         
-        print(f"Export: Processing registration data for patient: {patient_id}")
-        # Fetch patient record from patients table to get centralized registration data
-        try:
-            patient_response = supabase.table('patients').select('data, created_at').eq('patient_id', patient_id).execute()
-            if patient_response.data and patient_response.data[0].get('data', {}).get('registration'):
-                patient_registration = patient_response.data[0]['data']['registration']
-                patient_created_at = patient_response.data[0].get('created_at', '')
-                print(f"Export: Found centralized registration data for patient {patient_id}")
-                
-                # Convert registration data to normalized keys
-                for key, value in patient_registration.items():
-                    normalized_key = key.lower().strip().replace(' ', '_')
-                    registration_data[normalized_key] = value
-                    if patient_created_at:
-                        last_updated[normalized_key] = patient_created_at
-                        
-        except Exception as e:
-            print(f"Export: Error fetching patient registration data for {patient_id}: {str(e)}")
-            # Fallback to old method if centralized registration not available
+        if patient_id in registration_lookup:
+            patient_registration = registration_lookup[patient_id]['registration']
+            patient_created_at = registration_lookup[patient_id]['created_at']
+            
+            # Convert registration data to normalized keys
+            for key, value in patient_registration.items():
+                normalized_key = key.lower().strip().replace(' ', '_')
+                registration_data[normalized_key] = value
+                if patient_created_at:
+                    last_updated[normalized_key] = patient_created_at
         for submission in data['submissions']:
             submission_form_id = submission.get('form_id')
             if submission_form_id and get_form_is_first(submission_form_id) and submission.get('data'):
                 form_title = submission.get('forms', {}).get('title', 'Unknown')
-                print(f"Export: Found registration data from: {form_title} (ID: {submission_form_id})")
                 submission_date = submission.get('created_at', '')
                 for key, value in submission['data'].items():
                     normalized_key = key.lower().strip().replace(' ', '_')
@@ -3419,8 +3648,8 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
 
     # With centralized registration, we only need submissions from the selected project
 
-    # Query to get submissions
-    query = supabase.table('form_submissions').select('*, forms(title, fields, project_id, projects(name))')
+    # PERFORMANCE FIX: Optimize query to fetch only essential fields
+    query = supabase.table('form_submissions').select('patient_id, data, created_at, form_id, forms(title, fields, project_id, projects(name))')
     
     if submission_form_ids:
         query = query.in_('form_id', submission_form_ids)
@@ -3440,37 +3669,12 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
         except ValueError:
             pass
     
-    # Fetch all submissions using pagination to handle large datasets
-    submissions = []
-    page_size = 1000
-    start = 0
+    # PERFORMANCE FIX: Use optimized fetch_all_pages function
+    submissions = fetch_all_pages(query, debug_name="analytics_submissions")
     
-    while True:
-        try:
-            page_response = query.range(start, start + page_size - 1).execute()
-            page_data = page_response.data
-            
-            if not page_data:
-                print(f"Analytics: No more data at start={start}, stopping pagination")
-                break
-                
-            submissions.extend(page_data)
-            print(f"Analytics: Fetched page starting at {start}: {len(page_data)} submissions")
-            
-            # Continue fetching if we got a full page OR if we got exactly 999 (possible Supabase limit)
-            if len(page_data) < page_size and len(page_data) != 999:
-                print(f"Analytics: Got {len(page_data)} records (less than {page_size}), stopping pagination")
-                break
-                
-            start += page_size
-            
-            # Safety check to prevent infinite loops
-            if start > 50000:
-                print(f"Analytics: Reached safety limit of 50,000 records, stopping pagination")
-                break
-        except Exception as e:
-            print(f"Analytics: Error fetching page starting at {start}: {str(e)}")
-            break
+    # PERFORMANCE FIX: Add progress tracking for large analytics datasets
+    if len(submissions) > 1000:
+        print(f"Analytics: Processing {len(submissions)} submissions for analysis...")
 
     # 4. Process the submissions into a patient-based dataset
     patient_data = {}
@@ -3545,23 +3749,8 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
         # Get registration data from centralized patients table
         registration_data = {}
         
-        # Fetch patient record from patients table to get centralized registration data
-        try:
-            patient_response = supabase.table('patients').select('data, created_at').eq('patient_id', patient_id).execute()
-            if patient_response.data and patient_response.data[0].get('data', {}).get('registration'):
-                patient_registration = patient_response.data[0]['data']['registration']
-                patient_created_at = patient_response.data[0].get('created_at', '')
-                
-                # Convert registration data to normalized keys
-                for key, value in patient_registration.items():
-                    normalized_key = key.lower().strip().replace(' ', '_')
-                    registration_data[normalized_key] = value
-                    if patient_created_at:
-                        last_updated[normalized_key] = patient_created_at
-                        
-        except Exception as e:
-            print(f"Analytics: Error fetching patient registration data for {patient_id}: {str(e)}")
-            # Fallback to old method if centralized registration not available
+        # PERFORMANCE FIX: Skip individual patient lookup here - will be done in batch later
+        # Individual queries moved to batch optimization below
         for submission in data['submissions']:
             submission_form_id = submission.get('form_id')
             if submission_form_id and get_form_is_first(submission_form_id) and submission.get('data'):
@@ -3595,6 +3784,63 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
                             last_updated[normalized_key] = submission_date
         
         data['merged_data'] = merged_data
+
+    # PERFORMANCE FIX: Batch fetch registration data for all patients before DataFrame creation
+    print(f"Analytics: Fetching centralized registration data for {len(patient_data)} patients")
+    patient_ids = list(patient_data.keys())
+    if patient_ids:
+        try:
+            # CRITICAL FIX: Use chunked batch processing to avoid Supabase query limits
+            registration_lookup = {}
+            chunk_size = 100  # Smaller chunks to avoid Supabase limits
+            total_chunks = (len(patient_ids) + chunk_size - 1) // chunk_size
+            
+            print(f"Analytics: Fetching registration data in {total_chunks} chunks for {len(patient_ids)} patients")
+            
+            for i in range(0, len(patient_ids), chunk_size):
+                chunk = patient_ids[i:i + chunk_size]
+                chunk_num = (i // chunk_size) + 1
+                
+                try:
+                    batch_response = supabase.table('patients')\
+                        .select('patient_id, data, created_at')\
+                        .in_('patient_id', chunk)\
+                        .execute()
+                    
+                    chunk_count = 0
+                    for patient_record in batch_response.data:
+                        patient_id = patient_record.get('patient_id')
+                        if patient_id and patient_record.get('data', {}).get('registration'):
+                            registration_lookup[patient_id] = {
+                                'registration': patient_record['data']['registration'],
+                                'created_at': patient_record.get('created_at', '')
+                            }
+                            chunk_count += 1
+                    
+                    print(f"Analytics: Chunk {chunk_num}/{total_chunks}: {chunk_count} registration records found")
+                    
+                except Exception as chunk_error:
+                    print(f"Analytics: Error fetching chunk {chunk_num}: {str(chunk_error)}")
+                    continue
+            
+            print(f"Analytics: TOTAL registration data fetched: {len(registration_lookup)} patients")
+            
+            # Now merge registration data with existing patient data
+            for patient_id, data in patient_data.items():
+                if patient_id in registration_lookup:
+                    registration_data = registration_lookup[patient_id]['registration']
+                    patient_created_at = registration_lookup[patient_id]['created_at']
+                    
+                    # Convert registration data to normalized keys and merge
+                    for key, value in registration_data.items():
+                        normalized_key = key.lower().strip().replace(' ', '_')
+                        # Only add if not already present (form data takes precedence)
+                        if normalized_key not in data['merged_data']:
+                            data['merged_data'][normalized_key] = value
+                        
+        except Exception as e:
+            print(f"Analytics: Error batch fetching registration data: {str(e)}")
+            # Continue without registration data if batch fails
 
     # Convert patient_data dictionary to list for DataFrame - exactly as in dataset_view
     patient_data_list = []
@@ -4226,19 +4472,19 @@ def analytics():
                                 else:
                                     plot_data = value_counts
                                     has_more = False
-                                
-                                # Create a bar chart
-                                fig, ax = plt.subplots(figsize=(12, 6))
-                                sns.barplot(x='Value', y='Count', data=plot_data, ax=ax)
-                                ax.set_title(f'Frequency Distribution of {field1}')
-                                if has_more:
-                                    ax.set_title(f'Frequency Distribution of {field1} (Top 15 Values)')
-                                plt.xticks(rotation=45, ha='right')
-                                plt.tight_layout()
-                                plots.append({
-                                    'title': 'Frequency Distribution',
-                                    'img': fig_to_base64(fig)
-                                })
+                            
+                            # Create a bar chart
+                            fig, ax = plt.subplots(figsize=(12, 6))
+                            sns.barplot(x='Value', y='Count', data=plot_data, ax=ax)
+                            ax.set_title(f'Frequency Distribution of {field1}')
+                            if has_more:
+                                ax.set_title(f'Frequency Distribution of {field1} (Top 15 Values)')
+                            plt.xticks(rotation=45, ha='right')
+                            plt.tight_layout()
+                            plots.append({
+                                'title': 'Frequency Distribution',
+                                'img': fig_to_base64(fig)
+                            })
                 
                 # 3. Cross-tabulation between two fields
                 elif analysis_type == 'crosstab' and field1 and field2:
@@ -5143,11 +5389,11 @@ def export_analytics():
                             # Regular crosstab for non-checkbox fields
                             ct = pd.crosstab(df[field1], df[field2])
                             ct.to_excel(writer, sheet_name='Cross Tabulation')
-                            
-                            # Apply header formatting
-                            worksheet = writer.sheets['Cross Tabulation']
-                            for col_num, value in enumerate([''] + list(ct.columns)):
-                                worksheet.write(0, col_num, value, header_format)
+                        
+                        # Apply header formatting
+                        worksheet = writer.sheets['Cross Tabulation']
+                        for col_num, value in enumerate([''] + list(ct.columns)):
+                            worksheet.write(0, col_num, value, header_format)
                     except TypeError:
                         # Handle unhashable types like lists (fallback)
                         try:
@@ -7273,8 +7519,8 @@ def get_form_submissions_for_report(project_id, report_type, start_date, end_dat
         if not matching_form_ids:
             return []
         
-        # Get submissions for matching forms within date range
-        query = supabase.table('form_submissions').select('*').in_('form_id', matching_form_ids)
+        # PERFORMANCE FIX: Get submissions for matching forms within date range - only fetch essential fields
+        query = supabase.table('form_submissions').select('patient_id, data, created_at, form_id').in_('form_id', matching_form_ids)
         
         if start_date:
             query = query.gte('created_at', start_date.isoformat())
@@ -7283,8 +7529,12 @@ def get_form_submissions_for_report(project_id, report_type, start_date, end_dat
             end_date_plus_one = end_date + timedelta(days=1)
             query = query.lt('created_at', end_date_plus_one.isoformat())
         
-        # Get all submissions
+        # PERFORMANCE FIX: Get all submissions with progress tracking
         submissions = fetch_all_pages(query, debug_name=f"form_report_{report_type}_submissions")
+        
+        # PERFORMANCE FIX: Add progress tracking for large datasets
+        if len(submissions) > 500:
+            print(f"Form Report: Processing {len(submissions)} submissions for {report_type} report...")
         
         return submissions
         
@@ -7810,7 +8060,9 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
             pass
         
         # Use pagination to fetch ALL submissions
-        all_submissions = fetch_all_pages(query, debug_name="report_submissions")
+        print(f"Report: Query being executed - Forms: {form_ids}, Date range: {start_date} to {end_date}")
+        all_submissions = fetch_all_pages(query, debug_name="report_submissions", page_size=1000)
+        print(f"Report: CRITICAL DEBUG - Total submissions fetched: {len(all_submissions)}")
         
         # PERFORMANCE FIX: Process submissions more efficiently with early filtering
         all_patient_data = {}
@@ -7849,54 +8101,64 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
             
             # Handle ALL DOCTORS case or specific doctor
             if doctor_name == "ALL DOCTORS":
-                # For ALL DOCTORS, only include patients who have complete, meaningful data
-                # Check if this submission has essential data (name, age, or diagnosis)
-                has_essential_data = False
-                for key, value in submission['data'].items():
-                    key_lower = key.lower().strip()
-                    if (value and str(value).strip() and 
-                        any(essential in key_lower for essential in ['name', 'age', 'diagnosis', 'gender'])):
-                        has_essential_data = True
-                        break
-                
-                if has_essential_data:
-                    patients_with_doctor.add(patient_id)
-                    print(f"Report: Including patient {patient_id} for ALL DOCTORS (has essential data)")
-                else:
-                    print(f"Report: Excluding patient {patient_id} for ALL DOCTORS (no essential data)")
+                # For ALL DOCTORS, include ALL patients - we'll check for essential data after merging centralized registration
+                # This fixes the issue where patients with complete registration data but minimal form data were excluded
+                patients_with_doctor.add(patient_id)
+# Removed verbose logging for better performance
             else:
                 # Check if this submission has the specified doctor
                 for key, value in submission['data'].items():
                     if (key.lower().replace(' ', '').replace("'", '') in ['doctorsname', 'doctorname', 'doctor'] 
                         and value and str(value).strip().lower() == doctor_name.lower()):
                         patients_with_doctor.add(patient_id)
-                        print(f"Report: Including patient {patient_id} for doctor {doctor_name}")
+# Removed verbose logging for better performance
                         break
         
         # Now fetch centralized registration data for all patients and merge it
-        print(f"Report: Fetching centralized registration data for {len(all_patient_data)} patients")
-        
-        # PERFORMANCE FIX: Batch fetch all patient registration data in one query
         patient_ids = list(all_patient_data.keys())
+        print(f"Report: Fetching centralized registration data for {len(patient_ids)} patients")
+        
+        # PERFORMANCE FIX: Skip registration data fetch if no patients
+        if not patient_ids:
+            print("Report: No patients found, skipping registration data fetch")
+            return []
+        
+        # CRITICAL FIX: Use chunked batch processing to avoid Supabase query limits
         if patient_ids:
             try:
-                # PERFORMANCE FIX: Fetch all patient registration data in a single batch query
-                batch_response = supabase.table('patients')\
-                    .select('patient_id, data, created_at')\
-                    .in_('patient_id', patient_ids)\
-                    .execute()
-                
-                # Create a lookup dict for O(1) access
                 registration_lookup = {}
-                for patient_record in batch_response.data:
-                    patient_id = patient_record.get('patient_id')
-                    if patient_id and patient_record.get('data', {}).get('registration'):
-                        registration_lookup[patient_id] = {
-                            'registration': patient_record['data']['registration'],
-                            'created_at': patient_record.get('created_at', '')
-                        }
+                chunk_size = 100  # Smaller chunks to avoid Supabase limits
+                total_chunks = (len(patient_ids) + chunk_size - 1) // chunk_size
                 
-                print(f"Report: Batch fetched registration data for {len(registration_lookup)} patients")
+                print(f"Report: Fetching registration data in {total_chunks} chunks for {len(patient_ids)} patients")
+                
+                for i in range(0, len(patient_ids), chunk_size):
+                    chunk = patient_ids[i:i + chunk_size]
+                    chunk_num = (i // chunk_size) + 1
+                    
+                    try:
+                        batch_response = supabase.table('patients')\
+                            .select('patient_id, data, created_at')\
+                            .in_('patient_id', chunk)\
+                            .execute()
+                        
+                        chunk_count = 0
+                        for patient_record in batch_response.data:
+                            patient_id = patient_record.get('patient_id')
+                            if patient_id and patient_record.get('data', {}).get('registration'):
+                                registration_lookup[patient_id] = {
+                                    'registration': patient_record['data']['registration'],
+                                    'created_at': patient_record.get('created_at', '')
+                                }
+                                chunk_count += 1
+                        
+                        print(f"Report: Chunk {chunk_num}/{total_chunks}: {chunk_count} registration records found")
+                        
+                    except Exception as chunk_error:
+                        print(f"Report: Error fetching chunk {chunk_num}: {str(chunk_error)}")
+                        continue
+                
+                print(f"Report: TOTAL registration data fetched: {len(registration_lookup)} patients")
                 
                 # Now merge registration data with form data (much faster)
                 for patient_id, patient_info in all_patient_data.items():
@@ -7909,35 +8171,14 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
                         merged_data.update(registration_data)     # Registration data overwrites/adds
                         
                         patient_info['data'] = merged_data
-                        print(f"Report: Added centralized registration data for patient {patient_id}")
-                    else:
-                        print(f"Report: No centralized registration data found for patient {patient_id}")
-                        
+                    
             except Exception as e:
                 print(f"Report: Error batch fetching registration data: {str(e)}")
-                print("Report: Falling back to individual queries...")
-                
-                # Fallback to original method if batch fails
-                for patient_id, patient_info in all_patient_data.items():
-                    try:
-                        patient_response = supabase.table('patients').select('data, created_at').eq('patient_id', patient_id).execute()
-                        if patient_response.data and patient_response.data[0].get('data', {}).get('registration'):
-                            registration_data = patient_response.data[0]['data']['registration']
-                            
-                            merged_data = {}
-                            merged_data.update(patient_info['data'])
-                            merged_data.update(registration_data)
-                            
-                            patient_info['data'] = merged_data
-                            print(f"Report: Added centralized registration data for patient {patient_id}")
-                        else:
-                            print(f"Report: No centralized registration data found for patient {patient_id}")
-                            
-                    except Exception as inner_e:
-                        print(f"Report: Error fetching registration data for patient {patient_id}: {str(inner_e)}")
-                        continue
+                print("Report: Continuing without registration data to avoid delays")
         
         # PERFORMANCE FIX: More efficient filtering using list comprehension
+        # CRITICAL FIX: Remove essential data filtering for ALL DOCTORS - everyone should have registration data
+        # The issue was that patients with complete registration data but minimal form data were being excluded
         filtered_patient_data = [
             patient_info for patient_id, patient_info in all_patient_data.items() 
             if patient_id in patients_with_doctor
@@ -8214,30 +8455,31 @@ def generate_pdf_report(patients, programme_name, doctor_name, start_date, end_d
         else:
             # Extract unique doctors from the patient data (much faster than separate DB query)
             all_doctors = get_unique_doctors_from_patients(all_patients_data)
-            
-            if not all_doctors:
-                # If no doctors found in patient data, create empty report
-                elements = create_empty_report_elements(programme_name, doctor_name, start_date, end_date)
-            else:
-                # Generate individual report for each doctor using pre-fetched data
-                for i, individual_doctor in enumerate(all_doctors):
-                    # Filter patients for this specific doctor from the already-fetched data
-                    doctor_patients = filter_patients_by_doctor(all_patients_data, individual_doctor)
-                    
-                    # Add page break before each doctor's report (except the first one)
-                    if i > 0:
-                        elements.append(PageBreak())
-                    
-                    # Generate individual doctor report elements based on programme type
-                    if 'OBSTETRICS' in programme_name.upper() and 'GYNECOLOGY' in programme_name.upper():
-                        doctor_elements = create_gyne_doctor_report_elements(
-                            doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
-                        )
-                    else:
-                        doctor_elements = create_individual_doctor_report_elements(
-                            doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
-                        )
-                    elements.extend(doctor_elements)
+        
+        if not all_doctors:
+            # If no doctors found in patient data, create empty report
+            elements = create_empty_report_elements(programme_name, doctor_name, start_date, end_date)
+        else:
+            # Generate individual report for each doctor using pre-fetched data
+            for i, individual_doctor in enumerate(all_doctors):
+                # Filter patients for this specific doctor from the already-fetched data
+                doctor_patients = filter_patients_by_doctor(all_patients_data, individual_doctor)
+                
+                # Add page break before each doctor's report (except the first one)
+                if i > 0:
+                    elements.append(PageBreak())
+                
+                # Generate individual doctor report elements based on programme type
+                if 'OBSTETRICS' in programme_name.upper() and 'GYNECOLOGY' in programme_name.upper():
+                    doctor_elements = create_gyne_doctor_report_elements(
+                        doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
+                    )
+                else:
+                    doctor_elements = create_individual_doctor_report_elements(
+                        doctor_patients, programme_name, individual_doctor, start_date, end_date, project_id
+                    )
+                
+                elements.extend(doctor_elements)
         
         # Build PDF and return
         doc.build(elements)

@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Loading Dataset - {{ config['SITE_NAME'] }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1 class="h3 mb-0 text-gray-800">
+                    <i class="fas fa-database me-2"></i>Loading Large Dataset
+                </h1>
+                <a href="{{ url_for('program_list') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left me-1"></i>Back to Programs
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Progress Card -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body text-center">
+            <div class="row">
+                <div class="col-md-8 offset-md-2">
+                    <div class="mb-4">
+                        <i class="fas fa-spinner fa-spin fa-3x text-primary mb-3"></i>
+                        <h4>Processing Large Dataset</h4>
+                        <p class="text-muted mb-4">
+                            Found <strong>{{ total_count:,}}</strong> records to process.<br>
+                            This may take a moment for optimal performance.
+                        </p>
+                    </div>
+                    
+                    <!-- Progress Bar -->
+                    <div class="progress mb-4" style="height: 25px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             id="loadingProgress" 
+                             role="progressbar" 
+                             style="width: 0%" 
+                             aria-valuenow="0" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            <span id="progressText">Starting...</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Status Messages -->
+                    <div id="statusMessages" class="mb-4">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <span id="currentStatus">Initializing data loading...</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Loaded Data Preview -->
+                    <div id="dataPreview" class="d-none">
+                        <h5 class="mb-3">Preview of Loaded Data</h5>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped" id="previewTable">
+                                <thead>
+                                    <tr id="previewHeaders"></tr>
+                                </thead>
+                                <tbody id="previewBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="text-center mt-3">
+                            <button class="btn btn-primary btn-lg" id="viewFullDataset" disabled>
+                                <i class="fas fa-eye me-2"></i>View Full Dataset
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const progressBar = document.getElementById('loadingProgress');
+    const progressText = document.getElementById('progressText');
+    const currentStatus = document.getElementById('currentStatus');
+    const dataPreview = document.getElementById('dataPreview');
+    const previewTable = document.getElementById('previewTable');
+    const previewHeaders = document.getElementById('previewHeaders');
+    const previewBody = document.getElementById('previewBody');
+    const viewFullBtn = document.getElementById('viewFullDataset');
+    
+    let totalCount = {{ total_count }};
+    let loadedCount = 0;
+    let allData = [];
+    let headers = new Set();
+    
+    // Progressive loading function
+    async function loadDataProgressively() {
+        const batchSize = 100;
+        let offset = 0;
+        let hasMore = true;
+        
+        while (hasMore) {
+            try {
+                currentStatus.textContent = `Loading records ${offset + 1} to ${offset + batchSize}...`;
+                
+                const response = await fetch(`/api/dataset/progressive/{{ project_id }}?` + new URLSearchParams({
+                    offset: offset,
+                    limit: batchSize,
+                    {% if form_id %}form_id: '{{ form_id }}',{% endif %}
+                    {% if field_name %}field_name: '{{ field_name }}',{% endif %}
+                    {% if field_value %}field_value: '{{ field_value }}',{% endif %}
+                    {% if start_date %}start_date: '{{ start_date }}',{% endif %}
+                    {% if end_date %}end_date: '{{ end_date }}',{% endif %}
+                    {% if search_term %}search: '{{ search_term }}'{% endif %}
+                }));
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                // Update progress
+                loadedCount = result.total_fetched;
+                const progressPercent = Math.min((loadedCount / totalCount) * 100, 100);
+                progressBar.style.width = progressPercent + '%';
+                progressBar.setAttribute('aria-valuenow', progressPercent);
+                progressText.textContent = `${loadedCount:,} / ${totalCount:,} records (${progressPercent.toFixed(1)}%)`;
+                
+                // Add data to collection
+                allData.push(...result.data);
+                
+                // Collect headers
+                result.data.forEach(row => {
+                    Object.keys(row).forEach(key => headers.add(key));
+                });
+                
+                // Update preview with first few rows
+                if (allData.length > 0 && allData.length <= 200) {
+                    updatePreview();
+                }
+                
+                hasMore = result.has_more;
+                offset += batchSize;
+                
+                // Small delay to prevent overwhelming the server
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                currentStatus.textContent = `Error loading data: ${error.message}`;
+                document.querySelector('.alert-info').className = 'alert alert-danger';
+                break;
+            }
+        }
+        
+        // Loading complete
+        if (loadedCount >= totalCount || !hasMore) {
+            progressBar.style.width = '100%';
+            progressText.textContent = 'Loading Complete!';
+            currentStatus.textContent = `Successfully loaded ${loadedCount:,} records`;
+            document.querySelector('.alert').className = 'alert alert-success';
+            viewFullBtn.disabled = false;
+            updatePreview();
+        }
+    }
+    
+    function updatePreview() {
+        if (allData.length === 0) return;
+        
+        // Show preview section
+        dataPreview.classList.remove('d-none');
+        
+        // Create headers
+        const headerArray = Array.from(headers);
+        previewHeaders.innerHTML = headerArray.map(h => `<th>${h}</th>`).join('');
+        
+        // Create preview rows (first 10)
+        const previewRows = allData.slice(0, 10);
+        previewBody.innerHTML = previewRows.map(row => 
+            `<tr>${headerArray.map(h => `<td>${row[h] || ''}</td>`).join('')}</tr>`
+        ).join('');
+    }
+    
+    // View full dataset button
+    viewFullBtn.addEventListener('click', function() {
+        // Redirect to full dataset view with normal loading
+        window.location.href = '/dataset?' + new URLSearchParams({
+            project_id: '{{ project_id }}',
+            {% if form_id %}form_id: '{{ form_id }}',{% endif %}
+            {% if field_name %}field_name: '{{ field_name }}',{% endif %}
+            {% if field_value %}field_value: '{{ field_value }}',{% endif %}
+            {% if start_date %}start_date: '{{ start_date }}',{% endif %}
+            {% if end_date %}end_date: '{{ end_date }}',{% endif %}
+            {% if search_term %}search: '{{ search_term }}',{% endif %}
+            quick_load: 'false'
+        });
+    });
+    
+    // Start progressive loading
+    loadDataProgressively();
+});
+</script>
+{% endblock %}
