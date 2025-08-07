@@ -7278,8 +7278,9 @@ def get_report_types_for_programme(project_id):
         # Define report types based on programme
         report_types = []
         
-        # Always add doctor reports
+        # Always add doctor reports and programme summary
         report_types.append({'value': 'doctor', 'label': 'Doctor Reports'})
+        report_types.append({'value': 'programme_summary', 'label': 'Programme Summary'})
         
         if 'FREE EYE CAMPS' in programme_name:
             # Check if the specific forms exist for this programme
@@ -7392,6 +7393,10 @@ def report_preview():
             # For doctor reports, get patients as before
             data = get_patients_for_report(project_id, doctor_name, start_date, end_date)
             total_count = len(data)
+        elif report_type == 'programme_summary':
+            # For programme summary, get all patients
+            data = get_patients_for_report(project_id, "ALL DOCTORS", start_date, end_date)
+            total_count = len(data)
         else:
             # For form reports, get form submissions count
             data = get_form_submissions_for_report(project_id, report_type, start_date, end_date)
@@ -7459,6 +7464,14 @@ def generate_report():
                 filename = f"Medical_Report_{doctor_name}_{start_date}.pdf"
             
             log_activity('generate', 'report', project_id, f"Generated doctor report for {doctor_name} in {programme_name}")
+            
+        elif report_type == 'programme_summary':
+            # Generate programme summary report (summary statistics only)
+            patients = get_patients_for_report(project_id, "ALL DOCTORS", start_date, end_date)
+            pdf_buffer = generate_programme_summary_pdf(patients, programme_name, start_date, end_date, project_id)
+            
+            filename = f"Programme_Summary_{programme_name.replace(' ', '_')}_{start_date}.pdf"
+            log_activity('generate', 'report', project_id, f"Generated programme summary report for {programme_name}")
             
         else:
             # Generate form-specific report
@@ -9005,12 +9018,29 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
             
             # VIA Test results
             via_inspection = get_field_value(patient_data, ['VIA Inspection'])
-            via_neg = 'Yes' if via_inspection == 'Negative' else 'No'
+            if not via_inspection or str(via_inspection).strip() == '':
+                via_neg = 'Not Done'
+            elif via_inspection == 'Negative':
+                via_neg = 'Yes'
+            else:
+                via_neg = 'No'
             
             # VIA Positive results for Small/Large Lesion
             via_positive = get_field_value(patient_data, ['VIA Positive'])
-            via_small = 'Yes' if via_positive == 'Small Lesion' else 'No'
-            via_large = 'Yes' if via_positive == 'Large Lesion' else 'No'
+            if not via_inspection or str(via_inspection).strip() == '':
+                # If VIA Inspection wasn't done, show dash for lesion fields
+                via_small = '-'
+                via_large = '-'
+            elif via_positive == 'Small Lesion':
+                via_small = 'Yes'
+                via_large = 'No'
+            elif via_positive == 'Large Lesion':
+                via_small = 'No'
+                via_large = 'Yes'
+            else:
+                # VIA was done but no lesion detected or field empty
+                via_small = '-'
+                via_large = '-'
             
             # Breast Examination
             left_breast = get_field_value(patient_data, ['Left Breast Condition'])
@@ -9514,17 +9544,18 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
         if abnormal_visual and 'Suspect for Cervical Cancer' in str(abnormal_visual):
             suspect_ca += 1
         
-        # VIA Test results - check exact values
+        # VIA Test results - only count when VIA was actually performed
         via_inspection = get_field_value(patient_data, ['VIA Inspection'])
-        if via_inspection == 'Negative':
-            via_negative += 1
-        
-        # VIA Positive results - check exact values
-        via_positive = get_field_value(patient_data, ['VIA Positive'])
-        if via_positive == 'Small Lesion':
-            via_small_lesion += 1
-        elif via_positive == 'Large Lesion':
-            via_large_lesion += 1
+        if via_inspection and str(via_inspection).strip() != '':
+            if via_inspection == 'Negative':
+                via_negative += 1
+            
+            # VIA Positive results - only count when VIA was performed
+            via_positive = get_field_value(patient_data, ['VIA Positive'])
+            if via_positive == 'Small Lesion':
+                via_small_lesion += 1
+            elif via_positive == 'Large Lesion':
+                via_large_lesion += 1
         
         # Breast Examination - use exact field names and values
         left_breast = get_field_value(patient_data, ['Left Breast Condition'])
@@ -9626,14 +9657,16 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
             total_all_suspect_ca += 1
         
         via_inspection = get_field_value(patient_data, ['VIA Inspection'])
-        if via_inspection == 'Negative':
-            total_all_via_negative += 1
-        
-        via_positive = get_field_value(patient_data, ['VIA Positive'])
-        if via_positive == 'Small Lesion':
-            total_all_via_small_lesion += 1
-        elif via_positive == 'Large Lesion':
-            total_all_via_large_lesion += 1
+        if via_inspection and str(via_inspection).strip() != '':
+            if via_inspection == 'Negative':
+                total_all_via_negative += 1
+            
+            # VIA Positive results - only count when VIA was performed
+            via_positive = get_field_value(patient_data, ['VIA Positive'])
+            if via_positive == 'Small Lesion':
+                total_all_via_small_lesion += 1
+            elif via_positive == 'Large Lesion':
+                total_all_via_large_lesion += 1
         
         left_breast = get_field_value(patient_data, ['Left Breast Condition'])
         right_breast = get_field_value(patient_data, ['Right Breast Condition'])
@@ -9849,6 +9882,88 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
     ]))
     
     elements.append(summary_table)
+
+def generate_programme_summary_pdf(patients, programme_name, start_date, end_date, project_id):
+    """Generate Programme Summary PDF with just the summary statistics table"""
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib import colors
+    from io import BytesIO
+    import datetime
+    import os
+    
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=36, leftMargin=36, topMargin=50, bottomMargin=18)
+    
+    # Container for the 'Flowable' objects
+    elements = []
+    
+    # Add MDF logo
+    logo_path = os.path.join(os.path.dirname(__file__), 'MDF.png')
+    if os.path.exists(logo_path):
+        try:
+            logo = Image(logo_path, width=1.0*inch, height=0.8*inch, kind='proportional')
+            logo.hAlign = 'CENTER'
+            elements.append(logo)
+            elements.append(Spacer(1, 15))
+        except Exception as e:
+            print(f"Could not load logo: {str(e)}")
+    
+    # Get styles
+    styles = getSampleStyleSheet()
+    
+    # Title styling
+    title_style = ParagraphStyle(
+        'ReportTitle', 
+        parent=styles['Heading1'], 
+        fontSize=20, 
+        alignment=1,
+        textColor=colors.black,
+        fontName='Times-Bold',
+        spaceAfter=20
+    )
+    
+    # Programme Summary title
+    if 'OBSTETRICS' in programme_name.upper() and 'GYNECOLOGY' in programme_name.upper():
+        title = Paragraph(f"GYNECOLOGY PROGRAMME SUMMARY<br/><font size='16'>{programme_name}</font>", title_style)
+    else:
+        title = Paragraph(f"PROGRAMME SUMMARY<br/><font size='16'>{programme_name}</font>", title_style)
+    elements.append(title)
+    
+    # Report details
+    if start_date == end_date:
+        date_str = start_date.strftime('%B %d, %Y')
+    else:
+        date_str = f"{start_date.strftime('%B %d, %Y')} - {end_date.strftime('%B %d, %Y')}"
+    
+    # Create header info
+    generated_at = datetime.datetime.now(EAT).strftime('%B %d, %Y at %I:%M %p EAT')
+    info_style = ParagraphStyle(
+        'InfoStyle',
+        parent=styles['Normal'],
+        fontSize=12,
+        alignment=1,
+        spaceAfter=30
+    )
+    
+    info_text = f"<b>Period:</b> {date_str}<br/><b>Total Patients:</b> {len(patients)}<br/><b>Generated:</b> {generated_at}"
+    info_para = Paragraph(info_text, info_style)
+    elements.append(info_para)
+    
+    # Add appropriate summary statistics based on programme type
+    if 'OBSTETRICS' in programme_name.upper() and 'GYNECOLOGY' in programme_name.upper():
+        # Add GYNE-specific summary statistics
+        add_gyne_summary_statistics(elements, patients, styles, project_id, start_date, end_date)
+    else:
+        # Add general summary statistics  
+        add_summary_statistics(elements, patients, styles, project_id, start_date, end_date, programme_name)
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

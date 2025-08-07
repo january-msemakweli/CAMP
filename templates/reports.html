@@ -213,6 +213,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 dateSection.style.display = 'none';
                 generateSection.style.display = 'none';
                 previewSection.style.display = 'none';
+            } else if (this.value === 'programme_summary') {
+                // For programme summary, skip doctor selection and go to date
+                doctorSelect.required = false;
+                doctorSection.style.display = 'none';
+                dateSection.style.display = 'block';
+                generateSection.style.display = 'block';
+                updatePreview();
             } else {
                 // For form reports, skip doctor selection and go to date
                 doctorSelect.required = false;
