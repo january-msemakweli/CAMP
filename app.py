@@ -9225,7 +9225,7 @@ def create_gyne_doctor_report_elements(patients, programme_name, doctor_name, st
     
     return elements
 
-def add_summary_statistics(elements, patients, styles, project_id, start_date, end_date, programme_name):
+def add_summary_statistics(elements, patients, styles, project_id, start_date, end_date, programme_name, show_total_percentage=True):
     """Add clean summary statistics to PDF with total percentages"""
     from reportlab.platypus import Spacer, Table, TableStyle, Paragraph
     from reportlab.lib import colors
@@ -9411,73 +9411,57 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
     )
     
     # Create summary table data with Paragraph objects for proper text wrapping
-    summary_data = [
-        # Header row
-        [
+    if show_total_percentage:
+        header_row = [
             Paragraph('METRIC', header_cell_style),
             Paragraph('COUNT', header_cell_style), 
             Paragraph('PERCENTAGE', header_cell_style),
             Paragraph('TOTAL<br/>PERCENTAGE', header_cell_style)
-        ],
-        # Data rows with wrapped text
-        [
-            Paragraph('Total Patients', metric_cell_style),
-            Paragraph(str(total_patients), data_cell_style),
-            Paragraph('100.0%', data_cell_style),
-            Paragraph(safe_percentage(total_patients, total_all_patients), data_cell_style)
-        ],
-        [
-            Paragraph('Cataract Cases', metric_cell_style),
-            Paragraph(str(cataract_patients), data_cell_style),
-            Paragraph(safe_percentage(cataract_patients, total_patients), data_cell_style),
-            Paragraph(safe_percentage(cataract_patients, total_all_cataracts), data_cell_style)
-        ],
-        [
-            Paragraph('Immature Cataract Cases', metric_cell_style),
-            Paragraph(str(immature_cataract_patients), data_cell_style),
-            Paragraph(safe_percentage(immature_cataract_patients, total_patients), data_cell_style),
-            Paragraph(safe_percentage(immature_cataract_patients, total_all_immature_cataracts), data_cell_style)
-        ],
-        [
-            Paragraph('Pterygium Cases', metric_cell_style),
-            Paragraph(str(pterygium_patients), data_cell_style),
-            Paragraph(safe_percentage(pterygium_patients, total_patients), data_cell_style),
-            Paragraph(safe_percentage(pterygium_patients, total_all_pterygium), data_cell_style)
-        ],
-        [
-            Paragraph('Chalazion Cases', metric_cell_style),
-            Paragraph(str(chalazion_patients), data_cell_style),
-            Paragraph(safe_percentage(chalazion_patients, total_patients), data_cell_style),
-            Paragraph(safe_percentage(chalazion_patients, total_all_chalazion), data_cell_style)
-        ],
-        [
-            Paragraph('Foreign Body Cases', metric_cell_style),
-            Paragraph(str(foreign_body_patients), data_cell_style),
-            Paragraph(safe_percentage(foreign_body_patients, total_patients), data_cell_style),
-            Paragraph(safe_percentage(foreign_body_patients, total_all_foreign_body), data_cell_style)
-        ],
-        [
-            Paragraph('Trichiasis Cases', metric_cell_style),
-            Paragraph(str(trichiasis_patients), data_cell_style),
-            Paragraph(safe_percentage(trichiasis_patients, total_patients), data_cell_style),
-            Paragraph(safe_percentage(trichiasis_patients, total_all_trichiasis), data_cell_style)
-        ],
-        [
-            Paragraph('Reading Glasses Prescribed', metric_cell_style),
-            Paragraph(str(reading_glasses_count), data_cell_style),
-            Paragraph(safe_percentage(reading_glasses_count, total_patients), data_cell_style),
-            Paragraph(safe_percentage(reading_glasses_count, total_all_reading_glasses), data_cell_style)
-        ],
-        [
-            Paragraph('Surgical Referrals', metric_cell_style),
-            Paragraph(str(surgical_referrals), data_cell_style),
-            Paragraph(safe_percentage(surgical_referrals, total_patients), data_cell_style),
-            Paragraph(safe_percentage(surgical_referrals, total_all_surgical_referrals), data_cell_style)
         ]
+        col_widths = [3.2*inch, 1.0*inch, 1.1*inch, 1.3*inch]
+    else:
+        header_row = [
+            Paragraph('METRIC', header_cell_style),
+            Paragraph('COUNT', header_cell_style), 
+            Paragraph('PERCENTAGE', header_cell_style)
+        ]
+        col_widths = [4.2*inch, 1.5*inch, 1.5*inch]
+    
+    # Define data rows for eye camps
+    rows_data = [
+        ('Total Patients', total_patients, '100.0%', total_all_patients),
+        ('Cataract Cases', cataract_patients, safe_percentage(cataract_patients, total_patients), total_all_cataracts),
+        ('Immature Cataract Cases', immature_cataract_patients, safe_percentage(immature_cataract_patients, total_patients), total_all_immature_cataracts),
+        ('Pterygium Cases', pterygium_patients, safe_percentage(pterygium_patients, total_patients), total_all_pterygium),
+        ('Chalazion Cases', chalazion_patients, safe_percentage(chalazion_patients, total_patients), total_all_chalazion),
+        ('Foreign Body Cases', foreign_body_patients, safe_percentage(foreign_body_patients, total_patients), total_all_foreign_body),
+        ('Trichiasis Cases', trichiasis_patients, safe_percentage(trichiasis_patients, total_patients), total_all_trichiasis),
+        ('Reading Glasses Prescribed', reading_glasses_count, safe_percentage(reading_glasses_count, total_patients), total_all_reading_glasses),
+        ('Surgical Referrals', surgical_referrals, safe_percentage(surgical_referrals, total_patients), total_all_surgical_referrals)
     ]
     
+    # Build table data with conditional total percentage column
+    summary_data = [header_row]
+    for label, count, percentage, total_count in rows_data:
+        if show_total_percentage:
+            row = [
+                Paragraph(label, metric_cell_style),
+                Paragraph(str(count), data_cell_style),
+                Paragraph(percentage, data_cell_style),
+                Paragraph(safe_percentage(count, total_count), data_cell_style)
+            ]
+        else:
+            row = [
+                Paragraph(label, metric_cell_style),
+                Paragraph(str(count), data_cell_style),
+                Paragraph(percentage, data_cell_style)
+            ]
+        summary_data.append(row)
+    
+
+    
     # Create summary table with optimized column widths for better text containment
-    summary_table = Table(summary_data, colWidths=[3.2*inch, 1.0*inch, 1.1*inch, 1.3*inch])
+    summary_table = Table(summary_data, colWidths=col_widths)
     summary_table.setStyle(TableStyle([
         # Header row styling
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
@@ -9498,7 +9482,7 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
     
     elements.append(summary_table)
 
-def add_gyne_summary_statistics(elements, patients, styles, project_id, start_date, end_date):
+def add_gyne_summary_statistics(elements, patients, styles, project_id, start_date, end_date, show_total_percentage=True):
     """Add GYNE-specific summary statistics to PDF - similar to eye camps implementation"""
     from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
     from reportlab.lib.styles import ParagraphStyle
@@ -9778,91 +9762,58 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
     )
     
     # Create summary table data with proper structure like eye camps
-    summary_data = [
-        # Header row
-        [
+    if show_total_percentage:
+        header_row = [
             Paragraph('METRIC', header_cell_style),
             Paragraph('COUNT', header_cell_style), 
             Paragraph('PERCENTAGE', header_cell_style),
             Paragraph('TOTAL<br/>PERCENTAGE', header_cell_style)
-        ],
-        # Data rows
-        [
-            Paragraph('Total Patients', metric_cell_style),
-            Paragraph(str(total_patients), data_cell_style),
-            Paragraph('100.0%', data_cell_style),
-            Paragraph(safe_percentage(total_patients, total_all_patients), data_cell_style)
-        ],
-        [
-            Paragraph('Suspect for Cervical CA', metric_cell_style),
-            Paragraph(str(suspect_ca), data_cell_style),
-            Paragraph(safe_percentage(suspect_ca, total_patients), data_cell_style),
-            Paragraph(safe_percentage(suspect_ca, total_all_suspect_ca), data_cell_style)
-        ],
-        [
-            Paragraph('VIA Negative', metric_cell_style),
-            Paragraph(str(via_negative), data_cell_style),
-            Paragraph(safe_percentage(via_negative, total_patients), data_cell_style),
-            Paragraph(safe_percentage(via_negative, total_all_via_negative), data_cell_style)
-        ],
-        [
-            Paragraph('VIA Positive with Small Lesion', metric_cell_style),
-            Paragraph(str(via_small_lesion), data_cell_style),
-            Paragraph(safe_percentage(via_small_lesion, total_patients), data_cell_style),
-            Paragraph(safe_percentage(via_small_lesion, total_all_via_small_lesion), data_cell_style)
-        ],
-        [
-            Paragraph('VIA Positive with Large Lesion', metric_cell_style),
-            Paragraph(str(via_large_lesion), data_cell_style),
-            Paragraph(safe_percentage(via_large_lesion, total_patients), data_cell_style),
-            Paragraph(safe_percentage(via_large_lesion, total_all_via_large_lesion), data_cell_style)
-        ],
-        [
-            Paragraph('Breast Normal', metric_cell_style),
-            Paragraph(str(breast_normal), data_cell_style),
-            Paragraph(safe_percentage(breast_normal, total_patients), data_cell_style),
-            Paragraph(safe_percentage(breast_normal, total_all_breast_normal), data_cell_style)
-        ],
-        [
-            Paragraph('Breast Abnormal', metric_cell_style),
-            Paragraph(str(breast_abnormal), data_cell_style),
-            Paragraph(safe_percentage(breast_abnormal, total_patients), data_cell_style),
-            Paragraph(safe_percentage(breast_abnormal, total_all_breast_abnormal), data_cell_style)
-        ],
-        [
-            Paragraph('Major Surgeries', metric_cell_style),
-            Paragraph(str(major_surgeries), data_cell_style),
-            Paragraph(safe_percentage(major_surgeries, total_patients), data_cell_style),
-            Paragraph(safe_percentage(major_surgeries, total_all_major_surgeries), data_cell_style)
-        ],
-        [
-            Paragraph('Minor Surgeries', metric_cell_style),
-            Paragraph(str(minor_surgeries), data_cell_style),
-            Paragraph(safe_percentage(minor_surgeries, total_patients), data_cell_style),
-            Paragraph(safe_percentage(minor_surgeries, total_all_minor_surgeries), data_cell_style)
-        ],
-        [
-            Paragraph('Primary Infertility', metric_cell_style),
-            Paragraph(str(primary_infertility), data_cell_style),
-            Paragraph(safe_percentage(primary_infertility, total_patients), data_cell_style),
-            Paragraph(safe_percentage(primary_infertility, total_all_primary_infertility), data_cell_style)
-        ],
-        [
-            Paragraph('Secondary Infertility', metric_cell_style),
-            Paragraph(str(secondary_infertility), data_cell_style),
-            Paragraph(safe_percentage(secondary_infertility, total_patients), data_cell_style),
-            Paragraph(safe_percentage(secondary_infertility, total_all_secondary_infertility), data_cell_style)
-        ],
-        [
-            Paragraph('Cryotherapy', metric_cell_style),
-            Paragraph(str(cryotherapy), data_cell_style),
-            Paragraph(safe_percentage(cryotherapy, total_patients), data_cell_style),
-            Paragraph(safe_percentage(cryotherapy, total_all_cryotherapy), data_cell_style)
         ]
+        col_widths = [3.2*inch, 1.0*inch, 1.1*inch, 1.3*inch]
+    else:
+        header_row = [
+            Paragraph('METRIC', header_cell_style),
+            Paragraph('COUNT', header_cell_style), 
+            Paragraph('PERCENTAGE', header_cell_style)
+        ]
+        col_widths = [4.2*inch, 1.5*inch, 1.5*inch]
+    
+    # Define data rows
+    rows_data = [
+        ('Total Patients', total_patients, '100.0%', total_all_patients),
+        ('Suspect for Cervical CA', suspect_ca, safe_percentage(suspect_ca, total_patients), total_all_suspect_ca),
+        ('VIA Negative', via_negative, safe_percentage(via_negative, total_patients), total_all_via_negative),
+        ('VIA Positive with Small Lesion', via_small_lesion, safe_percentage(via_small_lesion, total_patients), total_all_via_small_lesion),
+        ('VIA Positive with Large Lesion', via_large_lesion, safe_percentage(via_large_lesion, total_patients), total_all_via_large_lesion),
+        ('Normal Breast Examination', breast_normal, safe_percentage(breast_normal, total_patients), total_all_breast_normal),
+        ('Abnormal Breast Examination', breast_abnormal, safe_percentage(breast_abnormal, total_patients), total_all_breast_abnormal),
+        ('Major Surgeries', major_surgeries, safe_percentage(major_surgeries, total_patients), total_all_major_surgeries),
+        ('Minor Surgeries', minor_surgeries, safe_percentage(minor_surgeries, total_patients), total_all_minor_surgeries),
+        ('Primary Infertility', primary_infertility, safe_percentage(primary_infertility, total_patients), total_all_primary_infertility),
+        ('Secondary Infertility', secondary_infertility, safe_percentage(secondary_infertility, total_patients), total_all_secondary_infertility),
+        ('Cryotherapy', cryotherapy, safe_percentage(cryotherapy, total_patients), total_all_cryotherapy)
     ]
     
+    # Build table data with conditional total percentage column
+    summary_data = [header_row]
+    for label, count, percentage, total_count in rows_data:
+        if show_total_percentage:
+            row = [
+                Paragraph(label, metric_cell_style),
+                Paragraph(str(count), data_cell_style),
+                Paragraph(percentage, data_cell_style),
+                Paragraph(safe_percentage(count, total_count), data_cell_style)
+            ]
+        else:
+            row = [
+                Paragraph(label, metric_cell_style),
+                Paragraph(str(count), data_cell_style),
+                Paragraph(percentage, data_cell_style)
+            ]
+        summary_data.append(row)
+    
     # Create summary table with same structure as eye camps
-    summary_table = Table(summary_data, colWidths=[3.2*inch, 1.0*inch, 1.1*inch, 1.3*inch])
+    summary_table = Table(summary_data, colWidths=col_widths)
     summary_table.setStyle(TableStyle([
         # Header row styling
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
@@ -9954,11 +9905,11 @@ def generate_programme_summary_pdf(patients, programme_name, start_date, end_dat
     
     # Add appropriate summary statistics based on programme type
     if 'OBSTETRICS' in programme_name.upper() and 'GYNECOLOGY' in programme_name.upper():
-        # Add GYNE-specific summary statistics
-        add_gyne_summary_statistics(elements, patients, styles, project_id, start_date, end_date)
+        # Add GYNE-specific summary statistics (without total percentage column)
+        add_gyne_summary_statistics(elements, patients, styles, project_id, start_date, end_date, show_total_percentage=False)
     else:
-        # Add general summary statistics  
-        add_summary_statistics(elements, patients, styles, project_id, start_date, end_date, programme_name)
+        # Add general summary statistics (without total percentage column)
+        add_summary_statistics(elements, patients, styles, project_id, start_date, end_date, programme_name, show_total_percentage=False)
     
     # Build PDF
     doc.build(elements)
