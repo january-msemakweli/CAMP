@@ -8397,8 +8397,9 @@ def build_gyne_treatment_plan(patient_data):
     if treatment_plan:
         plan_list = treatment_plan if isinstance(treatment_plan, list) else [treatment_plan]
         for plan_item in plan_list:
-            if plan_item in ['Counselling', 'Referral', 'Cryotherapy']:
-                treatment_parts.append(plan_item.upper())
+            plan_item_str = str(plan_item).strip()
+            if plan_item_str in ['Counselling', 'Referral', 'Cryotherapy']:
+                treatment_parts.append(plan_item_str.upper())
     
     # Join all treatment parts
     return ' + '.join(treatment_parts) if treatment_parts else ''
@@ -9539,7 +9540,7 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
         elif left_abnormal or right_abnormal:
             breast_abnormal += 1
         
-        # Surgeries - use exact Surgical Procedure field
+        # Surgeries - use exact Surgical Procedure field (checkbox data)
         surgical_procedure = get_field_value(patient_data, ['Surgical Procedure'])
         
         # Define major vs minor procedures based on exact form options
@@ -9556,13 +9557,18 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
         ]
         
         if surgical_procedure:
+            # Handle checkbox data - convert to list and check each procedure
             procedure_list = surgical_procedure if isinstance(surgical_procedure, list) else [surgical_procedure]
+            surgery_found = False
             for procedure in procedure_list:
-                if procedure in major_procedures:
+                procedure_str = str(procedure).strip()
+                if procedure_str in major_procedures:
                     major_surgeries += 1
+                    surgery_found = True
                     break
-                elif procedure in minor_procedures:
+                elif procedure_str in minor_procedures:
                     minor_surgeries += 1
+                    surgery_found = True
                     break
         
         # Infertility - check diagnosis field (checkbox data) for infertility values
@@ -9581,11 +9587,17 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
             elif 'secondary infertility' in diagnosis_str:
                 secondary_infertility += 1
         
-        # Cryotherapy - check Treatment Plan field for exact value
+        # Cryotherapy - check Treatment Plan field (checkbox data)
         treatment_plan = get_field_value(patient_data, ['Treatment Plan'])
         if treatment_plan:
-            plan_list = treatment_plan if isinstance(treatment_plan, list) else [treatment_plan]
-            if 'Cryotherapy' in plan_list:
+            # Handle checkbox data properly
+            plan_str = ''
+            if isinstance(treatment_plan, list):
+                plan_str = ' '.join(str(p) for p in treatment_plan).lower()
+            else:
+                plan_str = str(treatment_plan).lower()
+            
+            if 'cryotherapy' in plan_str:
                 cryotherapy += 1
 
     # Get ALL patients for this project/date range to calculate totals
@@ -9636,7 +9648,7 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
         elif left_abnormal or right_abnormal:
             total_all_breast_abnormal += 1
         
-        # Surgery counting using exact Surgical Procedure field
+        # Surgery counting using exact Surgical Procedure field (checkbox data)
         surgical_procedure = get_field_value(patient_data, ['Surgical Procedure'])
         
         major_procedures = [
@@ -9652,13 +9664,18 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
         ]
         
         if surgical_procedure:
+            # Handle checkbox data - convert to list and check each procedure
             procedure_list = surgical_procedure if isinstance(surgical_procedure, list) else [surgical_procedure]
+            surgery_found = False
             for procedure in procedure_list:
-                if procedure in major_procedures:
+                procedure_str = str(procedure).strip()
+                if procedure_str in major_procedures:
                     total_all_major_surgeries += 1
+                    surgery_found = True
                     break
-                elif procedure in minor_procedures:
+                elif procedure_str in minor_procedures:
                     total_all_minor_surgeries += 1
+                    surgery_found = True
                     break
         
         # Infertility counting from diagnosis field (checkbox data)
@@ -9677,11 +9694,17 @@ def add_gyne_summary_statistics(elements, patients, styles, project_id, start_da
             elif 'secondary infertility' in diagnosis_str:
                 total_all_secondary_infertility += 1
         
-        # Cryotherapy counting from Treatment Plan field
+        # Cryotherapy counting from Treatment Plan field (checkbox data)
         treatment_plan = get_field_value(patient_data, ['Treatment Plan'])
         if treatment_plan:
-            plan_list = treatment_plan if isinstance(treatment_plan, list) else [treatment_plan]
-            if 'Cryotherapy' in plan_list:
+            # Handle checkbox data properly
+            plan_str = ''
+            if isinstance(treatment_plan, list):
+                plan_str = ' '.join(str(p) for p in treatment_plan).lower()
+            else:
+                plan_str = str(treatment_plan).lower()
+            
+            if 'cryotherapy' in plan_str:
                 total_all_cryotherapy += 1
     
     # Helper function for safe percentage calculation
