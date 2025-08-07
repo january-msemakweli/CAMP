@@ -5795,49 +5795,85 @@ def edit_form(form_id):
 @app.route('/api/create_patient_id', methods=['POST'])
 @login_required
 def create_patient_id():
-    try:
-        # Generate a unique patient ID using the current date and a sequential number
-        current_date = datetime.now(EAT).strftime('%d%m%y')
-        
-        # Check for existing patient IDs with this date prefix to determine the next number
-        response = supabase.table('patients').select('patient_id').like('patient_id', f"{current_date}-%").execute()
-        
-        # Determine the next sequential number
-        next_num = 1
-        if response.data:
-            existing_numbers = []
-            for record in response.data:
-                patient_id = record['patient_id']
-                # Extract number after the hyphen (format: DDMMYY-NNNN)
-                try:
-                    num = int(patient_id.split('-')[1])
-                    existing_numbers.append(num)
-                except (IndexError, ValueError):
-                    continue
-            
-            if existing_numbers:
-                next_num = max(existing_numbers) + 1
-        
-        # Format with leading zeros for a consistent 4-digit number (0001, 0002, etc.)
-        # Changed from 3 digits to 4 digits to support up to 9999 patients per day
-        patient_id = f"{current_date}-{next_num:04d}"
-        
-        # Create a new patient record in the patients table
-        new_patient = {
-            'patient_id': patient_id,
-            'data': {}  # Initialize with empty data, will be populated on form submissions
-        }
-        
-        insert_response = supabase.table('patients').insert(new_patient).execute()
-        
-        # Log the creation
-        log_activity('create', 'patient', patient_id, f"Created new patient ID: {patient_id}")
-        
-        return jsonify({'patient_id': patient_id, 'success': True})
+    """
+    Generate a unique patient ID with retry logic to handle race conditions.
+    Format: DDMMYY-NNNN (e.g., 151224-0001)
+    """
+    max_retries = 10  # Prevent infinite loops
+    retry_count = 0
     
-    except Exception as e:
-        print(f"Error creating patient ID: {str(e)}")
-        return jsonify({'error': str(e), 'success': False}), 500
+    while retry_count < max_retries:
+        try:
+            # Generate a unique patient ID using the current date and a sequential number
+            current_date = datetime.now(EAT).strftime('%d%m%y')
+            
+            # Check for existing patient IDs with this date prefix to determine the next number
+            response = supabase.table('patients').select('patient_id').like('patient_id', f"{current_date}-%").execute()
+            
+            # Determine the next sequential number
+            next_num = 1
+            if response.data:
+                existing_numbers = []
+                for record in response.data:
+                    patient_id = record['patient_id']
+                    # Extract number after the hyphen (format: DDMMYY-NNNN)
+                    try:
+                        num = int(patient_id.split('-')[1])
+                        existing_numbers.append(num)
+                    except (IndexError, ValueError):
+                        continue
+                
+                if existing_numbers:
+                    next_num = max(existing_numbers) + 1
+            
+            # Format with leading zeros for a consistent 4-digit number (0001, 0002, etc.)
+            # Changed from 3 digits to 4 digits to support up to 9999 patients per day
+            patient_id = f"{current_date}-{next_num:04d}"
+            
+            # Create a new patient record in the patients table
+            new_patient = {
+                'patient_id': patient_id,
+                'data': {}  # Initialize with empty data, will be populated on form submissions
+            }
+            
+            try:
+                insert_response = supabase.table('patients').insert(new_patient).execute()
+                
+                # If we get here, insertion was successful
+                # Log the creation
+                log_activity('create', 'patient', patient_id, f"Created new patient ID: {patient_id}")
+                
+                return jsonify({'patient_id': patient_id, 'success': True})
+                
+            except Exception as insert_error:
+                # Check if this is a duplicate key error (race condition)
+                error_str = str(insert_error).lower()
+                if 'duplicate' in error_str or 'unique' in error_str or 'already exists' in error_str:
+                    retry_count += 1
+                    print(f"Patient ID {patient_id} already exists (race condition), retrying... ({retry_count}/{max_retries})")
+                    # Add small random delay to reduce chances of repeated collisions
+                    import time
+                    import random
+                    time.sleep(random.uniform(0.1, 0.5))
+                    continue  # Retry with updated data
+                else:
+                    # Different type of error, don't retry
+                    raise insert_error
+        
+        except Exception as e:
+            # For non-duplicate errors, don't retry
+            if retry_count == 0:  # Only if not already retrying
+                print(f"Error creating patient ID: {str(e)}")
+                return jsonify({'error': str(e), 'success': False}), 500
+            else:
+                # Continue retrying for other errors during retry loop
+                retry_count += 1
+                continue
+    
+    # If we've exhausted all retries
+    error_msg = f"Failed to generate unique patient ID after {max_retries} attempts due to race conditions"
+    print(error_msg)
+    return jsonify({'error': error_msg, 'success': False}), 500
 
 @app.route('/api/search_patient_id', methods=['GET'])
 @login_required
