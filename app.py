@@ -7817,6 +7817,93 @@ def generate_reading_glasses_stats(form_data, styles):
     ]))
     
     elements.append(table)
+    
+    # Add section for patients with multiple different prescriptions (data quality issue)
+    if multiple_prescription_patients:
+        elements.append(Spacer(1, 30))
+        
+        # Warning header
+        warning_style = ParagraphStyle(
+            'WarningStyle',
+            parent=styles['Normal'],
+            fontSize=14,
+            fontName='Times-Bold',
+            alignment=1,
+            spaceAfter=20,
+            textColor=colors.red
+        )
+        
+        elements.append(Paragraph("⚠️ DATA QUALITY ALERT ⚠️", warning_style))
+        elements.append(Paragraph(f"Patients with Multiple Different Prescriptions ({len(multiple_prescription_patients)} found)", warning_style))
+        
+        # Create table for multiple prescription patients
+        alert_header_style = ParagraphStyle(
+            'AlertHeaderCell',
+            parent=styles['Normal'],
+            fontSize=11,
+            fontName='Times-Bold',
+            alignment=1,
+            textColor=colors.white
+        )
+        
+        alert_data_style = ParagraphStyle(
+            'AlertDataCell',
+            parent=styles['Normal'],
+            fontSize=10,
+            alignment=1,
+            textColor=colors.black
+        )
+        
+        # Build alert table data
+        alert_table_data = [
+            [Paragraph('Patient ID', alert_header_style), Paragraph('Multiple Prescriptions Found', alert_header_style)]
+        ]
+        
+        for patient_id, prescriptions in sorted(multiple_prescription_patients.items()):
+            prescriptions_str = ', '.join(sorted(list(prescriptions)))
+            alert_table_data.append([
+                Paragraph(patient_id, alert_data_style),
+                Paragraph(prescriptions_str, alert_data_style)
+            ])
+        
+        # Create alert table
+        alert_table = Table(alert_table_data, colWidths=[2.5*inch, 3*inch])
+        alert_table.setStyle(TableStyle([
+            # Header row
+            ('BACKGROUND', (0, 0), (-1, 0), colors.red),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Times-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            
+            # Data rows
+            ('FONTNAME', (0, 1), (-1, -1), 'Times-Roman'),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+        ]))
+        
+        elements.append(alert_table)
+        elements.append(Spacer(1, 10))
+        
+        # Add note
+        note_style = ParagraphStyle(
+            'NoteStyle',
+            parent=styles['Normal'],
+            fontSize=9,
+            fontName='Times-Italic',
+            alignment=1,
+            textColor=colors.red
+        )
+        
+        elements.append(Paragraph(
+            f"Note: These {len(multiple_prescription_patients)} patients appear in multiple prescription categories. "
+            "Please verify data entry to ensure each patient receives only one prescription strength.",
+            note_style
+        ))
+    
     return elements
 
 def generate_eye_drops_stats(form_data, styles):
