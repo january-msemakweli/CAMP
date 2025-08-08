@@ -9453,10 +9453,8 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
             elif 'trichiasis' in diagnosis_clean:
                 trichiasis_patients += 1
         
-        # Count reading glasses provided (using same logic as Reading Glasses report)
-        glasses_value = patient_data.get('Reading Glasses')
-        if glasses_value and str(glasses_value).strip().lower() not in ['not applicable', 'no', 'none', 'n/a', '']:
-            reading_glasses_count += 1
+        # Reading glasses count will be calculated separately using same method as Reading Glasses Report
+        # (removed from patient loop to use dedicated function)
         
         # Count surgical referrals (FREE EYE CAMPS specific)
         if 'FREE EYE CAMPS' in programme_name.upper():
@@ -9479,6 +9477,21 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
             if ((surgical_procedure and surgical_procedure.strip().lower() not in ['no', 'none', 'n/a']) or 
                 (referral_surgery and referral_surgery.strip().lower() in ['yes', 'y'])):
                 surgical_referrals += 1
+    
+    # Calculate Reading Glasses count using same method as Reading Glasses Report for consistency
+    reading_glasses_form_data = get_form_submissions_for_report(project_id, 'reading_glasses', start_date, end_date)
+    reading_glasses_unique_patients = set()
+    
+    for submission in reading_glasses_form_data:
+        data = submission.get('data', {})
+        patient_id = submission.get('patient_id')
+        
+        glasses_value = data.get('Reading Glasses')
+        if glasses_value and str(glasses_value).strip().lower() not in ['not applicable', 'no', 'none', 'n/a', '']:
+            if patient_id:
+                reading_glasses_unique_patients.add(patient_id)
+    
+    reading_glasses_count = len(reading_glasses_unique_patients)
     
     # Get total statistics across ALL doctors for percentage calculation
     all_doctors_patients = get_patients_for_report(project_id, "ALL DOCTORS", start_date, end_date)
@@ -9514,10 +9527,8 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
             elif 'trichiasis' in diagnosis_clean:
                 total_all_trichiasis += 1
         
-        # Count reading glasses provided (using same logic as Reading Glasses report)
-        glasses_value = patient_data.get('Reading Glasses')
-        if glasses_value and str(glasses_value).strip().lower() not in ['not applicable', 'no', 'none', 'n/a', '']:
-            total_all_reading_glasses += 1
+        # Reading glasses count will be calculated separately using same method as Reading Glasses Report
+        # (removed from patient loop to use dedicated function)
         
         # Count surgical referrals (FREE EYE CAMPS specific)
         if 'FREE EYE CAMPS' in programme_name.upper():
@@ -9540,6 +9551,21 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
             if ((surgical_procedure and surgical_procedure.strip().lower() not in ['no', 'none', 'n/a']) or 
                 (referral_surgery and referral_surgery.strip().lower() in ['yes', 'y'])):
                 total_all_surgical_referrals += 1
+    
+    # Calculate total Reading Glasses count using same method as Reading Glasses Report for consistency
+    total_reading_glasses_form_data = get_form_submissions_for_report(project_id, 'reading_glasses', start_date, end_date)
+    total_reading_glasses_unique_patients = set()
+    
+    for submission in total_reading_glasses_form_data:
+        data = submission.get('data', {})
+        patient_id = submission.get('patient_id')
+        
+        glasses_value = data.get('Reading Glasses')
+        if glasses_value and str(glasses_value).strip().lower() not in ['not applicable', 'no', 'none', 'n/a', '']:
+            if patient_id:
+                total_reading_glasses_unique_patients.add(patient_id)
+    
+    total_all_reading_glasses = len(total_reading_glasses_unique_patients)
     
     # Helper function for safe percentage calculation
     def safe_percentage(count, total):
