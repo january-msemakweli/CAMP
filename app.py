@@ -7685,6 +7685,7 @@ def generate_reading_glasses_stats(form_data, styles):
     prescription_patients = {}  # prescription_strength -> set of patient_ids
     unique_patients = set()
     processed_submissions = 0
+    multiple_prescription_patients = {}  # Will store patients with multiple different prescriptions
     
     for submission in form_data:
         data = submission.get('data', {})
@@ -7719,6 +7720,7 @@ def generate_reading_glasses_stats(form_data, styles):
     
     # Find patients with multiple different prescriptions
     multiple_prescription_patients = {pid: prescriptions for pid, prescriptions in patient_prescription_map.items() if len(prescriptions) > 1}
+    print(f"DEBUG: Built multiple_prescription_patients dict with {len(multiple_prescription_patients)} entries")
     
     print(f"DEBUG: Processed {processed_submissions} total submissions with reading glasses")
     print(f"DEBUG: Unique patients who received glasses: {len(unique_patients)}")
@@ -7819,7 +7821,9 @@ def generate_reading_glasses_stats(form_data, styles):
     elements.append(table)
     
     # Add section for patients with multiple different prescriptions (data quality issue)
+    print(f"DEBUG: Checking if we should add data quality alert. Multiple prescription patients: {len(multiple_prescription_patients)}")
     if multiple_prescription_patients:
+        print(f"DEBUG: Adding data quality alert section with {len(multiple_prescription_patients)} patients")
         elements.append(Spacer(1, 30))
         
         # Warning header
