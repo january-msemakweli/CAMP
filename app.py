@@ -54,48 +54,31 @@ def fetch_all_pages(query, page_size=1000, debug_name="query", max_retries=3, ti
     all_data = []
     start = 0
     
-    print(f"{debug_name}: Starting pagination with page_size={page_size}")
-    
     while True:
         try:
-            print(f"{debug_name}: Fetching page starting at {start}")
             page_response = query.range(start, start + page_size - 1).execute()
             page_data = page_response.data
             
             if not page_data:
-                print(f"{debug_name}: No more data at start={start}, pagination complete")
                 break
                 
             all_data.extend(page_data)
-            print(f"{debug_name}: Successfully fetched page starting at {start}: {len(page_data)} records (Total so far: {len(all_data)})")
-            
-            # CRITICAL DEBUG: For report submissions, print sample patient IDs
-            if debug_name == "report_submissions" and len(page_data) > 0:
-                sample_patient_ids = [item.get('patient_id') for item in page_data[:5] if item.get('patient_id')]
-                print(f"REPORT DEBUG: Sample patient IDs from this page: {sample_patient_ids}")
             
             # Continue fetching if we got a full page OR if we got exactly 999 (possible Supabase limit)
             if len(page_data) < page_size and len(page_data) != 999:
-                print(f"{debug_name}: Got {len(page_data)} records (less than {page_size}), pagination complete")
                 break
                 
             start += page_size
             
             # Safety limit to prevent infinite loops
             if start > 500000:  # 500K record safety limit
-                print(f"{debug_name}: CRITICAL WARNING - Reached 500,000 records, investigating...")
                 if len(page_data) == page_size:
-                    print(f"{debug_name}: Still getting full pages, continuing with caution...")
                     continue
                 else:
-                    print(f"{debug_name}: Page size reduced, safe to break")
-                break
+                    break
                 
         except Exception as e:
-            print(f"{debug_name}: Error fetching page starting at {start}: {str(e)}")
             break
-    
-    print(f"{debug_name}: Total records fetched: {len(all_data)}")
     return all_data
 
 app = Flask(__name__)
@@ -890,16 +873,7 @@ def create_form(project_id):
         condition_logic = request.form.getlist('condition_logic[]')
         
         # Debug conditional fields data (OLD APPROACH)
-        print(f"🔍 FORM SUBMISSION DEBUG:")
-        print(f"DEBUG - Total fields: {len(labels)}")
-        print(f"DEBUG - Labels: {labels}")
-        print(f"DEBUG - is_conditional_fields: {is_conditional_fields}")
-        print(f"DEBUG - condition_fields: {condition_fields}")
-        print(f"DEBUG - condition_operators: {condition_operators}")
-        print(f"DEBUG - condition_values: {condition_values}")
-        print(f"DEBUG - condition_logic: {condition_logic}")
-        print(f"DEBUG - required_fields: {required_fields}")
-        print(f"DEBUG - allow_other_fields: {allow_other_fields}")
+
         
         # Debug: show exactly which fields should have conditions
         for i, conditional_field_idx in enumerate(is_conditional_fields):
@@ -959,17 +933,12 @@ def create_form(project_id):
                 # Add conditional logic if this field is conditional
                 is_in_conditional = str(i) in is_conditional_fields
                 
-                print(f"DEBUG - Field {i} ({labels[i]}):")
-                print(f"  - str(i) = '{str(i)}'")
-                print(f"  - is_conditional_fields = {is_conditional_fields}")
-                print(f"  - is '{str(i)}' in conditional list? {is_in_conditional}")
-                
                 if is_in_conditional:
                         # Collect ALL conditions for this field (multiple conditions support)
                         field_conditions = []
                         field_logic = 'OR'  # Default logic
                         
-                        print(f"  - Collecting all conditions for field {i}")
+
                         
                         # Strategy: collect conditions starting from conditional field position
                         
@@ -990,7 +959,7 @@ def create_form(project_id):
                             condition_start_idx = current_field_position
                             condition_end_idx = next_condition_start
                             
-                            print(f"  - Collecting conditions from index {condition_start_idx} to {condition_end_idx-1}")
+
                             
                             for condition_idx in range(condition_start_idx, min(condition_end_idx, len(condition_fields))):
                                 if (condition_idx < len(condition_fields) and 
@@ -2182,7 +2151,7 @@ def dataset_view():
         data['merged_data'] = merged_data
 
     # PERFORMANCE FIX: Batch fetch registration data for all patients and merge
-    print(f"Dataset: Fetching centralized registration data for {len(patient_data)} patients")
+
     patient_ids = list(patient_data.keys())
     if patient_ids:
         try:
@@ -2499,7 +2468,7 @@ def get_dataset_progressive(project_id):
         if limit > 500:  # Prevent too large chunks
             limit = 500
             
-        print(f"Progressive API: Fetching {limit} records starting at offset {offset} for project {project_id}")
+
         
         # Build query efficiently - only get essential fields
         query = supabase.table('form_submissions').select('patient_id, data, created_at, form_id')
@@ -2602,7 +2571,7 @@ def get_submission(submission_id):
 @login_required
 def get_patient_data(patient_id):
     try:
-        print(f"Fetching data for patient: {patient_id}")
+
         
         # First, get registration data from centralized patients table
         patient_response = supabase.table('patients').select('*').eq('patient_id', patient_id).execute()
@@ -2685,25 +2654,21 @@ def get_patient_data(patient_id):
             form_id = submission.get('form_id')
             if submission.get('data') and form_id:
                 submission_date = submission.get('created_at')
-                print(f"DEBUG: Processing submission from form {form_id}, keys: {list(submission['data'].keys())}")
+
                 
                 for key, value in submission['data'].items():
-                    print(f"DEBUG: Processing field key: '{key}' (type: {type(key)})")
-                    
                     # Skip the raw "registration" field since we show registration data separately
                     if str(key).lower().strip() == 'registration':
-                        print(f"DEBUG: Skipping registration field: {key}")
                         continue
                     
                     # Skip form IDs (36 char UUIDs with 4 dashes)    
                     if len(str(key)) == 36 and str(key).count('-') == 4:
-                        print(f"DEBUG: Skipping form ID: {key}")
                         continue
                         
                     # Double check - don't add registration or form ID fields to tracking
                     if (str(key).lower().strip() == 'registration' or 
                         (len(str(key)) == 36 and str(key).count('-') == 4)):
-                        print(f"DEBUG: Double-check skip for field: {key}")
+
                         continue
                         
                     normalized_key = key.lower().strip().replace(' ', '_')
@@ -2733,11 +2698,8 @@ def get_patient_data(patient_id):
         
         # Add registration data first if available
         if registration_data:
-            print(f"DEBUG: Registration data structure: {registration_data}")
-            
             # Extract the nested registration fields if they exist
             actual_registration_fields = registration_data.get('registration', {})
-            print(f"DEBUG: Actual registration fields: {actual_registration_fields}")
             
             if actual_registration_fields:
                 # Define the order for registration fields to match registration form
@@ -2750,7 +2712,7 @@ def get_patient_data(patient_id):
                             "field": field_label,
                             "value": actual_registration_fields[field_label]
                         })
-                        print(f"DEBUG: Added registration field {field_label}: {actual_registration_fields[field_label]}")
+
                 
                 # Add any additional registration fields not in the standard order
                 for field_label, field_value in actual_registration_fields.items():
@@ -2761,7 +2723,7 @@ def get_patient_data(patient_id):
                             "field": field_label,
                             "value": field_value
                         })
-                        print(f"DEBUG: Added additional registration field {field_label}: {field_value}")
+
         
         # Process forms in their original order (by creation date)
         for form in ordered_forms_data:
@@ -2781,7 +2743,7 @@ def get_patient_data(patient_id):
                         # Skip registration field and any field that looks like a form ID
                         if (str(original_label).lower().strip() == 'registration' or 
                             len(str(original_label)) == 36 and str(original_label).count('-') == 4):
-                            print(f"DEBUG: Skipping field during display: {original_label}")
+
                             continue
                             
                         ordered_data.append({
@@ -2798,7 +2760,7 @@ def get_patient_data(patient_id):
                 # Skip registration field and any field that looks like a form ID
                 if (str(original_label).lower().strip() == 'registration' or 
                     len(str(original_label)) == 36 and str(original_label).count('-') == 4):
-                    print(f"DEBUG: Skipping unknown field during display: {original_label}")
+
                     continue
                     
                 ordered_data.append({
@@ -3674,7 +3636,7 @@ def prepare_dataset_for_analysis(project_id=None, form_id=None, start_date=None,
     
     # PERFORMANCE FIX: Add progress tracking for large analytics datasets
     if len(submissions) > 1000:
-        print(f"Analytics: Processing {len(submissions)} submissions for analysis...")
+        pass  # Large dataset handling
 
     # 4. Process the submissions into a patient-based dataset
     patient_data = {}
@@ -5630,14 +5592,14 @@ def edit_form(form_id):
             condition_logic = request.form.getlist('condition_logic[]')
             
             # Debug conditional fields data for EDIT
-            print(f"🔍 EDIT FORM SUBMISSION DEBUG:")
-            print(f"DEBUG EDIT - Total fields: {len(labels)}")
-            print(f"DEBUG EDIT - Labels: {labels}")
-            print(f"DEBUG EDIT - is_conditional_fields: {is_conditional_fields}")
-            print(f"DEBUG EDIT - condition_fields: {condition_fields}")
-            print(f"DEBUG EDIT - condition_operators: {condition_operators}")
-            print(f"DEBUG EDIT - condition_values: {condition_values}")
-            print(f"DEBUG EDIT - condition_logic: {condition_logic}")
+
+
+
+
+
+
+
+
             
             # Debug: show exactly which fields should have conditions
             for i, conditional_field_idx in enumerate(is_conditional_fields):
@@ -5682,7 +5644,7 @@ def edit_form(form_id):
                 # Add conditional logic if this field is conditional
                 is_in_conditional = str(i) in is_conditional_fields
                 
-                print(f"DEBUG EDIT - Field {i} ({labels[i]}):")
+
                 print(f"  - str(i) = '{str(i)}'")
                 print(f"  - is_conditional_fields = {is_conditional_fields}")
                 print(f"  - is '{str(i)}' in conditional list? {is_in_conditional}")
@@ -5808,13 +5770,23 @@ def create_patient_id():
             current_date = datetime.now(EAT).strftime('%d%m%y')
             
             # Check for existing patient IDs with this date prefix to determine the next number
-            response = supabase.table('patients').select('patient_id').like('patient_id', f"{current_date}-%").execute()
+            # Use the standard fetch_all_pages function to handle pagination properly
+            prefix = f"{current_date}-"
+            
+            # Build query to get all patient IDs with today's date prefix
+            patient_ids_query = supabase.table('patients').select('patient_id').like('patient_id', f"{current_date}-%")
+            
+            # Use fetch_all_pages to get ALL patient IDs (handles pagination automatically)
+            all_patient_records = fetch_all_pages(patient_ids_query, debug_name=f"patient_id_generation_{current_date}")
+            
+            # Filter to ensure we only get IDs that start with today's date (double-check)
+            filtered_data = [record for record in all_patient_records if record['patient_id'].startswith(prefix)]
             
             # Determine the next sequential number
             next_num = 1
-            if response.data:
+            if filtered_data:
                 existing_numbers = []
-                for record in response.data:
+                for record in filtered_data:
                     patient_id = record['patient_id']
                     # Extract number after the hyphen (format: DDMMYY-NNNN)
                     try:
@@ -7558,9 +7530,9 @@ def get_form_submissions_for_report(project_id, report_type, start_date, end_dat
         forms_query = supabase.table('forms').select('id, title').eq('project_id', project_id).in_('id', target_form_ids)
         forms_data = fetch_all_pages(forms_query, debug_name=f"form_report_project_{project_id}_forms")
         
-        print(f"DEBUG: Looking for report type '{report_type}' in project '{project_id}'")
-        print(f"DEBUG: Expected form IDs: {target_form_ids}")
-        print(f"DEBUG: Found forms: {[(f['id'], f['title']) for f in forms_data]}")
+
+
+
         
         matching_form_ids = [form['id'] for form in forms_data]
         
@@ -7569,7 +7541,7 @@ def get_form_submissions_for_report(project_id, report_type, start_date, end_dat
             print(f"Expected form IDs: {target_form_ids}")
             return []
         
-        print(f"DEBUG: Using form IDs for query: {matching_form_ids}")
+
         
         # PERFORMANCE FIX: Get submissions for matching forms within date range - only fetch essential fields
         query = supabase.table('form_submissions').select('patient_id, data, created_at, form_id').in_('form_id', matching_form_ids)
@@ -7586,7 +7558,7 @@ def get_form_submissions_for_report(project_id, report_type, start_date, end_dat
         
         # PERFORMANCE FIX: Add progress tracking for large datasets
         if len(submissions) > 500:
-            print(f"Form Report: Processing {len(submissions)} submissions for {report_type} report...")
+            pass  # Large submission handling
         
         return submissions
         
@@ -7679,7 +7651,7 @@ def generate_reading_glasses_stats(form_data, styles):
     from reportlab.lib.units import inch
     from reportlab.lib.styles import ParagraphStyle
     
-    print(f"DEBUG: Processing {len(form_data)} submissions for reading glasses stats")
+
     
     # Track unique patients per prescription strength (since patients should only get glasses once)
     prescription_patients = {}  # prescription_strength -> set of patient_ids
@@ -7720,19 +7692,17 @@ def generate_reading_glasses_stats(form_data, styles):
     
     # Find patients with multiple different prescriptions
     multiple_prescription_patients = {pid: prescriptions for pid, prescriptions in patient_prescription_map.items() if len(prescriptions) > 1}
-    print(f"DEBUG: Built multiple_prescription_patients dict with {len(multiple_prescription_patients)} entries")
+
     
-    print(f"DEBUG: Processed {processed_submissions} total submissions with reading glasses")
-    print(f"DEBUG: Unique patients who received glasses: {len(unique_patients)}")
-    print(f"DEBUG: Prescription counts (unique patients per strength): {prescription_counts}")
-    print(f"DEBUG: Total prescriptions (should match unique patients): {sum(prescription_counts.values())}")
+
+
+
+
     
     if multiple_prescription_patients:
-        print(f"DEBUG: Found {len(multiple_prescription_patients)} patients with multiple different prescriptions:")
-        for patient_id, prescriptions in multiple_prescription_patients.items():
-            print(f"  Patient {patient_id}: {sorted(list(prescriptions))}")
+        pass  # Multiple prescriptions found
     else:
-        print("DEBUG: No patients found with multiple different prescriptions")
+        pass  # No multiple prescriptions
     
     if not prescription_counts:
         return Paragraph("No reading glasses prescriptions found.", styles['Normal'])
@@ -7821,9 +7791,9 @@ def generate_reading_glasses_stats(form_data, styles):
     elements.append(table)
     
     # Add section for patients with multiple different prescriptions (data quality issue)
-    print(f"DEBUG: Checking if we should add data quality alert. Multiple prescription patients: {len(multiple_prescription_patients)}")
+
     if multiple_prescription_patients:
-        print(f"DEBUG: Adding data quality alert section with {len(multiple_prescription_patients)} patients")
+
         elements.append(Spacer(1, 30))
         
         # Warning header
@@ -8233,7 +8203,7 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
         # Use pagination to fetch ALL submissions
         print(f"Report: Query being executed - Forms: {form_ids}, Date range: {start_date} to {end_date}")
         all_submissions = fetch_all_pages(query, debug_name="report_submissions", page_size=1000)
-        print(f"Report: CRITICAL DEBUG - Total submissions fetched: {len(all_submissions)}")
+
         
         # PERFORMANCE FIX: Process submissions more efficiently with early filtering
         all_patient_data = {}
@@ -8242,7 +8212,7 @@ def get_patients_for_report(project_id, doctor_name, start_date, end_date):
         # Track processing progress for large datasets
         total_submissions = len(all_submissions)
         if total_submissions > 1000:
-            print(f"Report: Processing {total_submissions} submissions for report generation...")
+            pass  # Large dataset handling
         
         for idx, submission in enumerate(all_submissions):
             # Progress tracking for large datasets
