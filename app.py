@@ -7543,30 +7543,33 @@ def get_form_submissions_for_report(project_id, report_type, start_date, end_dat
     try:
         from datetime import timedelta
         
-        # Map report types to form title patterns
-        form_patterns = {
-            'reading_glasses': ['READING GLASSES'],
-            'eye_drops': ['EYE DROPS'],
-            'pharmacy_gyne': ['PHARMACY', 'GYNE']
+        # Map report types to exact form IDs
+        form_ids_map = {
+            'reading_glasses': ['79814631-5364-4bcc-b8b4-7414b9cbb8db'],
+            'pharmacy_gyne': ['99dc57d1-f882-4f09-b5fe-ba3f11dc96ff'],
+            'eye_drops': []  # Add specific form ID when available
         }
         
-        patterns = form_patterns.get(report_type, [])
-        if not patterns:
+        target_form_ids = form_ids_map.get(report_type, [])
+        if not target_form_ids:
             return []
         
-        # Get forms that match the patterns for this project
-        forms_query = supabase.table('forms').select('id, title').eq('project_id', project_id)
+        # Verify these forms exist and belong to the project
+        forms_query = supabase.table('forms').select('id, title').eq('project_id', project_id).in_('id', target_form_ids)
         forms_data = fetch_all_pages(forms_query, debug_name=f"form_report_project_{project_id}_forms")
         
-        matching_form_ids = []
-        for form in forms_data:
-            form_title = form.get('title', '').upper()
-            # Check if all patterns are in the form title
-            if all(pattern in form_title for pattern in patterns):
-                matching_form_ids.append(form['id'])
+        print(f"DEBUG: Looking for report type '{report_type}' in project '{project_id}'")
+        print(f"DEBUG: Expected form IDs: {target_form_ids}")
+        print(f"DEBUG: Found forms: {[(f['id'], f['title']) for f in forms_data]}")
+        
+        matching_form_ids = [form['id'] for form in forms_data]
         
         if not matching_form_ids:
+            print(f"Warning: No matching forms found for report type {report_type} in project {project_id}")
+            print(f"Expected form IDs: {target_form_ids}")
             return []
+        
+        print(f"DEBUG: Using form IDs for query: {matching_form_ids}")
         
         # PERFORMANCE FIX: Get submissions for matching forms within date range - only fetch essential fields
         query = supabase.table('form_submissions').select('patient_id, data, created_at, form_id').in_('form_id', matching_form_ids)
@@ -7676,31 +7679,58 @@ def generate_reading_glasses_stats(form_data, styles):
     from reportlab.lib.units import inch
     from reportlab.lib.styles import ParagraphStyle
     
-    # Count prescription strengths and unique patients
-    prescription_counts = {}
+    print(f"DEBUG: Processing {len(form_data)} submissions for reading glasses stats")
+    
+    # Track unique patients per prescription strength (since patients should only get glasses once)
+    prescription_patients = {}  # prescription_strength -> set of patient_ids
     unique_patients = set()
+    processed_submissions = 0
     
     for submission in form_data:
         data = submission.get('data', {})
         patient_id = submission.get('patient_id')
+        form_id = submission.get('form_id')
         
-        # Look for reading glasses field
-        glasses_value = None
-        for key, value in data.items():
-            if 'reading glasses' in key.lower() and value:
-                if str(value).strip().lower() not in ['not applicable', 'no', 'none', 'n/a', '']:
-                    glasses_value = str(value).strip()
-                    break
+        # Look for the exact "Reading Glasses" field
+        glasses_value = data.get('Reading Glasses')
         
-        if glasses_value:
-            if glasses_value in prescription_counts:
-                prescription_counts[glasses_value] += 1
-            else:
-                prescription_counts[glasses_value] = 1
+        if glasses_value and str(glasses_value).strip().lower() not in ['not applicable', 'no', 'none', 'n/a', '']:
+            glasses_value = str(glasses_value).strip()
+            processed_submissions += 1
             
-            # Track unique patients
+            # Track unique patients per prescription strength
+            if glasses_value not in prescription_patients:
+                prescription_patients[glasses_value] = set()
+            
             if patient_id:
+                prescription_patients[glasses_value].add(patient_id)
                 unique_patients.add(patient_id)
+    
+    # Convert to counts of unique patients per prescription
+    prescription_counts = {strength: len(patients) for strength, patients in prescription_patients.items()}
+    
+    # Check for patients with multiple different prescriptions
+    patient_prescription_map = {}  # patient_id -> set of prescription strengths
+    for strength, patients in prescription_patients.items():
+        for patient_id in patients:
+            if patient_id not in patient_prescription_map:
+                patient_prescription_map[patient_id] = set()
+            patient_prescription_map[patient_id].add(strength)
+    
+    # Find patients with multiple different prescriptions
+    multiple_prescription_patients = {pid: prescriptions for pid, prescriptions in patient_prescription_map.items() if len(prescriptions) > 1}
+    
+    print(f"DEBUG: Processed {processed_submissions} total submissions with reading glasses")
+    print(f"DEBUG: Unique patients who received glasses: {len(unique_patients)}")
+    print(f"DEBUG: Prescription counts (unique patients per strength): {prescription_counts}")
+    print(f"DEBUG: Total prescriptions (should match unique patients): {sum(prescription_counts.values())}")
+    
+    if multiple_prescription_patients:
+        print(f"DEBUG: Found {len(multiple_prescription_patients)} patients with multiple different prescriptions:")
+        for patient_id, prescriptions in multiple_prescription_patients.items():
+            print(f"  Patient {patient_id}: {sorted(list(prescriptions))}")
+    else:
+        print("DEBUG: No patients found with multiple different prescriptions")
     
     if not prescription_counts:
         return Paragraph("No reading glasses prescriptions found.", styles['Normal'])
@@ -7982,28 +8012,29 @@ def generate_pharmacy_gyne_stats(form_data, styles):
         data = submission.get('data', {})
         patient_id = submission.get('patient_id')
         
-        # Look for dispensed medication field
-        for key, value in data.items():
-            if 'dispenseed medication' in key.lower() and value:  # Note: typo in field name as per your data
-                # Handle list/array values
-                medications_list = []
-                if isinstance(value, list):
-                    medications_list = value
-                elif isinstance(value, str):
-                    try:
-                        medications_list = json.loads(value) if value.startswith('[') else [value]
-                    except:
-                        medications_list = [value]
-                
-                has_medication = False
-                for medication in medications_list:
-                    medication = str(medication).strip()
-                    if medication and medication.lower() not in ['no', 'none', 'n/a', '']:
-                        medication_counts[medication] = medication_counts.get(medication, 0) + 1
-                        has_medication = True
-                
-                if has_medication and patient_id:
-                    unique_patients.add(patient_id)
+        # Look for the exact "Dispenseed Medication" field (note the typo is intentional)
+        value = data.get('Dispenseed Medication')
+        
+        if value:
+            # Handle list/array values
+            medications_list = []
+            if isinstance(value, list):
+                medications_list = value
+            elif isinstance(value, str):
+                try:
+                    medications_list = json.loads(value) if value.startswith('[') else [value]
+                except:
+                    medications_list = [value]
+            
+            has_medication = False
+            for medication in medications_list:
+                medication = str(medication).strip()
+                if medication and medication.lower() not in ['no', 'none', 'n/a', '']:
+                    medication_counts[medication] = medication_counts.get(medication, 0) + 1
+                    has_medication = True
+            
+            if has_medication and patient_id:
+                unique_patients.add(patient_id)
     
     if not medication_counts:
         return Paragraph("No medications dispensed found.", styles['Normal'])
