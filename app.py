@@ -9453,9 +9453,9 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
             elif 'trichiasis' in diagnosis_clean:
                 trichiasis_patients += 1
         
-        # Count reading glasses prescriptions
-        treatment_plan = build_treatment_plan(patient_data, programme_name)
-        if 'READING GLASS' in treatment_plan:
+        # Count reading glasses provided (using same logic as Reading Glasses report)
+        glasses_value = patient_data.get('Reading Glasses')
+        if glasses_value and str(glasses_value).strip().lower() not in ['not applicable', 'no', 'none', 'n/a', '']:
             reading_glasses_count += 1
         
         # Count surgical referrals (FREE EYE CAMPS specific)
@@ -9514,9 +9514,9 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
             elif 'trichiasis' in diagnosis_clean:
                 total_all_trichiasis += 1
         
-        # Count reading glasses prescriptions
-        treatment_plan = build_treatment_plan(patient_data, programme_name)
-        if 'READING GLASS' in treatment_plan:
+        # Count reading glasses provided (using same logic as Reading Glasses report)
+        glasses_value = patient_data.get('Reading Glasses')
+        if glasses_value and str(glasses_value).strip().lower() not in ['not applicable', 'no', 'none', 'n/a', '']:
             total_all_reading_glasses += 1
         
         # Count surgical referrals (FREE EYE CAMPS specific)
@@ -9607,7 +9607,7 @@ def add_summary_statistics(elements, patients, styles, project_id, start_date, e
         ('Chalazion Cases', chalazion_patients, safe_percentage(chalazion_patients, total_patients), total_all_chalazion),
         ('Foreign Body Cases', foreign_body_patients, safe_percentage(foreign_body_patients, total_patients), total_all_foreign_body),
         ('Trichiasis Cases', trichiasis_patients, safe_percentage(trichiasis_patients, total_patients), total_all_trichiasis),
-        ('Reading Glasses Prescribed', reading_glasses_count, safe_percentage(reading_glasses_count, total_patients), total_all_reading_glasses),
+        ('Reading Glasses Provided', reading_glasses_count, safe_percentage(reading_glasses_count, total_patients), total_all_reading_glasses),
         ('Surgical Referrals', surgical_referrals, safe_percentage(surgical_referrals, total_patients), total_all_surgical_referrals)
     ]
     
