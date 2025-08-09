@@ -7406,9 +7406,86 @@ def report_preview():
             data = get_patients_for_report(project_id, "ALL DOCTORS", start_date, end_date)
             total_count = len(data)
         else:
-            # For form reports, get form submissions count
+            # For form reports, count patients who actually received the medication/service
             data = get_form_submissions_for_report(project_id, report_type, start_date, end_date)
-            total_count = len(data)
+            
+            if report_type == 'eye_drops':
+                # Count patients who actually received eye drops or tablets (matching report logic)
+                import json
+                patients_with_drops = set()
+                patients_with_tablets = set()
+                
+                for submission in data:
+                    submission_data = submission.get('data', {})
+                    patient_id = submission.get('patient_id')
+                    
+                    # Check eye drops
+                    drops_value = submission_data.get('Dispensed Eye Drops')
+                    if drops_value and patient_id:
+                        drops_list = []
+                        if isinstance(drops_value, list):
+                            drops_list = drops_value
+                        elif isinstance(drops_value, str):
+                            try:
+                                drops_list = json.loads(drops_value) if drops_value.startswith('[') else [drops_value]
+                            except:
+                                drops_list = [drops_value]
+                        
+                        for drop in drops_list:
+                            drop = str(drop).strip()
+                            if drop and drop.lower() not in ['no', 'none', 'n/a', '']:
+                                patients_with_drops.add(patient_id)
+                                break
+                    
+                    # Check tablets
+                    tablets_value = submission_data.get('Dispensed Tablets')
+                    if tablets_value and patient_id:
+                        tablets_list = []
+                        if isinstance(tablets_value, list):
+                            tablets_list = tablets_value
+                        elif isinstance(tablets_value, str):
+                            try:
+                                tablets_list = json.loads(tablets_value) if tablets_value.startswith('[') else [tablets_value]
+                            except:
+                                tablets_list = [tablets_value]
+                        
+                        for tablet in tablets_list:
+                            tablet = str(tablet).strip()
+                            if tablet and tablet.lower() not in ['no', 'none', 'n/a', '']:
+                                patients_with_tablets.add(patient_id)
+                                break
+                
+                total_count = len(patients_with_drops | patients_with_tablets)
+            
+            elif report_type == 'reading_glasses':
+                # Count patients who actually received reading glasses
+                unique_patients = set()
+                for submission in data:
+                    submission_data = submission.get('data', {})
+                    patient_id = submission.get('patient_id')
+                    glasses_value = submission_data.get('Reading Glasses')
+                    if glasses_value and str(glasses_value).strip().lower() not in ['not applicable', 'no', 'none', 'n/a', ''] and patient_id:
+                        unique_patients.add(patient_id)
+                total_count = len(unique_patients)
+            
+            elif report_type == 'pharmacy_gyne':
+                # Count patients who actually received medications
+                unique_patients = set()
+                for submission in data:
+                    submission_data = submission.get('data', {})
+                    patient_id = submission.get('patient_id')
+                    medication_value = submission_data.get('Dispenseed Medication')
+                    if medication_value and patient_id:
+                        unique_patients.add(patient_id)
+                total_count = len(unique_patients)
+            
+            else:
+                # Fallback for other form types
+                unique_patients = set()
+                for submission in data:
+                    if submission.get('patient_id'):
+                        unique_patients.add(submission['patient_id'])
+                total_count = len(unique_patients)
         
         return jsonify({
             'totalPatients': total_count,
@@ -7519,7 +7596,7 @@ def get_form_submissions_for_report(project_id, report_type, start_date, end_dat
         form_ids_map = {
             'reading_glasses': ['79814631-5364-4bcc-b8b4-7414b9cbb8db'],
             'pharmacy_gyne': ['99dc57d1-f882-4f09-b5fe-ba3f11dc96ff'],
-            'eye_drops': []  # Add specific form ID when available
+            'eye_drops': ['f93e0a6c-40e5-4aec-91fd-f1e872fea335']
         }
         
         target_form_ids = form_ids_map.get(report_type, [])
@@ -7888,9 +7965,9 @@ def generate_eye_drops_stats(form_data, styles):
     from reportlab.lib.styles import ParagraphStyle
     import json
     
-    # Count dispensed items and unique patients
-    eye_drops_counts = {}
-    tablets_counts = {}
+    # Track unique patients per medication type (like reading glasses logic)
+    eye_drops_patients = {}  # medication -> set of patient_ids
+    tablets_patients = {}    # medication -> set of patient_ids
     patients_with_drops = set()
     patients_with_tablets = set()
     
@@ -7898,50 +7975,57 @@ def generate_eye_drops_stats(form_data, styles):
         data = submission.get('data', {})
         patient_id = submission.get('patient_id')
         
-        # Look for dispensed eye drops field
-        for key, value in data.items():
-            if 'dispensed eye drops' in key.lower() and value:
-                # Handle list/array values
-                drops_list = []
-                if isinstance(value, list):
-                    drops_list = value
-                elif isinstance(value, str):
-                    try:
-                        drops_list = json.loads(value) if value.startswith('[') else [value]
-                    except:
-                        drops_list = [value]
-                
-                has_drops = False
-                for drop in drops_list:
-                    drop = str(drop).strip()
-                    if drop and drop.lower() not in ['no', 'none', 'n/a', '']:
-                        eye_drops_counts[drop] = eye_drops_counts.get(drop, 0) + 1
-                        has_drops = True
-                
-                if has_drops and patient_id:
-                    patients_with_drops.add(patient_id)
+        # Look for exact dispensed eye drops field
+        drops_value = data.get('Dispensed Eye Drops')
+        if drops_value:
+            # Handle list/array values
+            drops_list = []
+            if isinstance(drops_value, list):
+                drops_list = drops_value
+            elif isinstance(drops_value, str):
+                try:
+                    drops_list = json.loads(drops_value) if drops_value.startswith('[') else [drops_value]
+                except:
+                    drops_list = [drops_value]
             
-            # Look for dispensed tablets field
-            elif 'dispensed tablets' in key.lower() and value:
-                # Handle list/array values
-                tablets_list = []
-                if isinstance(value, list):
-                    tablets_list = value
-                elif isinstance(value, str):
-                    try:
-                        tablets_list = json.loads(value) if value.startswith('[') else [value]
-                    except:
-                        tablets_list = [value]
-                
-                has_tablets = False
-                for tablet in tablets_list:
-                    tablet = str(tablet).strip()
-                    if tablet and tablet.lower() not in ['no', 'none', 'n/a', '']:
-                        tablets_counts[tablet] = tablets_counts.get(tablet, 0) + 1
+            has_drops = False
+            for drop in drops_list:
+                drop = str(drop).strip()
+                if drop and drop.lower() not in ['no', 'none', 'n/a', '']:
+                    if drop not in eye_drops_patients:
+                        eye_drops_patients[drop] = set()
+                    if patient_id:
+                        eye_drops_patients[drop].add(patient_id)
+                        has_drops = True
+            
+            if has_drops and patient_id:
+                patients_with_drops.add(patient_id)
+        
+        # Look for exact dispensed tablets field
+        tablets_value = data.get('Dispensed Tablets')
+        if tablets_value:
+            # Handle list/array values
+            tablets_list = []
+            if isinstance(tablets_value, list):
+                tablets_list = tablets_value
+            elif isinstance(tablets_value, str):
+                try:
+                    tablets_list = json.loads(tablets_value) if tablets_value.startswith('[') else [tablets_value]
+                except:
+                    tablets_list = [tablets_value]
+            
+            has_tablets = False
+            for tablet in tablets_list:
+                tablet = str(tablet).strip()
+                if tablet and tablet.lower() not in ['no', 'none', 'n/a', '']:
+                    if tablet not in tablets_patients:
+                        tablets_patients[tablet] = set()
+                    if patient_id:
+                        tablets_patients[tablet].add(patient_id)
                         has_tablets = True
-                
-                if has_tablets and patient_id:
-                    patients_with_tablets.add(patient_id)
+            
+            if has_tablets and patient_id:
+                patients_with_tablets.add(patient_id)
     
     elements = []
     
@@ -7992,17 +8076,17 @@ def generate_eye_drops_stats(form_data, styles):
     )
     
     # Eye Drops Table
-    if eye_drops_counts:
+    if eye_drops_patients:
         elements.append(Paragraph("EYE DROPS DISPENSED", section_style))
         
         table_data = [
             [Paragraph('Eye Drop', header_style), Paragraph('Number of Patients who received', header_style)]
         ]
         
-        for drop, count in sorted(eye_drops_counts.items()):
+        for drop, patient_set in sorted(eye_drops_patients.items()):
             table_data.append([
                 Paragraph(drop, data_style),
-                Paragraph(str(count), data_style)
+                Paragraph(str(len(patient_set)), data_style)
             ])
         
         table = Table(table_data, colWidths=[3*inch, 2*inch])
@@ -8023,17 +8107,17 @@ def generate_eye_drops_stats(form_data, styles):
         elements.append(Spacer(1, 30))
     
     # Tablets Table
-    if tablets_counts:
+    if tablets_patients:
         elements.append(Paragraph("TABLETS DISPENSED", section_style))
         
         table_data = [
             [Paragraph('Tablet', header_style), Paragraph('Number of Patients who received', header_style)]
         ]
         
-        for tablet, count in sorted(tablets_counts.items()):
+        for tablet, patient_set in sorted(tablets_patients.items()):
             table_data.append([
                 Paragraph(tablet, data_style),
-                Paragraph(str(count), data_style)
+                Paragraph(str(len(patient_set)), data_style)
             ])
         
         table = Table(table_data, colWidths=[3*inch, 2*inch])
@@ -8052,7 +8136,7 @@ def generate_eye_drops_stats(form_data, styles):
         
         elements.append(table)
     
-    if not eye_drops_counts and not tablets_counts:
+    if not eye_drops_patients and not tablets_patients:
         return Paragraph("No eye drops or tablets dispensed found.", styles['Normal'])
     
     return elements
