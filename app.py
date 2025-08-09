@@ -6872,6 +6872,7 @@ def admin_statistics():
     print(f"Found {total_registered_patients} patients with centralized registration data")
     
     # 3. Get Patients Attended (patients with ANY project form submissions - all forms are now medical care)
+    # Only count patients who also exist in the patients table to ensure data consistency
     attended_patients = set()
     attended_query = supabase.table('form_submissions').select('patient_id, created_at')
     if date_filter.get('start'):
@@ -6881,9 +6882,38 @@ def admin_statistics():
         
     try:
         attended_data = fetch_all_pages(attended_query, debug_name="attended_submissions")
+        # Get set of valid patient IDs from patients table for the same date range
+        valid_patient_ids = set()
+        patient_ids_for_validation = supabase.table('patients').select('patient_id')
+        if date_filter.get('start'):
+            patient_ids_for_validation = patient_ids_for_validation.gte('created_at', date_filter['start'])
+        if date_filter.get('end'):
+            patient_ids_for_validation = patient_ids_for_validation.lt('created_at', date_filter['end'])
+        
+        validation_data = fetch_all_pages(patient_ids_for_validation, debug_name="patient_ids_for_validation")
+        for patient in validation_data:
+            if patient.get('patient_id'):
+                valid_patient_ids.add(patient['patient_id'])
+        
+        # Only count attended patients who have valid patient IDs
+        for submission in attended_data:
+            patient_id = submission.get('patient_id')
+            if patient_id and patient_id in valid_patient_ids:
+                attended_patients.add(patient_id)
+                
+        print(f"Found {len(attended_patients)} patients who received medical care (from valid patient IDs only)")
+        
+        # Debug: Show data consistency info
+        all_submissions_patient_ids = set()
         for submission in attended_data:
             if submission.get('patient_id'):
-                attended_patients.add(submission['patient_id'])
+                all_submissions_patient_ids.add(submission['patient_id'])
+        
+        orphaned_submissions = all_submissions_patient_ids - valid_patient_ids
+        if orphaned_submissions:
+            print(f"Warning: Found {len(orphaned_submissions)} submissions with patient IDs not in patients table")
+            print(f"Example orphaned IDs: {list(orphaned_submissions)[:5]}")
+        
     except Exception as e:
         print(f"Error fetching attended submissions: {str(e)}")
     
