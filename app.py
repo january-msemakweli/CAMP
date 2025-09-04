@@ -1473,16 +1473,37 @@ def submit_form(form_id):
             flash(error, 'danger')
         return redirect(url_for('view_form', form_id=form_id))
     
-    # Create submission in form_submissions table
-    new_submission = {
-        'id': str(uuid.uuid4()),
-        'form_id': form_id,
-        'patient_id': patient_id,
-        'submitted_by': current_user.id,
-        'data': form_data
-    }
+    # Check for existing submission with same form_id, patient_id, and project_id
+    # Since form already has project_id, we can use the form's project_id to identify the project
+    existing_submission_response = supabase.table('form_submissions').select('*').eq('form_id', form_id).eq('patient_id', patient_id).execute()
     
-    submission_response = supabase.table('form_submissions').insert(new_submission).execute()
+    if existing_submission_response.data:
+        # Update existing submission
+        existing_submission = existing_submission_response.data[0]
+        updated_submission = {
+            'submitted_by': current_user.id,
+            'data': form_data,
+            'created_at': 'now()'  # Update timestamp to reflect when it was last modified
+        }
+        
+        submission_response = supabase.table('form_submissions').update(updated_submission).eq('id', existing_submission['id']).execute()
+        submission_id = existing_submission['id']
+        action_type = 'update'
+        print(f"Updated existing submission {submission_id} for form {form_id} and patient {patient_id}")
+    else:
+        # Create new submission
+        new_submission = {
+            'id': str(uuid.uuid4()),
+            'form_id': form_id,
+            'patient_id': patient_id,
+            'submitted_by': current_user.id,
+            'data': form_data
+        }
+        
+        submission_response = supabase.table('form_submissions').insert(new_submission).execute()
+        submission_id = new_submission['id']
+        action_type = 'submit'
+        print(f"Created new submission {submission_id} for form {form_id} and patient {patient_id}")
     
     # Update the consolidated patient data in the patients table
     # First check if the patient already exists
@@ -1507,10 +1528,13 @@ def submit_form(form_id):
         }
         supabase.table('patients').insert(new_patient).execute()
     
-    # Log form submission
-    log_activity('submit', 'form_submission', new_submission['id'], f"Form: {form['title']}, Patient ID: {patient_id}")
+    # Log form submission (either submit or update)
+    log_activity(action_type, 'form_submission', submission_id, f"Form: {form['title']}, Patient ID: {patient_id}")
     
-    flash('Form submitted successfully')
+    if action_type == 'update':
+        flash('Form updated successfully')
+    else:
+        flash('Form submitted successfully')
     return redirect(url_for('view_form', form_id=form_id))
 
 @app.route('/form/<form_id>/delete', methods=['POST'])
